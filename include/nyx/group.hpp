@@ -52,6 +52,8 @@ class GroupStore {
   std::optional<GroupRecord> find(const GroupId& id) const;
   std::optional<GroupRecord> find_by_invite(const InviteToken& token) const;
   bool upsert(const GroupRecord& group);
+  bool remove(const GroupId& id);
+  bool remove_member(const GroupId& id, const UserId& user_id);
 
   const std::vector<GroupRecord>& all() const { return groups_; }
 

@@ -1,16 +1,10 @@
 import QtQuick
-import Qt.labs.settings 1.0
 
-/** Design tokens — Telegram dark / light, переключение без перезапуска. */
+/** Design tokens — Telegram dark / light. */
 QtObject {
     id: root
 
-    property Settings persist: Settings {
-        category: "appearance"
-        property bool darkMode: true
-    }
-
-    property bool darkMode: persist.darkMode
+    property bool darkMode: true
 
     function toggleDarkMode() {
         darkMode = !darkMode

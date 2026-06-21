@@ -1,6 +1,7 @@
 #include "chat_list_model.hpp"
 
 #include "nyx/conversation.hpp"
+#include "nyx/account_store.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/message_store.hpp"
 #include "nyx/messaging.hpp"
@@ -72,7 +73,7 @@ QHash<int, QByteArray> ChatListModel::roleNames() const {
 void ChatListModel::refreshFromDisk(const QString& selfIdHex) {
   (void)selfIdHex;
   nyx::Profile profile;
-  if (!nyx::load_profile(nyx::default_profile_path(), profile)) {
+  if (!nyx::active_profile(profile)) {
     beginResetModel();
     rows_.clear();
     endResetModel();
@@ -96,7 +97,9 @@ void ChatListModel::refreshFromDisk(const QString& selfIdHex) {
                     ? QString::fromStdString(s.group_id_hex)
                     : QString::fromStdString(s.peer_id_hex);
     row.unread = unread_.value(row.key, 0);
-    row.lastSeen = QString::fromStdString(nyx::format_last_seen(s.last_seen_ms, now));
+    row.lastSeen = s.kind == nyx::ConversationKind::Group
+                       ? QStringLiteral("поле")
+                       : QString::fromStdString(nyx::format_last_seen(s.last_seen_ms, now));
     row.timeLabel = formatListTime(row.timestamp);
     rows_.append(std::move(row));
   }

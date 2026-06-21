@@ -13,6 +13,9 @@ Rectangle {
     required property string timeLabel
     required property int unread
     required property int kind
+    required property string key
+    required property string refId
+    required property string lastSeen
 
     property bool selected: false
 
@@ -57,7 +60,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Label {
                     Layout.fillWidth: true
-                    text: preview || (kind === 1 ? "Поле" : "Личный чат")
+                    text: preview || qsTr("Нет сообщений")
                     color: theme.textSecondary
                     font.pixelSize: 12
                     elide: Text.ElideRight

@@ -1,0 +1,2 @@
+@"@NYX_PACK_INSTALLER_EXE@" --stub "@NYX_SETUP_STUB@" --srcdir "@NYX_INSTALLER_STAGING@" --out "@NYX_INSTALLER_OUT@"
+@if errorlevel 1 exit /b 1

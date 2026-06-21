@@ -32,7 +32,7 @@ apps/nyx-app/
 | Справа | flex | Шапка чата, сообщения, ввод, progress bar |
 | Drawer | справа | Listen / Connect / Поля / Файлы / LAN |
 
-## QML API (`node`)
+## QML API (`app` — контекстное свойство NodeController)
 
 | Свойство / метод | Назначение |
 |------------------|------------|

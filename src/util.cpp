@@ -7,6 +7,17 @@
 #include <stdexcept>
 #include <string>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#include <netdb.h>
+#endif
+
 namespace nyx {
 
 namespace {
@@ -147,6 +158,36 @@ bool parse_host_port(const std::string& addr, std::string& host, uint16_t& port)
     return false;
   }
   return true;
+}
+
+bool endpoint_matches(const std::string& from_host, uint16_t from_port,
+                      const std::string& expected_host, uint16_t expected_port) {
+  if (from_port != expected_port) return false;
+  if (from_host == expected_host) return true;
+
+  in_addr from_addr{};
+  if (inet_pton(AF_INET, from_host.c_str(), &from_addr) != 1) return false;
+
+  addrinfo hints{};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_DGRAM;
+  addrinfo* res = nullptr;
+  const std::string port_str = std::to_string(expected_port);
+  if (getaddrinfo(expected_host.c_str(), port_str.c_str(), &hints, &res) != 0) {
+    return false;
+  }
+
+  bool match = false;
+  for (auto* p = res; p != nullptr; p = p->ai_next) {
+    if (p->ai_family != AF_INET) continue;
+    const auto* sin = reinterpret_cast<sockaddr_in*>(p->ai_addr);
+    if (sin->sin_addr.s_addr == from_addr.s_addr) {
+      match = true;
+      break;
+    }
+  }
+  freeaddrinfo(res);
+  return match;
 }
 
 }  // namespace nyx

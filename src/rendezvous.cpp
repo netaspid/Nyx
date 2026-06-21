@@ -60,7 +60,7 @@ std::optional<EndpointHint> RendezvousClient::lookup(const InviteToken& token) {
     uint16_t port = 0;
     auto data = socket_.recv_from(host, port, 200);
     if (!data) continue;
-    if (host != server_host_ || port != server_port_) continue;
+    if (!endpoint_matches(host, port, server_host_, server_port_)) continue;
 
     auto frame = Frame::decode(data->data(), data->size());
     if (!frame || frame->header.packet_type != PacketType::RendezvousResponse) {

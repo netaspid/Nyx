@@ -16,6 +16,7 @@
 #include "nyx/identity.hpp"
 #include "nyx/mdns.hpp"
 #include "nyx/messaging.hpp"
+#include "nyx/conversation.hpp"
 #include "nyx/network_config.hpp"
 
 #include <atomic>
@@ -53,8 +54,10 @@ class NodeService {
   using LanPeersCallback = std::function<void(const std::vector<nyx::LanPeer>&)>;
   using GroupInfoCallback = std::function<void(const std::string& group_id_hex,
                                                const std::string& invite_hex)>;
-  using ChatReadyCallback =
-      std::function<void(const std::string& peer_title, const std::string& connection_label)>;
+  using ChatReadyCallback = std::function<void(const std::string& title,
+                                                 const std::string& connection_label,
+                                                 nyx::ConversationKind kind,
+                                                 const std::string& ref_id_hex)>;
 
   NodeService();
   ~NodeService();
@@ -65,7 +68,7 @@ class NodeService {
   void set_profile_path(std::string path);
   void set_nickname(std::string nickname);
   void set_rendezvous(std::string addr);
-  void set_rendezvous_list(const std::string& csv);
+  bool set_rendezvous_list(const std::string& csv);
   void set_discovery_mode(int mode);
   bool save_network_config();
   bool load_network_config();
@@ -83,6 +86,9 @@ class NodeService {
   using FileProgressCallback =
       std::function<void(const std::string& label, int percent)>;
   void set_on_file_progress(FileProgressCallback cb);
+  void set_on_mode(std::function<void(NodeMode)> cb);
+  using SessionEndedCallback = std::function<void()>;
+  void set_on_session_ended(SessionEndedCallback cb);
 
   NodeMode mode() const { return mode_.load(); }
   bool busy() const { return busy_.load(); }
@@ -96,6 +102,10 @@ class NodeService {
   bool scan_lan_peers(int timeout_ms = 2000);
 
   bool create_group(const std::string& name);
+  bool delete_group(const std::string& group_id_hex);
+  bool remove_group_member(const std::string& group_id_hex, const std::string& user_id_hex);
+  bool auto_start_owned_hub() const { return network_config_.auto_start_owned_hub; }
+  void set_auto_start_owned_hub(bool enabled);
   bool start_group_hub(const std::string& group_id_hex);
   bool start_group_join(const std::string& invite_hex);
 
@@ -110,12 +120,16 @@ class NodeService {
 
   std::vector<nyx::StoredMessage> chat_history(std::size_t count = 50) const;
   std::vector<nyx::GroupRecord> list_groups() const;
+  /** Hex id поля, если сейчас запущен hub; иначе пустая строка. */
+  std::string running_group_hub_id_hex() const;
 
  private:
   void emit_status(const std::string& text);
   void emit_message(const nyx::ChatMessage& msg, bool outgoing);
-  void emit_chat_ready(const std::string& peer_title, ConnectionVia via,
-                       const std::string& peer_host = {});
+  void emit_session_ended();
+  void emit_chat_ready(const std::string& title, ConnectionVia via,
+                       const std::string& peer_host, nyx::ConversationKind kind,
+                       const std::string& ref_id_hex);
   void set_mode(NodeMode mode);
 
   bool parse_rendezvous(std::string& host, uint16_t& port) const;
@@ -132,6 +146,8 @@ class NodeService {
   void run_direct_chat(std::unique_ptr<nyx::Connection> connection,
                        const nyx::Profile& profile, bool incoming, ConnectionVia via);
 
+  bool session_blocks_new_work() const;
+
   mutable std::mutex cb_mutex_;
   StatusCallback on_status_;
   MessageCallback on_message_;
@@ -140,6 +156,8 @@ class NodeService {
   GroupInfoCallback on_group_created_;
   ChatReadyCallback on_chat_ready_;
   FileProgressCallback on_file_progress_;
+  std::function<void(NodeMode)> on_mode_;
+  SessionEndedCallback on_session_ended_;
 
   std::string profile_path_;
   std::string nickname_;

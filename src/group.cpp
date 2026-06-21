@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstring>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 namespace nyx {
@@ -25,6 +27,50 @@ std::string json_escape(const std::string& s) {
       out += c;
   }
   return out;
+}
+
+std::optional<std::string> json_get_string(const std::string& json, const char* key) {
+  const std::string needle = std::string("\"") + key + "\":\"";
+  const auto pos = json.find(needle);
+  if (pos == std::string::npos) return std::nullopt;
+  std::size_t i = pos + needle.size();
+  std::string out;
+  while (i < json.size()) {
+    const char c = json[i++];
+    if (c == '"') break;
+    if (c == '\\' && i < json.size()) out.push_back(json[i++]);
+    else
+      out.push_back(c);
+  }
+  return out;
+}
+
+std::optional<GroupRecord> parse_group_object(const std::string& obj) {
+  GroupRecord group;
+  std::string gid_hex;
+  if (auto g = json_get_string(obj, "group_id")) {
+    gid_hex = *g;
+  } else if (auto g = json_get_string(obj, "id")) {
+    gid_hex = *g;
+  } else {
+    return std::nullopt;
+  }
+  if (!GroupStore::group_id_from_hex(gid_hex, group.id)) return std::nullopt;
+
+  if (auto name = json_get_string(obj, "name")) group.name = *name;
+
+  if (auto inv = json_get_string(obj, "invite")) {
+    GroupStore::invite_from_hex(*inv, group.invite_token);
+  }
+
+  if (auto owner = json_get_string(obj, "owner")) {
+    ByteBuffer ob;
+    if (from_hex(*owner, ob) && ob.size() == group.owner_id.size()) {
+      std::memcpy(group.owner_id.data(), ob.data(), ob.size());
+    }
+  }
+
+  return group;
 }
 
 }  // namespace
@@ -110,6 +156,26 @@ bool GroupStore::upsert(const GroupRecord& group) {
   return save();
 }
 
+bool GroupStore::remove(const GroupId& id) {
+  const auto it =
+      std::remove_if(groups_.begin(), groups_.end(), [&](const GroupRecord& g) { return g.id == id; });
+  if (it == groups_.end()) return false;
+  groups_.erase(it, groups_.end());
+  return save();
+}
+
+bool GroupStore::remove_member(const GroupId& id, const UserId& user_id) {
+  for (auto& g : groups_) {
+    if (g.id != id) continue;
+    const auto it = std::remove_if(g.members.begin(), g.members.end(),
+                                     [&](const GroupMemberRecord& m) { return m.user_id == user_id; });
+    if (it == g.members.end()) return false;
+    g.members.erase(it, g.members.end());
+    return save();
+  }
+  return false;
+}
+
 bool GroupStore::load() {
   groups_.clear();
   std::ifstream file(store_path(), std::ios::binary);
@@ -119,49 +185,34 @@ bool GroupStore::load() {
   ss << file.rdbuf();
   const std::string json = ss.str();
 
-  std::size_t pos = 0;
-  while ((pos = json.find("\"group_id\":\"", pos)) != std::string::npos) {
-    GroupRecord group;
-    pos += 12;
-    const auto end = json.find('"', pos);
-    if (end == std::string::npos) break;
-    if (!group_id_from_hex(json.substr(pos, end - pos), group.id)) {
-      pos = end;
-      continue;
-    }
-    pos = end;
-    const auto obj_start = json.rfind('{', pos);
-    const auto obj_end = json.find('}', pos);
-    if (obj_start == std::string::npos || obj_end == std::string::npos) break;
-    const std::string obj = json.substr(obj_start, obj_end - obj_start + 1);
+  const auto arr = json.find("\"groups\":[");
+  if (arr == std::string::npos) return true;
 
-    const auto name_pos = obj.find("\"name\":\"");
-    if (name_pos != std::string::npos) {
-      const auto ns = name_pos + 8;
-      const auto ne = obj.find('"', ns);
-      if (ne != std::string::npos) group.name = obj.substr(ns, ne - ns);
-    }
-    const auto inv_pos = obj.find("\"invite\":\"");
-    if (inv_pos != std::string::npos) {
-      const auto is = inv_pos + 10;
-      const auto ie = obj.find('"', is);
-      if (ie != std::string::npos) {
-        invite_from_hex(obj.substr(is, ie - is), group.invite_token);
-      }
-    }
-    const auto owner_pos = obj.find("\"owner\":\"");
-    if (owner_pos != std::string::npos) {
-      const auto os = owner_pos + 9;
-      const auto oe = obj.find('"', os);
-      if (oe != std::string::npos) {
-        ByteBuffer ob;
-        if (from_hex(obj.substr(os, oe - os), ob) && ob.size() == 32) {
-          std::memcpy(group.owner_id.data(), ob.data(), 32);
+  std::size_t pos = arr + 10;
+  while (pos < json.size()) {
+    pos = json.find('{', pos);
+    if (pos == std::string::npos) break;
+
+    int depth = 0;
+    const std::size_t start = pos;
+    for (; pos < json.size(); ++pos) {
+      const char c = json[pos];
+      if (c == '{') {
+        ++depth;
+      } else if (c == '}') {
+        --depth;
+        if (depth == 0) {
+          const std::string obj = json.substr(start, pos - start + 1);
+          if (auto group = parse_group_object(obj)) {
+            groups_.push_back(std::move(*group));
+          }
+          ++pos;
+          break;
         }
       }
     }
-    groups_.push_back(std::move(group));
-    pos = obj_end;
+
+    if (pos < json.size() && json[pos] == ']') break;
   }
   return true;
 }

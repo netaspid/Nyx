@@ -11,7 +11,6 @@ Dialog {
 
     title: qsTr("Настройки")
     modal: true
-    anchors.centerIn: parent
     standardButtons: Dialog.Close
     width: Math.min(440, parent ? parent.width - 48 : 440)
     padding: theme.spacing
@@ -35,7 +34,7 @@ Dialog {
 
         NyxTextField {
             Layout.fillWidth: true
-            theme: theme
+            theme: root.theme
             text: node.profileNickname
             placeholderText: qsTr("Никнейм")
             onEditingFinished: node.profileNickname = text
@@ -43,7 +42,7 @@ Dialog {
 
         NyxButton {
             Layout.fillWidth: true
-            theme: theme
+            theme: root.theme
             text: qsTr("Копировать id")
             onClicked: node.copyToClipboard(node.profileIdShort)
         }
@@ -79,8 +78,18 @@ Dialog {
 
         NetworkSettingsSection {
             Layout.fillWidth: true
-            theme: theme
+            theme: root.theme
             node: root.node
+        }
+
+        NyxButtonSecondary {
+            Layout.fillWidth: true
+            theme: root.theme
+            text: qsTr("Выйти из аккаунта")
+            onClicked: {
+                root.close()
+                node.signOut()
+            }
         }
 
         Label {

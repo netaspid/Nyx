@@ -1,21 +1,30 @@
 #include "node_service.hpp"
 
+#include "nyx/account_store.hpp"
 #include "nyx/log.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/rendezvous_pool.hpp"
+#include "nyx/message_store.hpp"
+
+#include <cstring>
+#include <filesystem>
 #include "nyx/util.hpp"
 
 namespace nyx_app {
 
 NodeService::NodeService() {
   nyx::log_init();
-  load_network_config();
 }
 
 NodeService::~NodeService() { stop(); }
 
 void NodeService::set_profile_path(std::string path) { profile_path_ = std::move(path); }
-void NodeService::set_nickname(std::string nickname) { nickname_ = std::move(nickname); }
+void NodeService::set_nickname(std::string nickname) {
+  nickname_ = std::move(nickname);
+  if (nyx::active_account_id().empty()) return;
+  std::string err;
+  nyx::update_session_nickname(nickname_, &err);
+}
 
 void NodeService::set_rendezvous(std::string addr) {
   rendezvous_ = std::move(addr);
@@ -25,11 +34,12 @@ void NodeService::set_rendezvous(std::string addr) {
   }
 }
 
-void NodeService::set_rendezvous_list(const std::string& csv) {
+bool NodeService::set_rendezvous_list(const std::string& csv) {
   nyx::NetworkConfig tmp;
-  if (!nyx::NetworkConfig::parse_rendezvous_list(csv, tmp)) return;
+  if (!nyx::NetworkConfig::parse_rendezvous_list(csv, tmp)) return false;
   network_config_.rendezvous_servers = tmp.rendezvous_servers;
   rendezvous_ = network_config_.rendezvous_list_string();
+  return true;
 }
 
 void NodeService::set_discovery_mode(int mode) {
@@ -98,9 +108,21 @@ void NodeService::set_on_file_progress(FileProgressCallback cb) {
   on_file_progress_ = std::move(cb);
 }
 
+void NodeService::set_on_mode(std::function<void(NodeMode)> cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_mode_ = std::move(cb);
+}
+
+void NodeService::set_on_session_ended(SessionEndedCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_session_ended_ = std::move(cb);
+}
+
 nyx::Profile NodeService::profile() const { return load_profile(); }
 
 nyx::Profile NodeService::load_profile() const {
+  nyx::Profile active;
+  if (nyx::active_profile(active)) return active;
   const std::string path =
       profile_path_.empty() ? nyx::default_profile_path() : profile_path_;
   return nyx::load_or_create_profile(path, nickname_);
@@ -139,17 +161,40 @@ void NodeService::emit_message(const nyx::ChatMessage& msg, bool outgoing) {
   cb(ui);
 }
 
-void NodeService::emit_chat_ready(const std::string& peer_title, ConnectionVia via,
-                                  const std::string& peer_host) {
+void NodeService::emit_session_ended() {
+  SessionEndedCallback cb;
+  {
+    std::lock_guard lock(cb_mutex_);
+    cb = on_session_ended_;
+  }
+  if (cb) cb();
+}
+
+void NodeService::emit_chat_ready(const std::string& title, ConnectionVia via,
+                                  const std::string& peer_host, nyx::ConversationKind kind,
+                                  const std::string& ref_id_hex) {
   ChatReadyCallback cb;
   {
     std::lock_guard lock(cb_mutex_);
     cb = on_chat_ready_;
   }
-  if (cb) cb(peer_title, nyx_app::connection_label(via, peer_host));
+  if (cb) cb(title, nyx_app::connection_label(via, peer_host), kind, ref_id_hex);
 }
 
-void NodeService::set_mode(NodeMode mode) { mode_.store(mode); }
+void NodeService::set_mode(NodeMode mode) {
+  mode_.store(mode);
+  std::function<void(NodeMode)> cb;
+  {
+    std::lock_guard lock(cb_mutex_);
+    cb = on_mode_;
+  }
+  if (cb) cb(mode);
+}
+
+bool NodeService::session_blocks_new_work() const {
+  const auto m = mode_.load();
+  return m == NodeMode::ChatDirect || m == NodeMode::GroupHub || m == NodeMode::GroupMember;
+}
 
 void NodeService::stop() {
   running_.store(false);
@@ -166,7 +211,6 @@ void NodeService::stop() {
 }
 
 bool NodeService::start_listen(bool lan_advertise) {
-  if (busy_.load()) return false;
   stop();
   running_.store(true);
   busy_.store(true);
@@ -175,7 +219,6 @@ bool NodeService::start_listen(bool lan_advertise) {
 }
 
 bool NodeService::start_connect_token(const std::string& token_hex) {
-  if (busy_.load()) return false;
   stop();
   running_.store(true);
   busy_.store(true);
@@ -184,7 +227,6 @@ bool NodeService::start_connect_token(const std::string& token_hex) {
 }
 
 bool NodeService::start_connect_peer(const std::string& host, uint16_t port) {
-  if (busy_.load()) return false;
   stop();
   running_.store(true);
   busy_.store(true);
@@ -193,7 +235,6 @@ bool NodeService::start_connect_peer(const std::string& host, uint16_t port) {
 }
 
 bool NodeService::start_browse(int timeout_ms) {
-  if (busy_.load()) return false;
   stop();
   running_.store(true);
   busy_.store(true);
@@ -237,8 +278,55 @@ bool NodeService::create_group(const std::string& name) {
   return true;
 }
 
+bool NodeService::delete_group(const std::string& group_id_hex) {
+  nyx::GroupId group_id{};
+  if (!nyx::GroupStore::group_id_from_hex(group_id_hex, group_id)) return false;
+
+  nyx::GroupStore store;
+  store.load();
+  if (!store.remove(group_id)) return false;
+
+  std::error_code ec;
+  std::filesystem::remove(nyx::MessageStore::path_for_group(group_id), ec);
+  emit_status("поле удалено");
+  return true;
+}
+
+bool NodeService::remove_group_member(const std::string& group_id_hex,
+                                      const std::string& user_id_hex) {
+  nyx::GroupId group_id{};
+  nyx::UserId user_id{};
+  std::vector<uint8_t> uid_bytes;
+  if (!nyx::GroupStore::group_id_from_hex(group_id_hex, group_id) ||
+      !nyx::from_hex(user_id_hex, uid_bytes) || uid_bytes.size() != user_id.size()) {
+    return false;
+  }
+  std::memcpy(user_id.data(), uid_bytes.data(), uid_bytes.size());
+
+  nyx::GroupStore store;
+  store.load();
+
+  if (group_hub_ && share_scope_group_ == group_id) {
+    if (!group_hub_->remove_member(user_id)) return false;
+  } else if (!store.remove_member(group_id, user_id)) {
+    return false;
+  }
+
+  emit_status("участник исключён");
+  return true;
+}
+
+void NodeService::set_auto_start_owned_hub(bool enabled) {
+  network_config_.auto_start_owned_hub = enabled;
+  save_network_config();
+}
+
+std::string NodeService::running_group_hub_id_hex() const {
+  if (mode_.load() != NodeMode::GroupHub) return {};
+  return nyx::GroupStore::group_id_hex(share_scope_group_);
+}
+
 bool NodeService::start_group_hub(const std::string& group_id_hex) {
-  if (busy_.load()) return false;
   stop();
   running_.store(true);
   busy_.store(true);
@@ -247,7 +335,6 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
 }
 
 bool NodeService::start_group_join(const std::string& invite_hex) {
-  if (busy_.load()) return false;
   stop();
   running_.store(true);
   busy_.store(true);

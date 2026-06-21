@@ -10,12 +10,19 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <thread>
 
 namespace nyx_app {
 
 void NodeService::run_group_hub(std::string group_id_hex) {
   set_mode(NodeMode::GroupHub);
+  while (!group_id_hex.empty() && std::isspace(static_cast<unsigned char>(group_id_hex.front()))) {
+    group_id_hex.erase(group_id_hex.begin());
+  }
+  while (!group_id_hex.empty() && std::isspace(static_cast<unsigned char>(group_id_hex.back()))) {
+    group_id_hex.pop_back();
+  }
   nyx::GroupId group_id{};
   if (!nyx::GroupStore::group_id_from_hex(group_id_hex, group_id)) {
     emit_status("неверный group_id");
@@ -70,7 +77,8 @@ void NodeService::run_group_hub(std::string group_id_hex) {
 
   emit_status("hub «" + group->name + "», invite: " +
               nyx::GroupStore::invite_hex(group->invite_token));
-  emit_chat_ready(group->name, ConnectionVia::Group);
+  emit_chat_ready(group->name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
+                  nyx::GroupStore::group_id_hex(group->id));
 
   share_scope_group_ = group_id;
   group_hub_ = std::make_unique<nyx::GroupHub>(rv.socket(), profile, *group);
@@ -87,6 +95,7 @@ void NodeService::run_group_hub(std::string group_id_hex) {
   group_hub_.reset();
   busy_.store(false);
   set_mode(NodeMode::Idle);
+  emit_session_ended();
   emit_status("hub остановлен");
 }
 
@@ -172,8 +181,30 @@ void NodeService::run_group_join(std::string invite_hex) {
     return;
   }
 
+  {
+    const auto& view = group_member_->view();
+    share_scope_group_ = view.id;
+    nyx::GroupStore store;
+    store.load();
+    nyx::GroupRecord rec;
+    rec.id = view.id;
+    rec.name = view.name;
+    rec.invite_token = token;
+    rec.members = view.members;
+    for (const auto& m : view.members) {
+      if (m.role == nyx::GroupRole::Owner) {
+        rec.owner_id = m.user_id;
+        break;
+      }
+    }
+    store.upsert(rec);
+    store.save();
+    group_name = view.name;
+  }
+
   emit_status("в поле «" + group_name + "»");
-  emit_chat_ready(group_name, ConnectionVia::Group);
+  emit_chat_ready(group_name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
+                  nyx::GroupStore::group_id_hex(share_scope_group_));
 
   files_ = std::make_unique<nyx::FileTransferService>(
       *connection_, file_index_, nyx::default_downloads_dir());
@@ -212,6 +243,7 @@ void NodeService::run_group_join(std::string invite_hex) {
   connection_.reset();
   busy_.store(false);
   set_mode(NodeMode::Idle);
+  emit_session_ended();
   emit_status("выход из поля");
 }
 

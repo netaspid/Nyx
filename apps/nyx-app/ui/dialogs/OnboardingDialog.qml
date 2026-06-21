@@ -16,7 +16,10 @@ Dialog {
     visible: node.needsOnboarding
     onVisibleChanged: if (visible) open()
 
-    Component.onCompleted: if (node.needsOnboarding) open()
+    Component.onCompleted: Qt.callLater(function() {
+        if (root.node && root.node.needsOnboarding)
+            root.open()
+    })
 
     background: Rectangle {
         color: theme.bgSidebar
@@ -30,7 +33,7 @@ Dialog {
 
         NyxLogo {
             Layout.alignment: Qt.AlignHCenter
-            theme: theme
+            theme: root.theme
         }
 
         Label {
@@ -43,14 +46,14 @@ Dialog {
         NyxTextField {
             id: nickField
             Layout.fillWidth: true
-            theme: theme
+            theme: root.theme
             placeholderText: qsTr("Никнейм")
             text: node.profileNickname
         }
 
         NyxButton {
             Layout.fillWidth: true
-            theme: theme
+            theme: root.theme
             text: qsTr("Начать")
             enabled: nickField.text.trim().length > 0
             onClicked: {

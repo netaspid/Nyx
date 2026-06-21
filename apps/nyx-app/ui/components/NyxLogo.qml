@@ -6,7 +6,6 @@ Item {
     id: root
     property var theme
     property bool compact: false
-    property color textColor: theme ? theme.textPrimary : "#ffffff"
 
     implicitWidth: compact ? mark.width : logo.width
     implicitHeight: compact ? mark.height : logo.height
@@ -31,6 +30,5 @@ Item {
         width: 120
         height: 32
         fillMode: Image.PreserveAspectFit
-        color: root.textColor
     }
 }

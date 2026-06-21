@@ -13,18 +13,20 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 560
     visible: true
-    title: node.inChat ? node.peerTitle : (node.profileNickname + " — Nyx")
-    color: theme.bgApp
+    title: app.sessionUnlocked
+         ? (app.inChat ? app.peerTitle : (app.profileNickname + " — Nyx"))
+         : "Nyx"
+    color: appTheme.bgApp
 
-    Theme { id: theme }
+    Theme { id: appTheme }
 
-    palette.window: theme.bgApp
-    palette.windowText: theme.textPrimary
-    palette.base: theme.inputBg
-    palette.text: theme.textPrimary
-    palette.highlight: theme.accent
-    palette.highlightedText: theme.textPrimary
-    palette.placeholderText: theme.textMuted
+    palette.window: appTheme.bgApp
+    palette.windowText: appTheme.textPrimary
+    palette.base: appTheme.inputBg
+    palette.text: appTheme.textPrimary
+    palette.highlight: appTheme.accent
+    palette.highlightedText: appTheme.textPrimary
+    palette.placeholderText: appTheme.textMuted
 
     function formatMsgTime(ms) {
         if (!ms) return ""
@@ -39,100 +41,113 @@ ApplicationWindow {
         return palette[Math.abs(hash) % palette.length]
     }
 
-    onActiveChanged: node.setWindowActive(active)
+    onActiveChanged: app.windowActive = active
 
     onClosing: function(close) {
-        if (node.trayAvailable) {
-            close.accepted = false
-            root.hide()
-            node.hideToTray()
-        }
+        close.accepted = true
     }
 
     Shortcut {
         sequences: ["Esc"]
         onActivated: {
-            if (node.connectionPanelOpen)
-                node.connectionPanelOpen = false
-            else if (node.inChat)
-                node.disconnectSession()
+            if (app.connectionPanelOpen)
+                app.connectionPanelOpen = false
+            else if (app.inChat)
+                app.disconnectSession()
         }
     }
 
     Shortcut {
         sequences: ["Ctrl+K"]
-        onActivated: node.connectionPanelOpen = true
+        onActivated: app.connectionPanelOpen = !app.connectionPanelOpen
+    }
+
+    AccountGate {
+        theme: appTheme
+        node: app
     }
 
     RowLayout {
         anchors.fill: parent
         spacing: 0
+        visible: app.sessionUnlocked
 
         ChatListPanel {
             Layout.preferredWidth: root.width < 860 ? (root.width * 0.42) : 320
             Layout.fillHeight: true
-            theme: theme
-            node: node
+            theme: appTheme
+            node: app
             avatarColorFn: avatarColor
             visible: root.width >= 720
+            onSettingsRequested: settingsDialog.open()
         }
 
         Rectangle {
             Layout.preferredWidth: 1
             Layout.fillHeight: true
-            color: theme.border
+            color: appTheme.border
             visible: root.width >= 720
         }
 
         ChatView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            theme: theme
-            node: node
+            theme: appTheme
+            node: app
             avatarColorFn: avatarColor
             formatMsgTimeFn: formatMsgTime
         }
     }
 
     ConnectionDrawer {
-        theme: theme
-        node: node
+        theme: appTheme
+        node: app
         avatarColorFn: avatarColor
     }
 
-    OnboardingDialog {
-        theme: theme
-        node: node
+    SettingsDialog {
+        id: settingsDialog
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        theme: appTheme
+        node: app
+    }
+
+    GroupsDialog {
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        theme: appTheme
+        node: app
     }
 
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 24
-        visible: node.toast.length > 0
+        visible: app.toast.length > 0
         radius: 20
-        color: theme.toastBg
+        color: appTheme.toastBg
         Label {
             anchors.centerIn: parent
             anchors.margins: 16
-            text: node.toast
-            color: theme.textPrimary
+            text: app.toast
+            color: appTheme.textPrimary
         }
         Timer {
             interval: 1800
             running: parent.visible
-            onTriggered: node.clearToast()
+            onTriggered: app.clearToast()
         }
     }
 
     Connections {
-        target: node
+        target: app
         function onChatChanged() {
-            if (node.inChat) node.refreshChatList()
+            if (app.inChat) app.refreshChatList()
         }
         function onIncomingMessage(author, preview) {
             if (!root.active)
-                root.requestAttention(Qt.InformationalRequest)
+                root.alert(0)
         }
         function onShowMainWindow() {
             root.show()

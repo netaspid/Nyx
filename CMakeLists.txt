@@ -60,6 +60,8 @@ add_library(nyx
   src/console.cpp
   src/paths.cpp
   src/identity.cpp
+  src/profile_crypto.cpp
+  src/account_store.cpp
   src/app.cpp
   src/messaging.cpp
   src/message_store.cpp
@@ -132,6 +134,9 @@ add_executable(nyx-rendezvous apps/nyx-rendezvous/main.cpp)
 target_link_libraries(nyx-rendezvous PRIVATE nyx)
 
 if(NYX_BUILD_GUI)
+  if(WIN32)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/detect-qt-mingw.cmake)
+  endif()
   set(QT_MIN_VERSION 6.5)
   find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Quick Qml QuickControls2 LabsSettings Gui Widgets Svg)
   if(Qt6_FOUND)
@@ -164,6 +169,7 @@ if(NYX_BUILD_GUI)
       target_link_libraries(nyx-app PRIVATE Qt6::Svg)
     endif()
     if(WIN32)
+      set_target_properties(nyx-app PROPERTIES WIN32_EXECUTABLE TRUE)
       target_compile_options(nyx-app PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
       find_program(WINDEPLOYQT_EXECUTABLE windeployqt
         HINTS "${Qt6_DIR}/../../../bin" "${Qt6_INSTALL_PREFIX}/bin")
@@ -187,6 +193,77 @@ if(NYX_BUILD_GUI)
       endif()
     endif()
     message(STATUS "nyx-app: Qt ${Qt6_VERSION} found, GUI will be built")
+
+    if(WIN32)
+      set(NYX_INSTALLER_DIR "${CMAKE_BINARY_DIR}/_installer")
+      set(NYX_INSTALLER_STAGING "${NYX_INSTALLER_DIR}/staging")
+      set(NYX_INSTALLER_OUT "${CMAKE_BINARY_DIR}/NyxSetup.exe")
+      set(NYX_SETUP_STUB "${NYX_INSTALLER_DIR}/stub.exe")
+      set(NYX_PACK_INSTALLER_EXE "${NYX_INSTALLER_DIR}/pack.exe")
+
+      add_executable(nyx-setup-stub apps/nyx-setup/main.cpp apps/nyx-setup/setup_util.cpp)
+      target_include_directories(nyx-setup-stub PRIVATE apps/nyx-setup)
+      target_link_libraries(nyx-setup-stub PRIVATE shell32 ole32 comctl32 shlwapi)
+      target_compile_options(nyx-setup-stub PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
+      set_target_properties(nyx-setup-stub PROPERTIES
+        WIN32_EXECUTABLE TRUE
+        RUNTIME_OUTPUT_DIRECTORY "${NYX_INSTALLER_DIR}"
+        OUTPUT_NAME stub
+      )
+      target_link_options(nyx-setup-stub PRIVATE -municode)
+
+      add_executable(nyx-uninstall apps/nyx-uninstall/main.cpp)
+      target_link_libraries(nyx-uninstall PRIVATE shell32)
+      set_target_properties(nyx-uninstall PROPERTIES WIN32_EXECUTABLE TRUE)
+      target_link_options(nyx-uninstall PRIVATE -municode)
+
+      add_executable(nyx-installer-pack apps/nyx-setup/pack_installer.cpp)
+      target_compile_options(nyx-installer-pack PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
+      set_target_properties(nyx-installer-pack PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${NYX_INSTALLER_DIR}"
+        OUTPUT_NAME pack
+      )
+
+      configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-pack-installer.bat.in
+        ${NYX_INSTALLER_DIR}/run-pack-installer.bat
+        @ONLY
+      )
+
+      add_custom_command(
+        OUTPUT ${NYX_INSTALLER_OUT}
+        COMMAND ${CMAKE_COMMAND} -E rm -f
+                ${CMAKE_BINARY_DIR}/nyx-setup.exe
+                ${CMAKE_BINARY_DIR}/nyx-setup-stub.exe
+                ${CMAKE_BINARY_DIR}/nyx-setup-packed.exe
+                ${CMAKE_BINARY_DIR}/Nyx-Setup.exe
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${NYX_INSTALLER_STAGING}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${NYX_INSTALLER_STAGING}
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-app> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-node> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-rendezvous> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-uninstall> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_FILE_DIR:nyx-app>/platforms ${NYX_INSTALLER_STAGING}/platforms
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_FILE_DIR:nyx-app>/qml ${NYX_INSTALLER_STAGING}/qml
+        COMMAND ${CMAKE_COMMAND} -E copy
+                ${CMAKE_SOURCE_DIR}/README.md ${NYX_INSTALLER_STAGING}/README.md
+        COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_BINARY_DIR} -DDST=${NYX_INSTALLER_STAGING}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy-installer-dlls.cmake
+        COMMAND ${NYX_INSTALLER_DIR}/run-pack-installer.bat
+        DEPENDS nyx-app nyx-setup-stub nyx-uninstall nyx-installer-pack
+        COMMENT "NyxSetup.exe"
+        VERBATIM
+      )
+
+      add_custom_target(nyx-installer ALL DEPENDS ${NYX_INSTALLER_OUT})
+      add_custom_command(
+        TARGET nyx-installer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Installer: ${NYX_INSTALLER_OUT}"
+        VERBATIM
+      )
+    endif()
   else()
     message(WARNING "Qt6 Quick not found — nyx-app skipped. Set CMAKE_PREFIX_PATH to Qt 6.x mingw_64.")
   endif()

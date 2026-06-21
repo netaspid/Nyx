@@ -9,7 +9,12 @@ Button {
 
     background: Rectangle {
         radius: theme.radiusBtn
-        color: ctrl.pressed ? theme.border : (ctrl.hovered ? theme.btnSecondaryHover : theme.btnSecondary)
+        color: {
+            if (!ctrl.enabled) return theme.inputBg
+            if (ctrl.pressed) return theme.border
+            if (ctrl.hovered) return theme.btnSecondaryHover
+            return theme.btnSecondary
+        }
         border.color: theme.border
         border.width: 1
     }

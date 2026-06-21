@@ -11,6 +11,20 @@ namespace nyx {
 
 namespace {
 
+std::string trim_copy(const std::string& s) {
+  std::size_t start = 0;
+  while (start < s.size() && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r' ||
+                                s[start] == '\n')) {
+    ++start;
+  }
+  std::size_t end = s.size();
+  while (end > start && (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\r' ||
+                         s[end - 1] == '\n')) {
+    --end;
+  }
+  return s.substr(start, end - start);
+}
+
 std::string json_escape(const std::string& s) {
   std::string out;
   for (char c : s) {
@@ -69,9 +83,12 @@ std::string NetworkConfig::rendezvous_list_string() const {
 
 bool NetworkConfig::parse_rendezvous_list(const std::string& csv, NetworkConfig& out) {
   out.rendezvous_servers.clear();
+  const std::string trimmed = trim_copy(csv);
+  if (trimmed.empty()) return false;
   std::string part;
-  for (char c : csv) {
-    if (c == ',' || c == ';' || c == ' ') {
+  for (char c : trimmed) {
+    if (c == ',' || c == ';') {
+      part = trim_copy(part);
       if (!part.empty()) {
         RendezvousServer srv;
         if (!parse_one_host_port(part, srv)) return false;
@@ -82,6 +99,7 @@ bool NetworkConfig::parse_rendezvous_list(const std::string& csv, NetworkConfig&
     }
     part.push_back(c);
   }
+  part = trim_copy(part);
   if (!part.empty()) {
     RendezvousServer srv;
     if (!parse_one_host_port(part, srv)) return false;
@@ -110,6 +128,12 @@ bool NetworkConfig::load() {
   }
 
   if (auto stun = json_get_string(json, "stun_host")) stun_host = *stun;
+
+  if (json.find("\"auto_start_owned_hub\":true") != std::string::npos) {
+    auto_start_owned_hub = true;
+  } else {
+    auto_start_owned_hub = false;
+  }
 
   std::size_t pos = 0;
   while ((pos = json.find("\"host\":\"", pos)) != std::string::npos) {
@@ -152,7 +176,9 @@ bool NetworkConfig::save() const {
 
   file << "{\"mode\":\"" << mode_str << "\",\"use_stun\":" << (use_stun ? "true" : "false")
        << ",\"stun_host\":\"" << json_escape(stun_host) << "\",\"stun_port\":" << stun_port
-       << ",\"register_refresh_sec\":" << register_refresh_sec << ",\"rendezvous\":[";
+       << ",\"register_refresh_sec\":" << register_refresh_sec
+       << ",\"auto_start_owned_hub\":" << (auto_start_owned_hub ? "true" : "false")
+       << ",\"rendezvous\":[";
   for (std::size_t i = 0; i < rendezvous_servers.size(); ++i) {
     if (i > 0) file << ',';
     const auto& r = rendezvous_servers[i];

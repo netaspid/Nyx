@@ -56,15 +56,7 @@ cmake -B build -G "MinGW Makefiles" `
 cmake --build build
 ```
 
-См. [BUILD_GUI_WINDOWS.md](BUILD_GUI_WINDOWS.md).
-
-### Release zip (Windows)
-
-```powershell
-cmake --build build
-.\scripts\package-win.ps1
-# → dist/nyx-win64.zip
-```
+См. [BUILD_GUI_WINDOWS.md](BUILD_GUI_WINDOWS.md). Установщик `build\NyxSetup.exe` собирается той же командой `cmake --build build -j`.
 
 ## GUI: два инстанса
 

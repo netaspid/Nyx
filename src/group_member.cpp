@@ -73,6 +73,19 @@ bool GroupMemberService::join(int timeout_ms) {
           on_event_("в поле «" + view_.name + "» (" +
                     std::to_string(view_.members.size()) + " участников)");
         }
+
+        const auto history_deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
+        while (std::chrono::steady_clock::now() < history_deadline) {
+          connection_.drive();
+          ByteBuffer payload;
+          uint32_t stream_id = 0;
+          while (connection_.recv_stream(stream_id, payload)) {
+            if (stream_id != kChatStream) continue;
+            handle_payload(payload);
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
         return true;
       }
       handle_payload(payload);

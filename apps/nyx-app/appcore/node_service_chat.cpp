@@ -8,6 +8,7 @@
 #include "nyx/chat_service.hpp"
 #include "nyx/file_hash.hpp"
 #include "nyx/paths.hpp"
+#include "nyx/util.hpp"
 
 namespace nyx_app {
 
@@ -36,7 +37,8 @@ void NodeService::run_direct_chat(std::unique_ptr<nyx::Connection> connection,
   nyx::remember_contact(peer_hello);
   emit_status(peer_hello.nickname + " в сети (id: " +
               nyx::short_user_id(peer_hello.public_key) + ")");
-  emit_chat_ready(peer_hello.nickname, via, peer_host);
+  emit_chat_ready(peer_hello.nickname, via, peer_host, nyx::ConversationKind::Direct,
+                  nyx::to_hex(peer_hello.public_key.data(), peer_hello.public_key.size()));
 
   nyx::ChatService::PeerInfo peer;
   peer.user_id = peer_hello.public_key;
@@ -80,6 +82,7 @@ void NodeService::run_direct_chat(std::unique_ptr<nyx::Connection> connection,
   connection_.reset();
   busy_.store(false);
   set_mode(NodeMode::Idle);
+  emit_session_ended();
   emit_status("сессия завершена");
 }
 

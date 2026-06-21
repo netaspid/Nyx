@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <set>
 
 namespace nyx {
 
@@ -52,11 +53,14 @@ std::string format_last_seen(uint64_t last_seen_ms, uint64_t now_ms) {
 
 std::vector<ConversationSummary> list_conversations(const UserId& self) {
   std::vector<ConversationSummary> out;
+  std::set<std::string> known_chat_stems;
 
   ContactBook book(default_contacts_path());
   book.load();
   for (const auto& contact : book.contacts()) {
+    if (contact.user_id == self) continue;
     const ChatId cid = dm_chat_id(self, contact.user_id);
+    known_chat_stems.insert(chat_id_hex(cid));
     const std::string path = MessageStore::path_for_chat(cid);
     ConversationSummary item;
     item.key = "dm:" + to_hex(contact.user_id.data(), contact.user_id.size());
@@ -74,6 +78,7 @@ std::vector<ConversationSummary> list_conversations(const UserId& self) {
   GroupStore groups;
   groups.load();
   for (const auto& group : groups.all()) {
+    known_chat_stems.insert(GroupStore::group_id_hex(group.id));
     const std::string path = MessageStore::path_for_group(group.id);
     ConversationSummary item;
     item.key = "group:" + GroupStore::group_id_hex(group.id);
@@ -83,6 +88,8 @@ std::vector<ConversationSummary> list_conversations(const UserId& self) {
     if (auto last = last_message(path)) {
       item.preview = last->author.empty() ? last->text : (last->author + ": " + last->text);
       item.timestamp_ms = last->timestamp_ms;
+    } else {
+      item.timestamp_ms = group.created_ms;
     }
     push_if_newer(out, std::move(item));
   }
@@ -94,16 +101,15 @@ std::vector<ConversationSummary> list_conversations(const UserId& self) {
       if (!entry.is_regular_file(ec)) continue;
       if (entry.path().extension() != ".jsonl") continue;
       const std::string stem = entry.path().stem().string();
-      const bool already =
-          std::any_of(out.begin(), out.end(), [&](const ConversationSummary& s) {
-            return s.key.find(stem) != std::string::npos ||
-                   s.peer_id_hex == stem || s.group_id_hex == stem;
-          });
-      if (already) continue;
+      if (known_chat_stems.count(stem) != 0) continue;
       if (auto last = last_message(entry.path().string())) {
         ConversationSummary item;
         item.key = "chat:" + stem;
-        item.title = stem.substr(0, 8) + "…";
+        if (!last->author.empty()) {
+          item.title = last->author;
+        } else {
+          item.title = "Архив " + stem.substr(0, 8) + "…";
+        }
         item.preview = last->text;
         item.timestamp_ms = last->timestamp_ms;
         item.kind = ConversationKind::Direct;

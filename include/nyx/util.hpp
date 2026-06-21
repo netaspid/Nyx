@@ -32,4 +32,8 @@ void random_bytes(uint8_t* out, std::size_t len);
 /** Парсит "host:port". @return false при ошибке формата или порта. */
 bool parse_host_port(const std::string& addr, std::string& host, uint16_t& port);
 
+/** Сравнивает адрес отправителя UDP с ожидаемым host:port (учитывает DNS → IP). */
+bool endpoint_matches(const std::string& from_host, uint16_t from_port,
+                      const std::string& expected_host, uint16_t expected_port);
+
 }  // namespace nyx

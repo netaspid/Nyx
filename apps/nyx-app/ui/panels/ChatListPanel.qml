@@ -1,15 +1,17 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "../components"
 import "../controls"
-import "../dialogs"
 
 Rectangle {
     id: root
     required property var theme
     required property var node
     required property var avatarColorFn
+
+    signal settingsRequested()
 
     color: theme.bgSidebar
 
@@ -20,7 +22,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Layout.margins: theme.spacing
-            Layout.bottomMargin: 4
+            Layout.bottomMargin: theme.spacing
             spacing: 8
 
             NyxLogo {
@@ -32,7 +34,9 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.margins: theme.spacing
+            Layout.leftMargin: theme.spacing
+            Layout.rightMargin: theme.spacing
+            Layout.bottomMargin: theme.spacing
             spacing: 8
 
             AvatarBadge {
@@ -59,28 +63,90 @@ Rectangle {
             }
 
             IconButton {
-                theme: theme
-                glyph: "\uE710"
-                ToolTip.visible: hovered
-                ToolTip.text: "Подключение"
-                onClicked: node.connectionPanelOpen = true
-            }
-
-            IconButton {
-                theme: theme
+                theme: root.theme
                 glyph: "\uE713"
-                onClicked: settingsDialog.open()
+                onClicked: root.settingsRequested()
             }
         }
 
-        NyxTextField {
-            id: chatSearch
+        Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: theme.spacing
             Layout.rightMargin: theme.spacing
-            theme: theme
-            placeholderText: "Поиск чатов"
-            onTextChanged: chatFilter.text = text
+            Layout.bottomMargin: theme.spacing
+            implicitHeight: sidebarTabs.implicitHeight + 8
+            radius: theme.radiusBtn
+            color: theme.inputBg
+            border.color: theme.border
+
+            TabBar {
+                id: sidebarTabs
+                anchors.fill: parent
+                anchors.margins: 4
+                spacing: 4
+
+                background: Item {}
+
+                TabButton {
+                    id: fieldsTab
+                    text: qsTr("Поля")
+                    width: (sidebarTabs.width - sidebarTabs.spacing) / 2
+                    onClicked: node.openGroupsDialog()
+
+                    background: Rectangle {
+                        radius: theme.radiusBtn - 2
+                        color: fieldsTab.checked ? theme.accent
+                             : fieldsTab.hovered ? theme.btnSecondaryHover
+                             : "transparent"
+                    }
+                    contentItem: Label {
+                        text: fieldsTab.text
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: fieldsTab.checked ? theme.textPrimary : theme.textSecondary
+                        font.pixelSize: 13
+                        font.weight: fieldsTab.checked ? Font.DemiBold : Font.Normal
+                    }
+                }
+
+                TabButton {
+                    id: connectionTab
+                    text: qsTr("Подключение")
+                    width: (sidebarTabs.width - sidebarTabs.spacing) / 2
+                    onClicked: node.connectionPanelOpen = !node.connectionPanelOpen
+
+                    background: Rectangle {
+                        radius: theme.radiusBtn - 2
+                        color: connectionTab.checked ? theme.accent
+                             : connectionTab.hovered ? theme.btnSecondaryHover
+                             : "transparent"
+                    }
+                    contentItem: Label {
+                        text: connectionTab.text
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: connectionTab.checked ? theme.textPrimary : theme.textSecondary
+                        font.pixelSize: 13
+                        font.weight: connectionTab.checked ? Font.DemiBold : Font.Normal
+                    }
+                }
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.leftMargin: theme.spacing
+            Layout.rightMargin: theme.spacing
+            Layout.bottomMargin: theme.spacing
+            implicitHeight: chatSearch.implicitHeight
+
+            NyxTextField {
+                id: chatSearch
+                anchors.fill: parent
+                theme: root.theme
+                placeholderText: qsTr("Поиск чатов")
+                onTextChanged: chatFilter.text = text
+            }
         }
 
         QtObject { id: chatFilter; property string text: "" }
@@ -98,32 +164,31 @@ Rectangle {
                 theme: root.theme
                 node: root.node
                 avatarColorFn: root.avatarColorFn
-                title: model.title
-                preview: model.preview
-                timeLabel: model.timeLabel
-                unread: model.unread
-                kind: model.kind
                 visible: chatFilter.text.length === 0
                          || title.toLowerCase().indexOf(chatFilter.text.toLowerCase()) >= 0
                          || preview.toLowerCase().indexOf(chatFilter.text.toLowerCase()) >= 0
-                onClicked: node.openConversation(model.key, model.kind, model.refId, model.title, model.lastSeen)
+                onClicked: root.node.openConversation(key, kind, refId, title, lastSeen)
             }
 
             EmptyState {
                 anchors.centerIn: parent
                 width: parent.width - 24
                 visible: chatListView.count === 0
-                theme: theme
+                theme: root.theme
                 emoji: "💬"
-                title: "Нет чатов"
-                hint: "Подключитесь к peer или создайте поле"
+                title: qsTr("Нет чатов")
+                hint: qsTr("Подключитесь к peer или создайте поле")
             }
         }
     }
 
-    SettingsDialog {
-        id: settingsDialog
-        theme: root.theme
-        node: root.node
+    Connections {
+        target: node
+        function onConnectionPanelOpenChanged() {
+            connectionTab.checked = node.connectionPanelOpen
+        }
+        function onGroupsDialogOpenChanged() {
+            fieldsTab.checked = node.groupsDialogOpen
+        }
     }
 }

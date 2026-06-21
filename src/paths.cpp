@@ -1,21 +1,16 @@
 #include "nyx/paths.hpp"
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <direct.h>
-#include <windows.h>
-#else
-#include <sys/stat.h>
-#endif
-
 #include <cstdlib>
 #include <filesystem>
+#include <mutex>
 
 namespace nyx {
 
 namespace {
+
+std::string g_scoped_data_dir;
+bool g_scoped = false;
+std::mutex g_data_dir_mutex;
 
 std::string join_path(const std::string& dir, const char* name) {
   if (dir.empty()) return name;
@@ -23,9 +18,7 @@ std::string join_path(const std::string& dir, const char* name) {
   return dir + '/' + name;
 }
 
-}  // namespace
-
-std::string data_dir() {
+std::string base_data_root() {
 #ifdef _WIN32
   if (const char* appdata = std::getenv("APPDATA")) {
     return join_path(appdata, "nyx");
@@ -39,7 +32,37 @@ std::string data_dir() {
 #endif
 }
 
-std::string default_profile_path() { return join_path(data_dir(), "profile.json"); }
+}  // namespace
+
+std::string data_root() { return base_data_root(); }
+
+std::string data_dir() {
+  std::lock_guard lock(g_data_dir_mutex);
+  if (g_scoped && !g_scoped_data_dir.empty()) return g_scoped_data_dir;
+  return base_data_root();
+}
+
+void set_account_data_dir(const std::string& account_dir) {
+  std::lock_guard lock(g_data_dir_mutex);
+  g_scoped_data_dir = account_dir;
+  g_scoped = true;
+}
+
+void clear_account_data_dir() {
+  std::lock_guard lock(g_data_dir_mutex);
+  g_scoped_data_dir.clear();
+  g_scoped = false;
+}
+
+std::string accounts_root() { return join_path(base_data_root(), "accounts"); }
+
+std::string registry_path() { return join_path(base_data_root(), "registry.json"); }
+
+std::string legacy_profile_path() { return join_path(base_data_root(), "profile.json"); }
+
+std::string default_profile_path() {
+  return join_path(data_dir(), kEncryptedProfileFilename);
+}
 
 std::string default_contacts_path() { return join_path(data_dir(), "contacts.json"); }
 

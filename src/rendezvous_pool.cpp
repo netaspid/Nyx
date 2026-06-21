@@ -50,7 +50,7 @@ std::optional<EndpointHint> RendezvousPool::lookup_on(const RendezvousServer& se
     uint16_t port = 0;
     auto data = socket_.recv_from(host, port, 200);
     if (!data) continue;
-    if (host != server.host || port != server.port) continue;
+    if (!endpoint_matches(host, port, server.host, server.port)) continue;
 
     auto frame = Frame::decode(data->data(), data->size());
     if (!frame || frame->header.packet_type != PacketType::RendezvousResponse) continue;
@@ -85,7 +85,7 @@ bool RendezvousPool::probe_server(const RendezvousServer& server, int timeout_ms
     uint16_t port = 0;
     auto data = socket_.recv_from(host, port, 200);
     if (!data) continue;
-    if (host != server.host || port != server.port) continue;
+    if (!endpoint_matches(host, port, server.host, server.port)) continue;
     auto frame = Frame::decode(data->data(), data->size());
     if (!frame || frame->header.packet_type != PacketType::RendezvousResponse) continue;
     return true;

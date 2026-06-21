@@ -15,16 +15,18 @@
     <file>ui/panels/ChatListPanel.qml</file>
     <file>ui/panels/ChatView.qml</file>
     <file>ui/panels/ConnectionDrawer.qml</file>
+    <file>ui/AccountGate.qml</file>
     <file>ui/dialogs/SettingsDialog.qml</file>
+    <file>ui/dialogs/GroupsDialog.qml</file>
     <file>ui/dialogs/NetworkSettingsSection.qml</file>
     <file>ui/dialogs/OnboardingDialog.qml</file>
   </qresource>
   <qresource prefix="/icons">
-    <file>resources/icons/nyx-logo.svg</file>
-    <file>resources/icons/nyx-mark.svg</file>
-    <file>resources/icons/send.svg</file>
-    <file>resources/icons/attach.svg</file>
-    <file>resources/icons/search.svg</file>
-    <file>resources/icons/settings.svg</file>
+    <file alias="nyx-logo.svg">resources/icons/nyx-logo.svg</file>
+    <file alias="nyx-mark.svg">resources/icons/nyx-mark.svg</file>
+    <file alias="send.svg">resources/icons/send.svg</file>
+    <file alias="attach.svg">resources/icons/attach.svg</file>
+    <file alias="search.svg">resources/icons/search.svg</file>
+    <file alias="settings.svg">resources/icons/settings.svg</file>
   </qresource>
 </RCC>

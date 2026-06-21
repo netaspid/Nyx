@@ -1,4 +1,4 @@
-#include <QGuiApplication>
+#include <QApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -19,46 +19,35 @@ int main(int argc, char* argv[]) {
     qInstallMessageHandler(stderrQtHandler);
   }
 
-  QGuiApplication app(argc, argv);
+  QApplication app(argc, argv);
   nyx::log_init();
   QQuickStyle::setStyle(QStringLiteral("Basic"));
-  QGuiApplication::setApplicationName(QStringLiteral("Nyx"));
-  QGuiApplication::setApplicationDisplayName(QStringLiteral("Nyx"));
-  QGuiApplication::setOrganizationName(QStringLiteral("Nyx"));
+  QApplication::setApplicationName(QStringLiteral("Nyx"));
+  QApplication::setApplicationDisplayName(QStringLiteral("Nyx"));
+  QApplication::setOrganizationName(QStringLiteral("Nyx"));
 
   NodeController node;
 
-  QString profilePath;
-  QString rendezvous;
-  QString nickname;
   for (int i = 1; i + 1 < argc; ++i) {
     const QString arg = QString::fromLocal8Bit(argv[i]);
-    if (arg == QLatin1String("--profile")) {
-      profilePath = QString::fromLocal8Bit(argv[++i]);
-    } else if (arg == QLatin1String("--rendezvous")) {
-      rendezvous = QString::fromLocal8Bit(argv[++i]);
-    } else if (arg == QLatin1String("--nickname")) {
-      nickname = QString::fromLocal8Bit(argv[++i]);
+    if (arg == QLatin1String("--rendezvous")) {
+      node.setRendezvous(QString::fromLocal8Bit(argv[++i]));
     }
   }
-
-  if (!nickname.isEmpty()) node.setNickname(nickname);
-  if (!profilePath.isEmpty()) node.setProfilePath(profilePath);
-  if (!rendezvous.isEmpty()) node.setRendezvous(rendezvous);
 
   QQmlApplicationEngine engine;
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app, []() { QCoreApplication::exit(-1); },
       Qt::QueuedConnection);
 
-  engine.rootContext()->setContextProperty(QStringLiteral("node"), &node);
+  engine.rootContext()->setContextProperty(QStringLiteral("app"), &node);
   engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
 
   if (engine.rootObjects().isEmpty()) {
     std::fprintf(stderr, "nyx-app: не удалось загрузить QML (qrc:/ui/main.qml)\n");
-    std::fprintf(stderr, "  см. сообщения Qt выше; частая причина — нет platforms/qwindows.dll рядом с exe\n");
     return 1;
   }
 
   return app.exec();
 }
+

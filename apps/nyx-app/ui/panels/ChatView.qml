@@ -42,8 +42,14 @@ ColumnLayout {
                 }
                 Label {
                     visible: node.peerTitle.length > 0
-                    text: node.inChat ? node.peerConnectionLabel : node.peerStatusText
-                    color: node.inChat ? theme.online : theme.textSecondary
+                    text: node.inChat
+                          ? (node.activeChatKind === 1
+                             ? qsTr("в поле")
+                             : node.peerConnectionLabel)
+                          : node.peerStatusText
+                    color: (node.inChat && node.activeChatKind !== 1)
+                          ? theme.online
+                          : theme.textSecondary
                     font.pixelSize: 12
                 }
             }
@@ -52,14 +58,14 @@ ColumnLayout {
                 id: msgSearch
                 Layout.preferredWidth: 140
                 visible: node.peerTitle.length > 0 && node.messages.count > 0
-                theme: theme
+                theme: root.theme
                 placeholderText: qsTr("Поиск")
                 onTextChanged: node.searchMessages(text)
             }
 
             IconButton {
                 visible: node.inChat
-                theme: theme
+                theme: root.theme
                 glyph: "\uE711"
                 ToolTip.text: qsTr("Отключиться")
                 onClicked: node.disconnectSession()
@@ -82,7 +88,7 @@ ColumnLayout {
             anchors.centerIn: parent
             width: parent.width * 0.7
             visible: !node.peerTitle.length && !node.inChat
-            theme: theme
+            theme: root.theme
             emoji: "💬"
             title: qsTr("Выберите чат")
             hint: qsTr("Или откройте панель подключения")
@@ -99,11 +105,7 @@ ColumnLayout {
             delegate: ChatBubble {
                 width: msgList.width
                 listWidth: msgList.width
-                theme: theme
-                author: model.author
-                messageText: model.messageText
-                outgoing: model.outgoing
-                timestamp: model.timestamp
+                theme: root.theme
             }
             onCountChanged: Qt.callLater(function() { msgList.positionViewAtEnd() })
         }
@@ -134,21 +136,34 @@ ColumnLayout {
                 spacing: 10
 
                 IconButton {
-                    theme: theme
+                    theme: root.theme
                     glyph: "\uE16C"
                     enabled: node.inChat
                     ToolTip.text: qsTr("Файлы")
                     onClicked: node.connectionPanelOpen = true
                 }
 
+                NyxButton {
+                    Layout.fillWidth: true
+                    visible: node.activeChatKind === 1 && !node.inChat && node.peerTitle.length > 0
+                    theme: root.theme
+                    text: node.activeFieldIsOwner
+                          ? qsTr("Запустить hub поля")
+                          : qsTr("Подключиться к полю")
+                    onClicked: node.connectActiveField()
+                }
+
                 NyxTextField {
                     id: msgField
                     Layout.fillWidth: true
-                    theme: theme
+                    visible: !(node.activeChatKind === 1 && !node.inChat && node.peerTitle.length > 0)
+                    theme: root.theme
                     enabled: node.canSendMessage
                     placeholderText: node.canSendMessage
                         ? qsTr("Сообщение (Ctrl+Enter)")
-                        : qsTr("Подключитесь для отправки")
+                        : (node.activeChatKind === 1
+                           ? qsTr("Подключитесь к полю для отправки")
+                           : qsTr("Подключитесь для отправки"))
                     wrapMode: TextInput.Wrap
                     Keys.onPressed: function(event) {
                         if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
@@ -166,10 +181,16 @@ ColumnLayout {
                     color: (node.canSendMessage && msgField.text.trim().length > 0)
                           ? (sendMouse.pressed ? theme.accentPress : theme.accent)
                           : theme.btnSecondary
-                    NyxIcon {
+                    border.color: theme.border
+                    border.width: (node.canSendMessage && msgField.text.trim().length > 0) ? 0 : 1
+                    Text {
                         anchors.centerIn: parent
-                        name: "send"
-                        opacity: parent.parent.parent.enabled ? 1 : 0.4
+                        text: "\uE724"
+                        font.family: "Segoe MDL2 Assets"
+                        font.pixelSize: 18
+                        color: (node.canSendMessage && msgField.text.trim().length > 0)
+                               ? "#ffffff"
+                               : theme.textMuted
                     }
                     MouseArea {
                         id: sendMouse

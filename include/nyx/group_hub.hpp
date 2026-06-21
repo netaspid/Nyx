@@ -53,14 +53,19 @@ class GroupHub {
   void attach_files(FileIndex& index, const GroupId& share_scope);
 
   const GroupRecord& group() const { return group_; }
+  GroupRecord& group() { return group_; }
   const std::vector<HubMember>& members() const { return members_; }
   UdpSocket& socket() { return socket_; }
   MessageStore& store() { return store_; }
+
+  /** Отключает участника и обновляет roster. */
+  bool remove_member(const UserId& user_id);
 
  private:
   HubMember* find_member(const std::string& host, uint16_t port);
   bool try_accept(const std::string& host, uint16_t port, const ByteBuffer& first_packet);
   void complete_join(HubMember& member);
+  void send_history_to(HubMember& member);
   void relay_message(const ChatMessage& msg, const UserId* exclude_author);
   void broadcast_to_members(const ByteBuffer& payload, HubMember* skip);
   StoredMessage to_stored(const ChatMessage& msg, bool outgoing) const;

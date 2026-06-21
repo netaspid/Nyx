@@ -103,6 +103,24 @@ void GroupHub::relay_message(const ChatMessage& msg, const UserId* exclude_autho
   }
 }
 
+void GroupHub::send_history_to(HubMember& member) {
+  const auto history = store_.recent(100);
+  for (const auto& stored : history) {
+    ChatMessage msg;
+    msg.id = stored.id;
+    msg.timestamp_ms = stored.timestamp_ms;
+    msg.chat_id = chat_id_;
+    msg.author = stored.author;
+    msg.text = stored.text;
+    std::vector<uint8_t> author_bytes;
+    if (from_hex(stored.author_id_hex, author_bytes) &&
+        author_bytes.size() == msg.author_id.size()) {
+      std::memcpy(msg.author_id.data(), author_bytes.data(), author_bytes.size());
+    }
+    member.connection.send_payload(kChatStream, msg.encode());
+  }
+}
+
 void GroupHub::complete_join(HubMember& member) {
   member.joined = true;
 
@@ -121,12 +139,21 @@ void GroupHub::complete_join(HubMember& member) {
   }
   if (!found) group_.members.push_back(rec);
 
+  {
+    GroupStore store;
+    store.load();
+    store.upsert(group_);
+    store.save();
+  }
+
   GroupJoinAckMessage ack;
   ack.accepted = true;
   ack.group_id = group_.id;
   ack.group_name = group_.name;
   ack.members = group_.members;
   member.connection.send_payload(kChatStream, ack.encode());
+
+  send_history_to(member);
 
   GroupMemberJoinedMessage notice;
   notice.member = rec;
@@ -172,6 +199,7 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
       ack.group_name = group_.name;
       ack.members = group_.members;
       member.connection.send_payload(kChatStream, ack.encode());
+      send_history_to(member);
       return;
     }
     complete_join(member);
@@ -257,6 +285,34 @@ void GroupHub::poll() {
       }
     }
   }
+}
+
+bool GroupHub::remove_member(const UserId& user_id) {
+  if (user_id == owner_.public_key) return false;
+
+  group_.members.erase(
+      std::remove_if(group_.members.begin(), group_.members.end(),
+                     [&](const GroupMemberRecord& m) { return m.user_id == user_id; }),
+      group_.members.end());
+
+  for (auto it = members_.begin(); it != members_.end();) {
+    if (it->user_id == user_id) {
+      if (on_event_) {
+        on_event_(it->nickname + " исключён из поля");
+      }
+      it = members_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  GroupStore store;
+  store.load();
+  store.remove_member(group_.id, user_id);
+  if (auto updated = store.find(group_.id)) {
+    group_ = *updated;
+  }
+  return true;
 }
 
 }  // namespace nyx

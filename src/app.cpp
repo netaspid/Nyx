@@ -1,6 +1,7 @@
 #include "nyx/app.hpp"
 
 #include "nyx/connection.hpp"
+#include "nyx/account_store.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
@@ -97,6 +98,10 @@ bool exchange_hello(Connection& connection, const Profile& profile, HelloMessage
 }
 
 void remember_contact(const HelloMessage& peer) {
+  Profile self;
+  if (active_profile(self) && peer.public_key == self.user_id()) {
+    return;
+  }
   ContactBook book(default_contacts_path());
   book.load();
   Contact contact;
