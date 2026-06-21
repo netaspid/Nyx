@@ -1,0 +1,12 @@
+* text=auto
+
+*.cpp text
+*.hpp text
+*.h text
+*.c text
+*.qml text
+*.md text
+*.cmake text
+*.yml text
+*.sh text eol=lf
+*.ps1 text eol=crlf

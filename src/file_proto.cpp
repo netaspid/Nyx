@@ -1,0 +1,183 @@
+#include "nyx/file_proto.hpp"
+
+#include "nyx/util.hpp"
+
+#include <cstring>
+
+namespace nyx {
+
+namespace {
+
+constexpr std::size_t kMaxPathLen = 4096;
+constexpr std::size_t kMaxMimeLen = 128;
+constexpr std::size_t kMaxReasonLen = 256;
+constexpr std::size_t kMaxChunkPayload = kFileChunkSize;
+
+bool read_string(const ByteBuffer& data, std::size_t offset, std::size_t len,
+                 std::size_t max_len, std::string& out) {
+  if (len > max_len || offset + len > data.size()) return false;
+  out.assign(reinterpret_cast<const char*>(data.data() + offset), len);
+  return true;
+}
+
+}  // namespace
+
+ByteBuffer FileOffer::encode() const {
+  ByteBuffer out;
+  out.reserve(1 + 32 + 8 + 2 + name.size() + 2 + mime.size());
+  out.push_back(static_cast<uint8_t>(FileKind::Offer));
+  out.insert(out.end(), hash.begin(), hash.end());
+  write_u64_le(out, size);
+  write_u16_le(out, static_cast<uint16_t>(name.size()));
+  out.insert(out.end(), name.begin(), name.end());
+  write_u16_le(out, static_cast<uint16_t>(mime.size()));
+  out.insert(out.end(), mime.begin(), mime.end());
+  return out;
+}
+
+std::optional<FileOffer> FileOffer::decode(const ByteBuffer& data) {
+  if (data.size() < 1 + 32 + 8 + 2 + 2 || data[0] != static_cast<uint8_t>(FileKind::Offer)) {
+    return std::nullopt;
+  }
+  FileOffer offer;
+  std::memcpy(offer.hash.data(), data.data() + 1, 32);
+  offer.size = read_u64_le(data.data() + 33);
+  std::size_t off = 41;
+  const uint16_t name_len = read_u16_le(data.data() + off);
+  off += 2;
+  if (!read_string(data, off, name_len, kMaxPathLen, offer.name)) return std::nullopt;
+  off += name_len;
+  if (off + 2 > data.size()) return std::nullopt;
+  const uint16_t mime_len = read_u16_le(data.data() + off);
+  off += 2;
+  if (!read_string(data, off, mime_len, kMaxMimeLen, offer.mime)) return std::nullopt;
+  return offer;
+}
+
+ByteBuffer FileRequest::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::Request));
+  out.insert(out.end(), hash.begin(), hash.end());
+  return out;
+}
+
+std::optional<FileRequest> FileRequest::decode(const ByteBuffer& data) {
+  if (data.size() < 33 || data[0] != static_cast<uint8_t>(FileKind::Request)) {
+    return std::nullopt;
+  }
+  FileRequest req;
+  std::memcpy(req.hash.data(), data.data() + 1, 32);
+  return req;
+}
+
+ByteBuffer FileChunk::encode() const {
+  ByteBuffer out;
+  out.reserve(1 + 32 + 8 + 4 + data.size());
+  out.push_back(static_cast<uint8_t>(FileKind::Chunk));
+  out.insert(out.end(), hash.begin(), hash.end());
+  write_u64_le(out, offset);
+  write_u32_le(out, static_cast<uint32_t>(data.size()));
+  out.insert(out.end(), data.begin(), data.end());
+  return out;
+}
+
+std::optional<FileChunk> FileChunk::decode(const ByteBuffer& data) {
+  if (data.size() < 1 + 32 + 8 + 4 || data[0] != static_cast<uint8_t>(FileKind::Chunk)) {
+    return std::nullopt;
+  }
+  FileChunk chunk;
+  std::memcpy(chunk.hash.data(), data.data() + 1, 32);
+  chunk.offset = read_u64_le(data.data() + 33);
+  const uint32_t len = read_u32_le(data.data() + 41);
+  if (len > kMaxChunkPayload || data.size() < 45 + len) return std::nullopt;
+  chunk.data.assign(data.begin() + 45, data.begin() + 45 + len);
+  return chunk;
+}
+
+ByteBuffer FileComplete::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::Complete));
+  out.insert(out.end(), hash.begin(), hash.end());
+  write_u64_le(out, size);
+  return out;
+}
+
+std::optional<FileComplete> FileComplete::decode(const ByteBuffer& data) {
+  if (data.size() < 41 || data[0] != static_cast<uint8_t>(FileKind::Complete)) {
+    return std::nullopt;
+  }
+  FileComplete msg;
+  std::memcpy(msg.hash.data(), data.data() + 1, 32);
+  msg.size = read_u64_le(data.data() + 33);
+  return msg;
+}
+
+ByteBuffer FileDeny::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::Deny));
+  out.insert(out.end(), hash.begin(), hash.end());
+  write_u16_le(out, static_cast<uint16_t>(reason.size()));
+  out.insert(out.end(), reason.begin(), reason.end());
+  return out;
+}
+
+std::optional<FileDeny> FileDeny::decode(const ByteBuffer& data) {
+  if (data.size() < 35 || data[0] != static_cast<uint8_t>(FileKind::Deny)) return std::nullopt;
+  FileDeny deny;
+  std::memcpy(deny.hash.data(), data.data() + 1, 32);
+  const uint16_t len = read_u16_le(data.data() + 33);
+  if (!read_string(data, 35, len, kMaxReasonLen, deny.reason)) return std::nullopt;
+  return deny;
+}
+
+ByteBuffer encode_list_request() {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::ListReq));
+  return out;
+}
+
+ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::ListResp));
+  write_u16_le(out, static_cast<uint16_t>(entries.size()));
+  for (const auto& e : entries) {
+    out.insert(out.end(), e.hash.begin(), e.hash.end());
+    write_u64_le(out, e.size);
+    write_u16_le(out, static_cast<uint16_t>(e.relative_path.size()));
+    out.insert(out.end(), e.relative_path.begin(), e.relative_path.end());
+    write_u16_le(out, static_cast<uint16_t>(e.mime.size()));
+    out.insert(out.end(), e.mime.begin(), e.mime.end());
+  }
+  return out;
+}
+
+std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& data) {
+  if (data.size() < 3 || data[0] != static_cast<uint8_t>(FileKind::ListResp)) {
+    return std::nullopt;
+  }
+  const uint16_t count = read_u16_le(data.data() + 1);
+  std::vector<FileEntry> entries;
+  std::size_t off = 3;
+  for (uint16_t i = 0; i < count; ++i) {
+    if (off + 32 + 8 + 2 + 2 > data.size()) return std::nullopt;
+    FileEntry entry;
+    std::memcpy(entry.hash.data(), data.data() + off, 32);
+    off += 32;
+    entry.size = read_u64_le(data.data() + off);
+    off += 8;
+    const uint16_t path_len = read_u16_le(data.data() + off);
+    off += 2;
+    if (!read_string(data, off, path_len, kMaxPathLen, entry.relative_path)) {
+      return std::nullopt;
+    }
+    off += path_len;
+    const uint16_t mime_len = read_u16_le(data.data() + off);
+    off += 2;
+    if (!read_string(data, off, mime_len, kMaxMimeLen, entry.mime)) return std::nullopt;
+    off += mime_len;
+    entries.push_back(std::move(entry));
+  }
+  return entries;
+}
+
+}  // namespace nyx

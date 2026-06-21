@@ -1,0 +1,83 @@
+# --- сборка CMake ---
+/build/
+/out/
+/dist/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+compile_commands.json
+install_manifest.txt
+Testing/
+
+# FetchContent / автоген Qt
+_deps/
+*_autogen/
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# объектники и бинарники
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.d
+
+# Qt runtime, выложенный windeployqt рядом с exe
+/platforms/
+/qml/
+*.qmlc
+*.jsc
+
+# --- локальные данные и секреты ---
+# профили содержат приватные ключи
+/*.json
+*.pem
+*.key
+.env
+.env.*
+
+# логи и отладочный вывод
+*.log
+aqtinstall.log
+listen_out.txt
+listen_err.txt
+connect_log.txt
+connect_err.txt
+scratch_test.cpp
+
+# --- IDE и ОС ---
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Cursor: локальное состояние агента, правила проекта оставляем
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# временные и бэкапы
+*~
+*.swp
+*.swo
+*.tmp
+*.bak

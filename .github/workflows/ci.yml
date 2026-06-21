@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DNYX_BUILD_GUI=OFF
+      - name: Build
+        run: cmake --build build -j
+      - name: Test libnyx
+        run: ./build/nyx-tests
+      - name: Test appcore
+        run: ./build/nyx-appcore-tests

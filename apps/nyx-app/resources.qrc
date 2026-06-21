@@ -1,0 +1,30 @@
+<RCC>
+  <qresource prefix="/">
+    <file>ui/main.qml</file>
+    <file>ui/Theme.qml</file>
+    <file>ui/components/AvatarBadge.qml</file>
+    <file>ui/components/ChatBubble.qml</file>
+    <file>ui/components/ChatListItem.qml</file>
+    <file>ui/components/NyxLogo.qml</file>
+    <file>ui/components/NyxIcon.qml</file>
+    <file>ui/components/EmptyState.qml</file>
+    <file>ui/components/IconButton.qml</file>
+    <file>ui/controls/NyxButton.qml</file>
+    <file>ui/controls/NyxButtonSecondary.qml</file>
+    <file>ui/controls/NyxTextField.qml</file>
+    <file>ui/panels/ChatListPanel.qml</file>
+    <file>ui/panels/ChatView.qml</file>
+    <file>ui/panels/ConnectionDrawer.qml</file>
+    <file>ui/dialogs/SettingsDialog.qml</file>
+    <file>ui/dialogs/NetworkSettingsSection.qml</file>
+    <file>ui/dialogs/OnboardingDialog.qml</file>
+  </qresource>
+  <qresource prefix="/icons">
+    <file>resources/icons/nyx-logo.svg</file>
+    <file>resources/icons/nyx-mark.svg</file>
+    <file>resources/icons/send.svg</file>
+    <file>resources/icons/attach.svg</file>
+    <file>resources/icons/search.svg</file>
+    <file>resources/icons/settings.svg</file>
+  </qresource>
+</RCC>
