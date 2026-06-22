@@ -72,7 +72,7 @@ Drawer {
                 TabButton {
                     id: listenTab
                     text: qsTr("Слушать")
-                    width: (connTabs.width - connTabs.spacing * 3) / 4
+                    width: (connTabs.width - connTabs.spacing * 2) / 3
                     background: Rectangle {
                         radius: theme.radiusBtn - 2
                         color: listenTab.checked ? theme.accent
@@ -90,7 +90,7 @@ Drawer {
                 TabButton {
                     id: peerTab
                     text: qsTr("Peer")
-                    width: (connTabs.width - connTabs.spacing * 3) / 4
+                    width: (connTabs.width - connTabs.spacing * 2) / 3
                     background: Rectangle {
                         radius: theme.radiusBtn - 2
                         color: peerTab.checked ? theme.accent
@@ -108,7 +108,7 @@ Drawer {
                 TabButton {
                     id: fieldTab
                     text: qsTr("Поле")
-                    width: (connTabs.width - connTabs.spacing * 3) / 4
+                    width: (connTabs.width - connTabs.spacing * 2) / 3
                     background: Rectangle {
                         radius: theme.radiusBtn - 2
                         color: fieldTab.checked ? theme.accent
@@ -123,24 +123,6 @@ Drawer {
                         font.weight: fieldTab.checked ? Font.DemiBold : Font.Normal
                     }
                 }
-                TabButton {
-                    id: filesTab
-                    text: qsTr("Файлы")
-                    width: (connTabs.width - connTabs.spacing * 3) / 4
-                    background: Rectangle {
-                        radius: theme.radiusBtn - 2
-                        color: filesTab.checked ? theme.accent
-                             : filesTab.hovered ? theme.btnSecondaryHover : "transparent"
-                    }
-                    contentItem: Label {
-                        text: filesTab.text
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        color: filesTab.checked ? theme.textPrimary : theme.textSecondary
-                        font.pixelSize: 11
-                        font.weight: filesTab.checked ? Font.DemiBold : Font.Normal
-                    }
-                }
             }
         }
 
@@ -151,11 +133,18 @@ Drawer {
 
             ColumnLayout {
                 spacing: 8
+                Label {
+                    Layout.fillWidth: true
+                    visible: node.inChat
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Активна сессия (поле или чат). «Слушать» остановит её и откроет личный P2P.")
+                    color: theme.textMuted
+                    font.pixelSize: 11
+                }
                 NyxButton {
                     Layout.fillWidth: true
                     theme: root.theme
-                    text: qsTr("Слушать")
-                    enabled: !node.inChat
+                    text: node.inChat ? qsTr("Слушать (новая сессия)") : qsTr("Слушать")
                     onClicked: node.startListen()
                 }
                 NyxTextField {
@@ -233,44 +222,6 @@ Drawer {
                     }
                 }
             }
-
-            ColumnLayout {
-                spacing: 8
-                NyxTextField {
-                    id: folderPathField
-                    Layout.fillWidth: true
-                    theme: root.theme
-                    placeholderText: qsTr("Путь к папке")
-                }
-                NyxButtonSecondary {
-                    Layout.fillWidth: true
-                    theme: root.theme
-                    text: qsTr("Индексировать")
-                    onClicked: node.indexFolder(folderPathField.text)
-                }
-                NyxButtonSecondary {
-                    Layout.fillWidth: true
-                    theme: root.theme
-                    text: qsTr("Список файлов peer")
-                    enabled: node.inChat
-                    onClicked: node.requestRemoteFiles()
-                }
-                NyxTextField {
-                    id: fileHashField
-                    Layout.fillWidth: true
-                    theme: root.theme
-                    placeholderText: qsTr("SHA-256 hash")
-                    enabled: node.inChat
-                    font.family: "Consolas"
-                }
-                NyxButton {
-                    Layout.fillWidth: true
-                    theme: root.theme
-                    text: qsTr("Скачать")
-                    enabled: node.inChat && fileHashField.text.trim().length > 0
-                    onClicked: node.downloadFile(fileHashField.text)
-                }
-            }
         }
 
         Label {
@@ -300,7 +251,6 @@ Drawer {
                     NyxButtonSecondary {
                         theme: root.theme
                         text: qsTr("Connect")
-                        enabled: !root.node.inChat
                         onClicked: { root.node.connectPeer(host, port) }
                     }
                 }

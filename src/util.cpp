@@ -11,6 +11,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -188,6 +189,37 @@ bool endpoint_matches(const std::string& from_host, uint16_t from_port,
   }
   freeaddrinfo(res);
   return match;
+}
+
+std::filesystem::path path_from_utf8(const std::string& utf8) {
+  if (utf8.empty()) return {};
+#ifdef _WIN32
+  const int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+  if (wlen <= 0) return std::filesystem::path(utf8);
+  std::wstring wide(static_cast<std::size_t>(wlen - 1), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide.data(), wlen);
+  return std::filesystem::path(wide);
+#else
+  return std::filesystem::path(utf8);
+#endif
+}
+
+std::string path_to_utf8(const std::filesystem::path& path) {
+#ifdef _WIN32
+  const std::wstring wide = path.native();
+  if (wide.empty()) return {};
+  const int len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
+  if (len <= 0) return path.string();
+  std::string utf8(static_cast<std::size_t>(len - 1), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, utf8.data(), len, nullptr, nullptr);
+  return utf8;
+#else
+  return path.string();
+#endif
+}
+
+std::string normalize_utf8_path(const std::string& utf8) {
+  return path_to_utf8(path_from_utf8(utf8).lexically_normal());
 }
 
 }  // namespace nyx

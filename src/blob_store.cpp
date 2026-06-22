@@ -1,5 +1,7 @@
 #include "nyx/blob_store.hpp"
 
+#include "nyx/util.hpp"
+
 #include <filesystem>
 
 namespace nyx {
@@ -7,10 +9,10 @@ namespace nyx {
 BlobReader::BlobReader(std::string path) : path_(std::move(path)) {}
 
 bool BlobReader::open() {
-  file_.open(path_, std::ios::binary);
+  file_.open(path_from_utf8(path_), std::ios::binary);
   if (!file_) return false;
   std::error_code ec;
-  size_ = static_cast<uint64_t>(std::filesystem::file_size(path_, ec));
+  size_ = static_cast<uint64_t>(std::filesystem::file_size(path_from_utf8(path_), ec));
   return !ec;
 }
 
@@ -27,9 +29,10 @@ std::size_t BlobReader::read_at(uint64_t offset, ByteBuffer& out, std::size_t ma
 BlobWriter::BlobWriter(std::string path) : path_(std::move(path)) {}
 
 bool BlobWriter::open() {
-  file_.open(path_, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
+  const auto fs_path = path_from_utf8(path_);
+  file_.open(fs_path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
   if (file_) return true;
-  file_.open(path_, std::ios::binary | std::ios::out | std::ios::trunc);
+  file_.open(fs_path, std::ios::binary | std::ios::out | std::ios::trunc);
   return static_cast<bool>(file_);
 }
 

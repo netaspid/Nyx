@@ -1,13 +1,17 @@
 #include "nyx/group_hub.hpp"
 
 #include "nyx/app.hpp"
+#include "nyx/file_index.hpp"
+#include "nyx/group.hpp"
 #include "nyx/group_proto.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/proto.hpp"
+#include "nyx/file_proto.hpp"
 #include "nyx/util.hpp"
 
 #include <algorithm>
 #include <cstring>
+#include <set>
 
 namespace nyx {
 
@@ -18,10 +22,179 @@ GroupHub::GroupHub(UdpSocket socket, Profile owner, GroupRecord group)
       chat_id_(group_chat_id(group_.id)),
       store_(MessageStore::path_for_group(group_.id)) {}
 
-void GroupHub::attach_files(FileIndex& index, const GroupId& share_scope) {
+void GroupHub::attach_files(FileIndex& index, const GroupId& share_scope,
+                            FileAccessStore* access) {
   file_index_ = &index;
+  file_access_ = access;
   file_scope_ = share_scope;
   file_services_.clear();
+  member_catalog_.clear();
+  member_roots_.clear();
+  hash_providers_.clear();
+  active_relay_.reset();
+}
+
+void GroupHub::rebuild_hash_providers() {
+  hash_providers_.clear();
+  for (const auto& [uid, entries] : member_catalog_) {
+    (void)uid;
+    for (const auto& e : entries) {
+      hash_providers_[hash_hex(e.hash)] = uid;
+    }
+  }
+}
+
+std::vector<FileEntry> GroupHub::merged_field_entries() const {
+  std::vector<FileEntry> out;
+  std::set<std::string> seen_paths;
+  if (file_index_) {
+    out = file_index_->listing_for_session(file_scope_);
+    for (const auto& e : out) {
+      if (e.is_directory()) seen_paths.insert(e.root_path);
+    }
+  }
+  std::set<std::string> seen_hashes;
+  for (const auto& e : out) seen_hashes.insert(hash_hex(e.hash));
+
+  for (const auto& [uid, entries] : member_catalog_) {
+    (void)uid;
+    for (const auto& e : entries) {
+      if (e.is_directory()) continue;
+      const std::string hx = hash_hex(e.hash);
+      if (seen_hashes.count(hx)) continue;
+      seen_hashes.insert(hx);
+      out.push_back(e);
+    }
+  }
+
+  for (const auto& [uid, roots] : member_roots_) {
+    (void)uid;
+    for (const auto& path : roots) {
+      if (seen_paths.count(path)) continue;
+      seen_paths.insert(path);
+      ShareRoot sr;
+      sr.path = path;
+      sr.group_id = file_scope_;
+      int count = 0;
+      const auto cat = member_catalog_.find(uid);
+      if (cat != member_catalog_.end()) {
+        for (const auto& e : cat->second) {
+          if (e.root_path == path) ++count;
+        }
+      }
+      out.insert(out.begin(), FileIndex::make_directory_marker(sr, count, "участник: "));
+    }
+  }
+  return out;
+}
+
+std::vector<FileEntry> GroupHub::merged_field_entries_for(const UserId& requester) const {
+  const auto out = merged_field_entries();
+  if (!file_access_) return out;
+  if (requester == owner_.public_key) return out;
+
+  std::vector<FileEntry> filtered;
+  filtered.reserve(out.size());
+  for (const auto& e : out) {
+    const uint32_t perms = file_access_->permissions_for(file_scope_, requester, e.root_path);
+    if (!FileAccessStore::has_permission(perms, FilePermission::List)) continue;
+    filtered.push_back(e);
+  }
+  return filtered;
+}
+
+HubMember* GroupHub::find_hash_provider(const FileHash& hash) {
+  const auto it = hash_providers_.find(hash_hex(hash));
+  if (it == hash_providers_.end()) return nullptr;
+  for (auto& m : members_) {
+    if (m.joined && m.user_id == it->second) return &m;
+  }
+  return nullptr;
+}
+
+void GroupHub::relay_file_request(HubMember& provider, HubMember& requester,
+                                  const FileHash& hash) {
+  active_relay_ = FileRelay{&requester, &provider, hash};
+  FileRequest req;
+  req.hash = hash;
+  provider.connection.send_payload(kBulkStream, req.encode());
+}
+
+void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) {
+  if (payload.empty()) return;
+  const auto kind = static_cast<FileKind>(payload[0]);
+
+  if (kind == FileKind::ListReq) {
+    member.connection.send_payload(kBulkStream,
+                                  encode_list_response(merged_field_entries_for(member.user_id)));
+    return;
+  }
+
+  if (kind == FileKind::IndexPush) {
+    if (auto push = decode_index_push(payload)) {
+      member_catalog_[member.user_id] = push->entries;
+      member_roots_[member.user_id] = push->root_paths;
+      rebuild_hash_providers();
+      if (on_event_) {
+        on_event_(member.nickname + " опубликовал " + std::to_string(push->entries.size()) +
+                  " файлов, " + std::to_string(push->root_paths.size()) + " папок");
+      }
+    }
+    return;
+  }
+
+  if (active_relay_ && active_relay_->provider == &member) {
+    if (kind == FileKind::Offer || kind == FileKind::Chunk || kind == FileKind::Complete ||
+        kind == FileKind::Deny) {
+      if (active_relay_->requester) {
+        active_relay_->requester->connection.send_payload(kBulkStream, payload);
+      }
+      if (kind == FileKind::Complete || kind == FileKind::Deny) active_relay_.reset();
+      return;
+    }
+  }
+
+  if (kind == FileKind::Request) {
+    if (auto req = FileRequest::decode(payload)) {
+      std::optional<FileEntry> entry;
+      if (file_index_) entry = file_index_->find_by_hash(req->hash);
+      if (!entry) {
+        for (const auto& [uid, catalog] : member_catalog_) {
+          (void)uid;
+          for (const auto& e : catalog) {
+            if (e.hash == req->hash) {
+              entry = e;
+              break;
+            }
+          }
+          if (entry) break;
+        }
+      }
+      if (entry && file_access_ && member.user_id != owner_.public_key) {
+        const uint32_t perms =
+            file_access_->permissions_for(file_scope_, member.user_id, entry->root_path);
+        if (!FileAccessStore::has_permission(perms, FilePermission::Download)) {
+          FileDeny deny;
+          deny.hash = req->hash;
+          deny.reason = "нет права скачивания";
+          member.connection.send_payload(kBulkStream, deny.encode());
+          return;
+        }
+      }
+      if (file_index_ && file_index_->find_for_session(req->hash, file_scope_)) {
+        file_service_for(member).handle_bulk(payload);
+        return;
+      }
+      if (HubMember* provider = find_hash_provider(req->hash)) {
+        if (provider != &member) {
+          relay_file_request(*provider, member, req->hash);
+          return;
+        }
+      }
+    }
+  }
+
+  file_service_for(member).handle_bulk(payload);
 }
 
 FileTransferService& GroupHub::file_service_for(HubMember& member) {
@@ -280,7 +453,7 @@ void GroupHub::poll() {
         if (stream_id == kChatStream) {
           handle_chat_payload(*member, payload);
         } else if (stream_id == kBulkStream && file_index_) {
-          file_service_for(*member).handle_bulk(payload);
+          handle_member_bulk(*member, payload);
         }
       }
     }
@@ -301,6 +474,9 @@ bool GroupHub::remove_member(const UserId& user_id) {
         on_event_(it->nickname + " исключён из поля");
       }
       it = members_.erase(it);
+      member_catalog_.erase(user_id);
+      member_roots_.erase(user_id);
+      rebuild_hash_providers();
     } else {
       ++it;
     }

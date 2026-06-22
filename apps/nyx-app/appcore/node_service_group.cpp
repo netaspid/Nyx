@@ -82,16 +82,28 @@ void NodeService::run_group_hub(std::string group_id_hex) {
 
   share_scope_group_ = group_id;
   group_hub_ = std::make_unique<nyx::GroupHub>(rv.socket(), profile, *group);
-  group_hub_->attach_files(file_index_, group_id);
+  group_hub_->attach_files(file_index_, group_id, &file_access_);
   group_hub_->set_on_message(
       [this](const nyx::ChatMessage& msg, bool outgoing) { emit_message(msg, outgoing); });
   group_hub_->set_on_event([this](const std::string& text) { emit_status(text); });
 
+  const nyx::InviteToken hub_invite = group->invite_token;
+  const auto rv_servers = network_config_.rendezvous_servers;
+  const auto refresh_interval =
+      std::chrono::seconds(network_config_.register_refresh_sec);
+  auto last_register = std::chrono::steady_clock::now();
+
   while (running_.load()) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_register >= refresh_interval) {
+      nyx::register_token_on(group_hub_->socket(), rv_servers, hub_invite);
+      last_register = now;
+    }
     group_hub_->poll();
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
+  nyx::unregister_token_on(group_hub_->socket(), rv_servers, hub_invite);
   group_hub_.reset();
   busy_.store(false);
   set_mode(NodeMode::Idle);
@@ -133,23 +145,45 @@ void NodeService::run_group_join(std::string invite_hex) {
 
   nyx::RendezvousPool rv(std::move(socket));
   rv.set_servers(network_config_.rendezvous_servers);
-  auto hint = rv.lookup(token);
-  if (!hint) {
+
+  auto connect_with_lookup = [&](nyx::RendezvousPool& pool) -> bool {
+    auto hint = pool.lookup(token);
+    if (!hint) return false;
+    emit_status("подключение к hub " + hint->host_string() + ':' +
+                std::to_string(hint->port) + "...");
+    auto result = connect_via_rendezvous_hint(pool.socket(), *hint);
+    if (!result.connection) return false;
+    connection_ = std::make_unique<nyx::Connection>(std::move(*result.connection));
+    return true;
+  };
+
+  if (!connect_with_lookup(rv)) {
     emit_status("lookup failed — hub запущен?");
     busy_.store(false);
     set_mode(NodeMode::Idle);
     return;
   }
 
-  auto result = connect_via_rendezvous_hint(rv.socket(), *hint);
-  if (!result.connection) {
-    emit_status("handshake failed");
-    busy_.store(false);
-    set_mode(NodeMode::Idle);
-    return;
+  if (!connection_) {
+    emit_status("handshake failed — hub перезапустите на стороне создателя");
+    nyx::UdpSocket retry_socket;
+    if (retry_socket.bind("0.0.0.0", 0)) {
+      nyx::RendezvousPool retry_pool(std::move(retry_socket));
+      retry_pool.set_servers(network_config_.rendezvous_servers);
+      std::this_thread::sleep_for(std::chrono::milliseconds(400));
+      if (!connect_with_lookup(retry_pool)) {
+        emit_status("handshake failed");
+      }
+    } else {
+      emit_status("handshake failed");
+    }
+    if (!connection_) {
+      busy_.store(false);
+      set_mode(NodeMode::Idle);
+      return;
+    }
   }
 
-  connection_ = std::make_unique<nyx::Connection>(std::move(*result.connection));
   const auto profile = load_profile();
 
   nyx::HelloMessage peer_hello;
@@ -209,17 +243,8 @@ void NodeService::run_group_join(std::string invite_hex) {
   files_ = std::make_unique<nyx::FileTransferService>(
       *connection_, file_index_, nyx::default_downloads_dir());
   files_->set_share_scope(share_scope_group_);
-  files_->set_on_event([this](const std::string& text) { emit_status(text); });
-  files_->set_on_progress([this](const nyx::FileHash& hash, uint64_t done, uint64_t total) {
-    FileProgressCallback cb;
-    {
-      std::lock_guard lock(cb_mutex_);
-      cb = on_file_progress_;
-    }
-    if (!cb || total == 0) return;
-    const int pct = static_cast<int>((done * 100) / total);
-    cb(nyx::hash_hex(hash).substr(0, 8) + "…", pct);
-  });
+  wire_file_transfer(*files_);
+  publish_field_index();
 
   while (running_.load() && group_member_->joined()) {
     group_member_->tick();

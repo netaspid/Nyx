@@ -8,6 +8,8 @@
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include "nyx/util.hpp"
 
 namespace nyx_app {
@@ -108,6 +110,92 @@ void NodeService::set_on_file_progress(FileProgressCallback cb) {
   on_file_progress_ = std::move(cb);
 }
 
+void NodeService::reload_account_data() {
+  file_index_.reload();
+  file_access_.load();
+}
+
+void NodeService::clear_account_data() {
+  file_index_.clear();
+  file_access_.load();
+}
+
+namespace {
+
+std::string files_ui_state_path() { return nyx::data_dir() + "/files_ui.json"; }
+
+std::optional<std::string> json_get_string_value(const std::string& json, const char* key) {
+  const std::string needle = std::string("\"") + key + "\":\"";
+  const auto pos = json.find(needle);
+  if (pos == std::string::npos) return std::nullopt;
+  std::size_t i = pos + needle.size();
+  std::string out;
+  while (i < json.size()) {
+    const char c = json[i++];
+    if (c == '"') break;
+    if (c == '\\' && i < json.size()) out.push_back(json[i++]);
+    else
+      out.push_back(c);
+  }
+  return out;
+}
+
+}  // namespace
+
+std::string NodeService::load_files_scope_group_id() const {
+  std::ifstream in(files_ui_state_path());
+  if (!in) return {};
+  std::ostringstream ss;
+  ss << in.rdbuf();
+  if (auto gid = json_get_string_value(ss.str(), "scope_group_id")) return *gid;
+  return {};
+}
+
+std::string NodeService::load_files_selected_root() const {
+  std::ifstream in(files_ui_state_path());
+  if (!in) return {};
+  std::ostringstream ss;
+  ss << in.rdbuf();
+  if (auto root = json_get_string_value(ss.str(), "selected_root")) return *root;
+  return {};
+}
+
+void NodeService::save_files_scope_group_id(const std::string& scope_group_id_hex) const {
+  nyx::ensure_data_dir();
+  const std::string selected = load_files_selected_root();
+  std::ofstream out(files_ui_state_path(), std::ios::trunc);
+  if (!out) return;
+  out << "{\"scope_group_id\":\"" << scope_group_id_hex << "\",\"selected_root\":\""
+      << selected << "\"}\n";
+}
+
+void NodeService::save_files_selected_root(const std::string& root_path) const {
+  nyx::ensure_data_dir();
+  const std::string scope = load_files_scope_group_id();
+  std::ofstream out(files_ui_state_path(), std::ios::trunc);
+  if (!out) return;
+  std::string escaped;
+  for (char c : root_path) {
+    if (c == '\\')
+      escaped += "\\\\";
+    else if (c == '"')
+      escaped += "\\\"";
+    else
+      escaped += c;
+  }
+  out << "{\"scope_group_id\":\"" << scope << "\",\"selected_root\":\"" << escaped << "\"}\n";
+}
+
+void NodeService::set_on_file_index_progress(FileIndexProgressCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_file_index_progress_ = std::move(cb);
+}
+
+void NodeService::set_on_remote_files(RemoteFilesCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_remote_files_ = std::move(cb);
+}
+
 void NodeService::set_on_mode(std::function<void(NodeMode)> cb) {
   std::lock_guard lock(cb_mutex_);
   on_mode_ = std::move(cb);
@@ -206,6 +294,7 @@ void NodeService::stop() {
   group_hub_.reset();
   group_member_.reset();
   connection_.reset();
+  share_scope_group_ = {};
   set_mode(NodeMode::Idle);
   busy_.store(false);
 }

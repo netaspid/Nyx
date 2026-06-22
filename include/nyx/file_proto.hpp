@@ -23,6 +23,8 @@ enum class FileKind : uint8_t {
   Chunk = 5,
   Complete = 6,
   Deny = 7,
+  /** Участник публикует свой индекс поля на hub. */
+  IndexPush = 8,
 };
 
 constexpr std::size_t kFileChunkSize = 8192;
@@ -72,7 +74,18 @@ struct FileDeny {
 ByteBuffer encode_list_request();
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries);
 
-/** Распознаёт kind и декодирует ListResp. */
+/** Участник отправляет hub свой список файлов поля. */
+ByteBuffer encode_index_push(const std::vector<FileEntry>& entries,
+                             const std::vector<std::string>& root_paths = {});
+
 std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& data);
+
+/** Полезная нагрузка IndexPush: файлы и корни папок участника. */
+struct IndexPushPayload {
+  std::vector<FileEntry> entries;
+  std::vector<std::string> root_paths;
+};
+
+std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data);
 
 }  // namespace nyx

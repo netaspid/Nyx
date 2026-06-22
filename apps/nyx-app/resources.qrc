@@ -14,10 +14,15 @@
     <file>ui/controls/NyxTextField.qml</file>
     <file>ui/panels/ChatListPanel.qml</file>
     <file>ui/panels/ChatView.qml</file>
-    <file>ui/panels/ConnectionDrawer.qml</file>
+    <file>ui/panels/MainContentPanel.qml</file>
+    <file>ui/panels/FilesPanel.qml</file>
+    <file>ui/components/FileListRow.qml</file>
+    <file>ui/controls/NyxComboBox.qml</file>
+    <file>ui/controls/NyxSegmentTabButton.qml</file>
     <file>ui/AccountGate.qml</file>
     <file>ui/dialogs/SettingsDialog.qml</file>
     <file>ui/dialogs/GroupsDialog.qml</file>
+    <file>ui/panels/ConnectionDrawer.qml</file>
     <file>ui/dialogs/NetworkSettingsSection.qml</file>
     <file>ui/dialogs/OnboardingDialog.qml</file>
   </qresource>

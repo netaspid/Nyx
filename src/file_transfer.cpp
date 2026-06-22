@@ -171,7 +171,7 @@ void FileTransferService::handle_request(const FileRequest& req) {
 }
 
 void FileTransferService::respond_list() {
-  send_bulk(encode_list_response(index_.entries_for_session(share_scope_)));
+  send_bulk(encode_list_response(index_.listing_for_session(share_scope_)));
 }
 
 void FileTransferService::handle_bulk(const ByteBuffer& payload) {
@@ -187,12 +187,9 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
   if (kind == FileKind::ListResp) {
     if (auto list = decode_list_response(payload)) {
       remote_list_ = std::move(*list);
+      if (on_remote_list_) on_remote_list_(remote_list_);
       if (on_event_) {
-        on_event_("список файлов peer: " + std::to_string(remote_list_.size()) + " шт.");
-        for (const auto& e : remote_list_) {
-          on_event_("  " + hash_hex(e.hash).substr(0, 8) + "… " + e.relative_path + " (" +
-                     std::to_string(e.size) + " b)");
-        }
+        on_event_("получен список файлов: " + std::to_string(remote_list_.size()) + " шт.");
       }
     }
     return;
@@ -256,15 +253,16 @@ bool FileTransferService::send_file(const std::string& path_or_hash_hex) {
   }
 
   std::error_code ec;
-  if (!std::filesystem::exists(path_or_hash_hex, ec)) {
+  const auto fs_path = path_from_utf8(path_or_hash_hex);
+  if (!std::filesystem::exists(fs_path, ec)) {
     if (on_event_) on_event_("файл не найден: " + path_or_hash_hex);
     return false;
   }
 
   FileEntry entry;
-  entry.root_path = std::filesystem::path(path_or_hash_hex).parent_path().string();
-  entry.relative_path = std::filesystem::path(path_or_hash_hex).filename().string();
-  entry.size = static_cast<uint64_t>(std::filesystem::file_size(path_or_hash_hex, ec));
+  entry.root_path = path_to_utf8(fs_path.parent_path());
+  entry.relative_path = path_to_utf8(fs_path.filename());
+  entry.size = static_cast<uint64_t>(std::filesystem::file_size(fs_path, ec));
   entry.mime = FileIndex::guess_mime(path_or_hash_hex);
   if (!hash_file(path_or_hash_hex, entry.hash)) {
     if (on_event_) on_event_("не удалось вычислить hash");
@@ -272,6 +270,11 @@ bool FileTransferService::send_file(const std::string& path_or_hash_hex) {
   }
   start_outgoing(entry);
   return true;
+}
+
+bool FileTransferService::push_field_index(const std::vector<FileEntry>& entries,
+                                           const std::vector<std::string>& root_paths) {
+  return send_bulk(encode_index_push(entries, root_paths));
 }
 
 }  // namespace nyx

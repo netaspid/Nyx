@@ -180,4 +180,53 @@ std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& dat
   return entries;
 }
 
+ByteBuffer encode_index_push(const std::vector<FileEntry>& entries,
+                             const std::vector<std::string>& root_paths) {
+  ByteBuffer out = encode_list_response(entries);
+  if (out.empty()) return out;
+  out[0] = static_cast<uint8_t>(FileKind::IndexPush);
+  write_u16_le(out, static_cast<uint16_t>(root_paths.size()));
+  for (const auto& path : root_paths) {
+    write_u16_le(out, static_cast<uint16_t>(path.size()));
+    out.insert(out.end(), path.begin(), path.end());
+  }
+  return out;
+}
+
+std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data) {
+  if (data.size() < 3 || data[0] != static_cast<uint8_t>(FileKind::IndexPush)) {
+    return std::nullopt;
+  }
+  ByteBuffer as_list = data;
+  as_list[0] = static_cast<uint8_t>(FileKind::ListResp);
+  auto entries = decode_list_response(as_list);
+  if (!entries) return std::nullopt;
+
+  IndexPushPayload payload;
+  payload.entries = std::move(*entries);
+
+  std::size_t off = 3;
+  const uint16_t entry_count = read_u16_le(data.data() + 1);
+  for (uint16_t i = 0; i < entry_count; ++i) {
+    if (off + 32 + 8 + 2 + 2 > data.size()) break;
+    off += 32 + 8;
+    const uint16_t path_len = read_u16_le(data.data() + off);
+    off += 2 + path_len;
+    const uint16_t mime_len = read_u16_le(data.data() + off);
+    off += 2 + mime_len;
+  }
+  if (off + 2 > data.size()) return payload;
+  const uint16_t roots_in_payload = read_u16_le(data.data() + off);
+  off += 2;
+  for (uint16_t i = 0; i < roots_in_payload; ++i) {
+    if (off + 2 > data.size()) break;
+    const uint16_t len = read_u16_le(data.data() + off);
+    off += 2;
+    if (off + len > data.size()) break;
+    payload.root_paths.emplace_back(reinterpret_cast<const char*>(data.data() + off), len);
+    off += len;
+  }
+  return payload;
+}
+
 }  // namespace nyx

@@ -24,6 +24,9 @@ class RendezvousPool {
   /** Register token на каждом сервере из списка. */
   bool register_token(const InviteToken& token);
 
+  /** Снять token с bootstrap (при остановке listen/hub). */
+  bool unregister_token(const InviteToken& token);
+
   /** Lookup: опрашивает серверы по порядку, первый успешный hint. */
   std::optional<EndpointHint> lookup(const InviteToken& token);
 
@@ -41,5 +44,12 @@ class RendezvousPool {
   UdpSocket socket_;
   std::vector<RendezvousServer> servers_;
 };
+
+/** Register/Unreg через уже открытый UDP-сокет (hub/listen refresh). */
+bool register_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
+                       const InviteToken& token);
+/** Снять invite с bootstrap при остановке hub/listen. */
+bool unregister_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
+                          const InviteToken& token);
 
 }  // namespace nyx

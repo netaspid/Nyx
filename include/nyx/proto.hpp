@@ -55,6 +55,7 @@ enum class RendezvousKind : uint8_t {
   Lookup = 0x02,
   Response = 0x03,
   NotFound = 0x04,
+  Unregister = 0x05,
 };
 
 /** Сообщение bootstrap-сервера: регистрация или поиск по invite token. */

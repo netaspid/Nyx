@@ -5,6 +5,7 @@
  */
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -35,5 +36,14 @@ bool parse_host_port(const std::string& addr, std::string& host, uint16_t& port)
 /** Сравнивает адрес отправителя UDP с ожидаемым host:port (учитывает DNS → IP). */
 bool endpoint_matches(const std::string& from_host, uint16_t from_port,
                       const std::string& expected_host, uint16_t expected_port);
+
+/** Путь из UTF-8 (Qt, JSON). На Windows — через wide API. */
+std::filesystem::path path_from_utf8(const std::string& utf8);
+
+/** Путь в UTF-8 для хранения и UI. */
+std::string path_to_utf8(const std::filesystem::path& path);
+
+/** Нормализованный UTF-8 путь (lexically_normal). */
+std::string normalize_utf8_path(const std::string& utf8);
 
 }  // namespace nyx

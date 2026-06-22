@@ -93,7 +93,7 @@ Dialog {
         }
 
         Label {
-            text: qsTr("Папки — индексируйте через вкладку «Файлы» в панели подключения")
+            text: qsTr("Папки для обмена — вкладка «Файлы» в сайдбаре или 📎 в чате")
             color: theme.textMuted
             font.pixelSize: 11
             wrapMode: Text.WordWrap

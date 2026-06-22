@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -37,21 +38,64 @@ struct FileEntry {
 
   std::string absolute_path() const;
   std::string display_name() const { return relative_path; }
+  /** Имя для отображения в списке (последний сегмент пути). */
+  std::string leaf_name() const;
+  /** Маркер папки в списке (не скачивается). */
+  bool is_directory() const { return mime == "application/x-nyx-directory"; }
 };
 
 /** Сканирование и хранение метаданных файлов. */
 class FileIndex {
  public:
+  /** progress(path, files_scanned, finished). */
+  using ScanProgressFn =
+      std::function<void(const std::string& path, int files_scanned, bool finished)>;
+
   FileIndex();
 
-  /** Добавляет корень. group_id=nullptr или zero → личка; иначе только это поле. */
-  bool add_root(const std::string& root_path, const GroupId* group_id = nullptr);
+  /** Сбрасывает индекс в памяти (без записи на диск). */
+  void clear();
 
-  const std::vector<FileEntry>& entries() const { return entries_; }
+  /** Добавляет корень. group_id=nullptr или zero → личка; иначе только это поле. */
+  bool add_root(const std::string& root_path, const GroupId* group_id = nullptr,
+                ScanProgressFn progress = nullptr);
+
+  /** Удаляет корень и его файлы из индекса. */
+  bool remove_root(const std::string& root_path, const GroupId* group_id = nullptr);
+
+  /** Корни, видимые в области (личка или поле). */
+  std::vector<ShareRoot> roots_for_session(const GroupId& session_group) const;
   const std::vector<ShareRoot>& share_roots() const { return share_roots_; }
+  const std::vector<FileEntry>& entries() const { return entries_; }
 
   /** Файлы, видимые в текущей сессии (личка или конкретное поле). */
   std::vector<FileEntry> entries_for_session(const GroupId& session_group) const;
+
+  /** Файлы + маркеры папок (size = число файлов внутри). */
+  std::vector<FileEntry> listing_for_session(const GroupId& session_group) const;
+
+  /** Один уровень дерева внутри share root (parent_rel "" = корень папки). */
+  static std::vector<FileEntry> listing_level(const std::vector<FileEntry>& source,
+                                              const std::string& share_root_path,
+                                              const std::string& parent_rel);
+
+  std::vector<FileEntry> listing_level_for_root(const GroupId& session_group,
+                                                const std::string& share_root_path,
+                                                const std::string& parent_rel) const;
+
+  /** Содержимое уровня по абсолютному пути share root (без фильтра scope). */
+  std::vector<FileEntry> listing_at_root(const std::string& share_root_path,
+                                         const std::string& parent_rel) const;
+
+  /** Число проиндексированных файлов в корне. */
+  int count_in_root(const std::string& root_path) const;
+
+  /** Пересканировать существующий корень. */
+  bool rescan_root(const std::string& root_path, const GroupId* group_id = nullptr,
+                   ScanProgressFn progress = nullptr);
+
+  static FileEntry make_directory_marker(const ShareRoot& root, int file_count,
+                                         const std::string& label_prefix = {});
 
   std::optional<FileEntry> find_by_hash(const FileHash& hash) const;
   std::optional<FileEntry> find_by_hash_hex(const std::string& hex) const;
@@ -67,10 +111,13 @@ class FileIndex {
   bool load();
   bool save() const;
 
+  /** Перечитывает индекс из data_dir() активного аккаунта. */
+  bool reload() { return load(); }
+
   static std::string index_path();
 
  private:
-  bool scan_directory(const ShareRoot& root);
+  bool scan_directory(const ShareRoot& root, ScanProgressFn progress = nullptr);
 
   std::vector<ShareRoot> share_roots_;
   std::vector<FileEntry> entries_;

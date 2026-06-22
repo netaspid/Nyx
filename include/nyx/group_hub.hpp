@@ -7,6 +7,7 @@
 #include "nyx/connection.hpp"
 #include "nyx/group.hpp"
 #include "nyx/identity.hpp"
+#include "nyx/file_access.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_transfer.hpp"
 #include "nyx/message_store.hpp"
@@ -21,6 +22,14 @@
 #include <vector>
 
 namespace nyx {
+
+struct UserIdHash {
+  std::size_t operator()(const UserId& id) const {
+    std::size_t h = 0;
+    for (uint8_t b : id) h = h * 31 + b;
+    return h;
+  }
+};
 
 /** Сессия участника на hub. */
 struct HubMember {
@@ -49,8 +58,9 @@ class GroupHub {
   void set_on_message(MessageCallback cb) { on_message_ = std::move(cb); }
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
 
-  /** Индекс и scope для kBulkStream на соединениях участников. */
-  void attach_files(FileIndex& index, const GroupId& share_scope);
+  /** Индекс, scope и ACL для kBulkStream на соединениях участников. */
+  void attach_files(FileIndex& index, const GroupId& share_scope,
+                    FileAccessStore* access = nullptr);
 
   const GroupRecord& group() const { return group_; }
   GroupRecord& group() { return group_; }
@@ -72,6 +82,13 @@ class GroupHub {
   ChatMessage make_owner_message(const std::string& text) const;
   FileTransferService& file_service_for(HubMember& member);
 
+  void handle_member_bulk(HubMember& member, const ByteBuffer& payload);
+  std::vector<FileEntry> merged_field_entries() const;
+  std::vector<FileEntry> merged_field_entries_for(const UserId& requester) const;
+  HubMember* find_hash_provider(const FileHash& hash);
+  void rebuild_hash_providers();
+  void relay_file_request(HubMember& provider, HubMember& requester, const FileHash& hash);
+
   UdpSocket socket_;
   Profile owner_;
   GroupRecord group_;
@@ -83,8 +100,19 @@ class GroupHub {
   EventCallback on_event_;
 
   FileIndex* file_index_ = nullptr;
+  FileAccessStore* file_access_ = nullptr;
   GroupId file_scope_{};
   std::unordered_map<HubMember*, std::unique_ptr<FileTransferService>> file_services_;
+  std::unordered_map<UserId, std::vector<FileEntry>, UserIdHash> member_catalog_;
+  std::unordered_map<UserId, std::vector<std::string>, UserIdHash> member_roots_;
+  std::unordered_map<std::string, UserId, std::hash<std::string>> hash_providers_;
+
+  struct FileRelay {
+    HubMember* requester = nullptr;
+    HubMember* provider = nullptr;
+    FileHash hash{};
+  };
+  std::optional<FileRelay> active_relay_;
 };
 
 }  // namespace nyx

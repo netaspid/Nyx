@@ -22,7 +22,7 @@ void sha256_finish_hash(sha256_context_t& ctx, FileHash& out) {
 }  // namespace
 
 bool hash_file(const std::string& path, FileHash& out) {
-  std::ifstream file(path, std::ios::binary);
+  std::ifstream file(path_from_utf8(path), std::ios::binary);
   if (!file) return false;
 
   sha256_context_t ctx;

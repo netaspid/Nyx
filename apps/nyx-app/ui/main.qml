@@ -14,7 +14,8 @@ ApplicationWindow {
     minimumHeight: 560
     visible: true
     title: app.sessionUnlocked
-         ? (app.inChat ? app.peerTitle : (app.profileNickname + " — Nyx"))
+         ? (app.mainViewMode === 1 ? qsTr("Файлы — Nyx")
+            : app.inChat ? app.peerTitle : (app.profileNickname + " — Nyx"))
          : "Nyx"
     color: appTheme.bgApp
 
@@ -50,7 +51,9 @@ ApplicationWindow {
     Shortcut {
         sequences: ["Esc"]
         onActivated: {
-            if (app.connectionPanelOpen)
+            if (app.mainViewMode === 1)
+                app.showChatView()
+            else if (app.connectionPanelOpen)
                 app.connectionPanelOpen = false
             else if (app.inChat)
                 app.disconnectSession()
@@ -89,7 +92,7 @@ ApplicationWindow {
             visible: root.width >= 720
         }
 
-        ChatView {
+        MainContentPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
             theme: appTheme

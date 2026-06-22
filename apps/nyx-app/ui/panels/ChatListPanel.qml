@@ -90,7 +90,7 @@ Rectangle {
                 TabButton {
                     id: fieldsTab
                     text: qsTr("Поля")
-                    width: (sidebarTabs.width - sidebarTabs.spacing) / 2
+                    width: (sidebarTabs.width - sidebarTabs.spacing * 2) / 3
                     onClicked: node.openGroupsDialog()
 
                     background: Rectangle {
@@ -110,9 +110,31 @@ Rectangle {
                 }
 
                 TabButton {
+                    id: filesTab
+                    text: qsTr("Файлы")
+                    width: (sidebarTabs.width - sidebarTabs.spacing * 2) / 3
+                    onClicked: node.openFilesView()
+
+                    background: Rectangle {
+                        radius: theme.radiusBtn - 2
+                        color: filesTab.checked ? theme.accent
+                             : filesTab.hovered ? theme.btnSecondaryHover
+                             : "transparent"
+                    }
+                    contentItem: Label {
+                        text: filesTab.text
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: filesTab.checked ? theme.textPrimary : theme.textSecondary
+                        font.pixelSize: 13
+                        font.weight: filesTab.checked ? Font.DemiBold : Font.Normal
+                    }
+                }
+
+                TabButton {
                     id: connectionTab
                     text: qsTr("Подключение")
-                    width: (sidebarTabs.width - sidebarTabs.spacing) / 2
+                    width: (sidebarTabs.width - sidebarTabs.spacing * 2) / 3
                     onClicked: node.connectionPanelOpen = !node.connectionPanelOpen
 
                     background: Rectangle {
@@ -189,6 +211,9 @@ Rectangle {
         }
         function onGroupsDialogOpenChanged() {
             fieldsTab.checked = node.groupsDialogOpen
+        }
+        function onMainViewModeChanged() {
+            filesTab.checked = node.mainViewMode === 1
         }
     }
 }

@@ -138,9 +138,9 @@ ColumnLayout {
                 IconButton {
                     theme: root.theme
                     glyph: "\uE16C"
-                    enabled: node.inChat
+                    enabled: node.inChat || node.sessionUnlocked
                     ToolTip.text: qsTr("Файлы")
-                    onClicked: node.connectionPanelOpen = true
+                    onClicked: node.openFilesView()
                 }
 
                 NyxButton {

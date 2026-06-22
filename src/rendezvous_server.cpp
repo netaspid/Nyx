@@ -41,9 +41,15 @@ std::optional<ByteBuffer> RendezvousRegistry::handle_datagram(
 
   if (frame->header.packet_type == PacketType::RendezvousRegister) {
     auto msg = RendezvousMessage::decode(frame->payload.data(), frame->payload.size());
-    if (!msg || msg->kind != RendezvousKind::Register) return std::nullopt;
-    Entry e{msg->hint, now + config_.entry_ttl};
+    if (!msg) return std::nullopt;
     const std::string key = to_hex(msg->token.data(), msg->token.size());
+    if (msg->kind == RendezvousKind::Unregister) {
+      registry_.erase(key);
+      log_info("rendezvous unregister " + key.substr(0, 8) + "… from " + client_ip);
+      return std::nullopt;
+    }
+    if (msg->kind != RendezvousKind::Register) return std::nullopt;
+    Entry e{msg->hint, now + config_.entry_ttl};
     registry_[key] = e;
     log_info("rendezvous register " + key.substr(0, 8) + "… from " + client_ip);
     return std::nullopt;

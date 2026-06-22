@@ -11,6 +11,7 @@ Makefile
 compile_commands.json
 install_manifest.txt
 Testing/
+.cursor/
 
 # FetchContent / автоген Qt
 _deps/

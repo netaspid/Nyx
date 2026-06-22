@@ -34,6 +34,7 @@ Dialog {
         NyxLogo {
             Layout.alignment: Qt.AlignHCenter
             theme: root.theme
+            large: true
         }
 
         Label {

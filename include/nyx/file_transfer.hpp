@@ -48,8 +48,18 @@ class FileTransferService {
   /** Ответ на ListReq (вызывается из handle_bulk автоматически). */
   void respond_list();
 
+  /** Публикует на peer свой индекс поля (IndexPush). */
+  bool push_field_index(const std::vector<FileEntry>& entries,
+                        const std::vector<std::string>& root_paths = {});
+
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_progress(ProgressCallback cb) { on_progress_ = std::move(cb); }
+  /** Вызывается после получения ListResp от peer. */
+  void set_on_remote_list(std::function<void(const std::vector<FileEntry>&)> cb) {
+    on_remote_list_ = std::move(cb);
+  }
+
+  const std::vector<FileEntry>& remote_list() const { return remote_list_; }
 
   bool busy() const;
 
@@ -93,6 +103,7 @@ class FileTransferService {
 
   EventCallback on_event_;
   ProgressCallback on_progress_;
+  std::function<void(const std::vector<FileEntry>&)> on_remote_list_;
 };
 
 }  // namespace nyx

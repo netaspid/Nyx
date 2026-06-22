@@ -107,6 +107,10 @@ ByteBuffer RendezvousMessage::encode() const {
     case RendezvousKind::NotFound:
       out.push_back(0x04);
       break;
+    case RendezvousKind::Unregister:
+      out.push_back(0x05);
+      out.insert(out.end(), token.begin(), token.end());
+      break;
   }
   return out;
 }
@@ -142,6 +146,11 @@ std::optional<RendezvousMessage> RendezvousMessage::decode(const uint8_t* data,
       break;
     case 0x04:
       m.kind = RendezvousKind::NotFound;
+      break;
+    case 0x05:
+      if (len < 33) return std::nullopt;
+      std::copy(data + 1, data + 33, m.token.begin());
+      m.kind = RendezvousKind::Unregister;
       break;
     default:
       return std::nullopt;

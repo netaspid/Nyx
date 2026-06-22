@@ -73,6 +73,7 @@ add_library(nyx
   src/file_index.cpp
   src/file_proto.cpp
   src/file_transfer.cpp
+  src/file_access.cpp
   src/group.cpp
   src/group_proto.cpp
   src/group_hub.cpp
@@ -122,6 +123,7 @@ add_library(nyx-appcore
   apps/nyx-app/appcore/node_service.cpp
   apps/nyx-app/appcore/node_service_connect.cpp
   apps/nyx-app/appcore/node_service_chat.cpp
+  apps/nyx-app/appcore/node_service_files.cpp
   apps/nyx-app/appcore/node_service_group.cpp
 )
 target_include_directories(nyx-appcore PUBLIC
@@ -150,6 +152,7 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp
+      apps/nyx-app/qt/file_list_model.cpp
       apps/nyx-app/resources.qrc
     )
     target_include_directories(nyx-app PRIVATE

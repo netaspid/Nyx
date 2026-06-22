@@ -103,6 +103,9 @@ void NodeService::run_listen(bool lan_advertise) {
   }
 
   if (!running_.load()) {
+    if (network_config_.mode != nyx::DiscoveryMode::LanOnly) {
+      pool.unregister_token(token);
+    }
     busy_.store(false);
     set_mode(NodeMode::Idle);
     return;

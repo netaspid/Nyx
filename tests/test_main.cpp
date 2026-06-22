@@ -11,6 +11,7 @@
 #include "nyx/chat_service.hpp"
 #include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
+#include "nyx/file_access.hpp"
 #include "nyx/file_transfer.hpp"
 #include "nyx/group.hpp"
 #include "nyx/group_hub.hpp"
@@ -634,10 +635,49 @@ static void test_file_index_three() {
   assert(index.add_root(dir));
   assert(index.entries().size() == 3);
 
+  std::filesystem::create_directories(dir + "/sub");
+  std::ofstream(dir + "/sub/nested.txt") << "n";
+  assert(index.rescan_root(dir));
+  const auto level = nyx::FileIndex::listing_level(index.entries_for_session({}), dir, "");
+  assert(level.size() >= 2);
+  bool has_sub = false;
+  for (const auto& e : level) {
+    if (e.is_directory() && e.relative_path == "sub") has_sub = true;
+  }
+  assert(has_sub);
+
   std::filesystem::remove_all(dir);
   std::remove(nyx::FileIndex::index_path().c_str());
   std::cout << "file index three ok\n";
 }
+
+#ifdef _WIN32
+static void test_file_index_unicode() {
+  const std::wstring wdir = L"test_index_unicode";
+  const std::wstring wfile = wdir + L"\\" + L"\u043A\u043F\u044B\u0432\u0430.txt";
+  std::filesystem::remove_all(wdir);
+  std::remove(nyx::FileIndex::index_path().c_str());
+  std::filesystem::create_directories(wdir);
+  {
+    std::ofstream out(std::filesystem::path(wfile), std::ios::binary);
+    out << "unicode ok";
+  }
+
+  const std::string dir = nyx::path_to_utf8(wdir);
+  nyx::FileIndex index;
+  assert(index.add_root(dir));
+  assert(index.entries().size() == 1);
+  assert(index.entries()[0].relative_path == nyx::path_to_utf8(std::filesystem::path(L"\u043A\u043F\u044B\u0432\u0430.txt")));
+
+  nyx::FileHash hash{};
+  assert(nyx::hash_file(index.entries()[0].absolute_path(), hash));
+  assert(hash == index.entries()[0].hash);
+
+  std::filesystem::remove_all(wdir);
+  std::remove(nyx::FileIndex::index_path().c_str());
+  std::cout << "file index unicode ok\n";
+}
+#endif
 
 static void test_file_transfer_1mb() {
   const std::string src_dir = "test_xfer_src";
@@ -906,6 +946,36 @@ static void test_is_lan_ipv4() {
   std::cout << "is lan ipv4 ok\n";
 }
 
+static void test_file_access_roles() {
+  std::remove(nyx::FileAccessStore::store_path().c_str());
+  nyx::GroupId gid{};
+  nyx::random_bytes(gid.data(), gid.size());
+  nyx::GroupRecord group;
+  group.id = gid;
+  group.name = "test-field";
+  nyx::UserId owner{};
+  nyx::random_bytes(owner.data(), owner.size());
+  group.owner_id = owner;
+  nyx::GroupMemberRecord om;
+  om.user_id = owner;
+  om.nickname = "owner";
+  om.role = nyx::GroupRole::Owner;
+  group.members.push_back(om);
+
+  nyx::FileAccessStore store;
+  auto& policy = store.ensure_policy(gid, group);
+  assert(policy.roles.size() >= 3);
+  assert(store.has_permission(store.permissions_for(gid, owner),
+                              nyx::FilePermission::ManageRoles));
+
+  nyx::UserId member{};
+  nyx::random_bytes(member.data(), member.size());
+  assert(store.set_member_role(gid, member, nyx::FileAccessStore::role_id_viewer()));
+  assert(store.has_permission(store.permissions_for(gid, member), nyx::FilePermission::List));
+  assert(!store.has_permission(store.permissions_for(gid, member), nyx::FilePermission::Upload));
+  std::cout << "file access roles ok\n";
+}
+
 static void test_share_policy() {
   std::remove(nyx::FileIndex::index_path().c_str());
   const std::string personal_dir = "test_share_personal";
@@ -1165,7 +1235,11 @@ int main() {
   test_chat_msg_exchange();
   test_ten_messages_roundtrip();
   test_file_index_three();
+#ifdef _WIN32
+  test_file_index_unicode();
+#endif
   test_file_transfer_1mb();
+  test_file_access_roles();
   test_share_policy();
   test_conversation_list();
   test_reconnect_flow();

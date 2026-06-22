@@ -2,6 +2,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QIcon>
 
 #include "nyx/log.hpp"
 #include "node_controller.hpp"
@@ -25,6 +26,7 @@ int main(int argc, char* argv[]) {
   QApplication::setApplicationName(QStringLiteral("Nyx"));
   QApplication::setApplicationDisplayName(QStringLiteral("Nyx"));
   QApplication::setOrganizationName(QStringLiteral("Nyx"));
+  QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/nyx-mark.svg")));
 
   NodeController node;
 

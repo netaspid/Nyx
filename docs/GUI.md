@@ -12,15 +12,15 @@ Qt 6.5+ · Qt Quick (QML) · `NodeController` + `NodeService` (AppCore) · libny
 apps/nyx-app/
 ├── main.cpp
 ├── appcore/node_service*.cpp
-├── qt/node_controller.*, message_model.*, chat_list_model.*, lan_peer_model.*
+├── qt/node_controller.*, message_model.*, chat_list_model.*, lan_peer_model.*, file_list_model.*
 ├── i18n/nyx_ru.ts
 ├── resources/icons/*.svg          # nyx-logo, nyx-mark, UI icons
 └── ui/
     ├── main.qml                 # layout: список чатов + переписка
     ├── Theme.qml
-    ├── controls/                # NyxButton, NyxTextField
-    ├── panels/                  # ChatListPanel, ChatView, ConnectionDrawer
-    ├── dialogs/                 # SettingsDialog, OnboardingDialog
+    ├── controls/                # NyxButton, NyxTextField, NyxComboBox, NyxSegmentTabButton
+    ├── panels/                  # ChatListPanel, MainContentPanel, ChatView, FilesPanel, ConnectionDrawer
+    ├── dialogs/                 # SettingsDialog, OnboardingDialog, GroupsDialog
     └── components/              # NyxLogo, ChatBubble, ChatListItem, NyxIcon, …
 ```
 
@@ -30,19 +30,23 @@ apps/nyx-app/
 |---------|--------|------------|
 | Слева | ~320px | Список чатов, поиск, профиль, кнопка «Подключение» |
 | Справа | flex | Шапка чата, сообщения, ввод, progress bar |
-| Drawer | справа | Listen / Connect / Поля / Файлы / LAN |
+| Drawer | справа | Listen / Connect / Поле / LAN |
+| Панель файлов | вместо чата | `FilesPanel` при `mainViewMode = 1` |
 
 ## QML API (`app` — контекстное свойство NodeController)
 
 | Свойство / метод | Назначение |
 |------------------|------------|
-| `profileNickname`, `profileIdShort` | Профиль (R/W nickname в настройках) |
-| `needsOnboarding`, `completeOnboarding(nick)` | Первый запуск |
-| `chatList` | `ChatListModel` — контакты + поля + превью |
-| `refreshChatList()`, `openConversation(...)` | Список чатов |
-| `searchMessages(query)` | Локальный фильтр в текущем чате |
-| `inChat`, `canSendMessage`, `peerStatusText` | Сессия / offline история |
-| `connectionPanelOpen` | Drawer подключения |
+| `mainViewMode`, `openFilesView()`, `showChatView()` | Переключение чат ↔ файлы |
+| `fileScopeGroupId`, `fileScopeLabel` | Область для новых папок и вкладки «Доступ» |
+| `fileShareRoots` | Все проиндексированные корни (личные и поля), с меткой области |
+| `localFiles`, `remoteFiles` | `FileListModel` (уровень дерева) |
+| `fileSelectedShareRoot`, `fileBrowsePath`, `fileBrowseCrumbs` | Навигация по иерархии |
+| `canRemoveShareFolder` | Можно убрать share-папку (владелец поля или ManageShares) |
+| `browseIntoFolder`, `browseUp`, `addDroppedUrls` | Браузер и DnD |
+| `canFileUpload/Download/OpenRemote`, `canManageFileShares/Roles` | Права текущего пользователя |
+| `fileRoleList`, `fileMemberAccess`, `setMemberFileRole`, `createFileRole` | Роли поля |
+| `addIndexedFolder(url)` | Индекс + drag-and-drop |
 | `lastGroupInvite`, `copyLastGroupInvite()` | Invite поля |
 | `trayAvailable`, `hideToTray()`, `showMainWindow` | Системный tray |
 | `fileProgress*` | Progress bar передачи файлов |
@@ -55,7 +59,7 @@ apps/nyx-app/
 |------------|----------|
 | Ctrl+Enter | Отправить сообщение |
 | Ctrl+K | Панель подключения |
-| Esc | Закрыть drawer / отключиться |
+| Esc | Файлы → чат; закрыть drawer; отключиться |
 
 ## Сборка
 
@@ -73,3 +77,4 @@ cmake --build build
 1. Backend → `NodeService` → `NodeController` → QML.
 2. Не дублировать протокол в QML.
 3. QML ≤200 строк на файл; новые экраны — в `panels/` / `dialogs/`.
+4. Единый стиль — см. `.cursor/rules/nyx-ui.mdc` и `Theme.qml`.
