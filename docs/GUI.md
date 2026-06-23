@@ -21,7 +21,7 @@ apps/nyx-app/
     ├── controls/                # NyxButton, NyxTextField, NyxComboBox, NyxSegmentTabButton
     ├── panels/                  # ChatListPanel, MainContentPanel, ChatView, FilesPanel, ConnectionDrawer
     ├── dialogs/                 # SettingsDialog, OnboardingDialog, GroupsDialog
-    └── components/              # NyxLogo, ChatBubble, ChatListItem, NyxIcon, …
+    └── components/              # NyxLogo, ChatBubble, ChatListItem, FieldInfoPopup, …
 ```
 
 ## Layout (фаза 8)
@@ -29,7 +29,7 @@ apps/nyx-app/
 | Колонка | Ширина | Содержимое |
 |---------|--------|------------|
 | Слева | ~320px | Список чатов, поиск, профиль, кнопка «Подключение» |
-| Справа | flex | Шапка чата, сообщения, ввод, progress bar |
+| Справа | flex | Шапка чата (имя поля — клик → `FieldInfoPopup`), сообщения, ввод, progress bar |
 | Drawer | справа | Listen / Connect / Поле / LAN |
 | Панель файлов | вместо чата | `FilesPanel` при `mainViewMode = 1` |
 
@@ -40,12 +40,20 @@ apps/nyx-app/
 | `mainViewMode`, `openFilesView()`, `showChatView()` | Переключение чат ↔ файлы |
 | `fileScopeGroupId`, `fileScopeLabel` | Область для новых папок и вкладки «Доступ» |
 | `fileShareRoots` | Все проиндексированные корни (личные и поля), с меткой области |
-| `localFiles`, `remoteFiles` | `FileListModel` (уровень дерева) |
+| `localFileList`, `remoteFileList` | Файлы текущего уровня (QVariantList) |
+| `fileResourcesRoot`, `fileRemoteBrowseCrumbs` | Навигация на вкладке «Ресурсы» |
+| `setFilesSection(0/1/2)` | Обзор / Ресурсы / Доступ |
 | `fileSelectedShareRoot`, `fileBrowsePath`, `fileBrowseCrumbs` | Навигация по иерархии |
-| `canRemoveShareFolder` | Можно убрать share-папку (владелец поля или ManageShares) |
+| `setFileAccessTarget`, `filePathMemberAccess`, `setPathMemberFileRole`, `clearPathMemberGrant` | Назначение прав на папку/файл (из «Обзор», не из «Доступ») |
+| `canEditFileRolePermissions(roleId)` | Можно ли менять набор прав роли (кроме owner) |
+| `statusText` | Строка статуса внизу окна |
+| `toast`, `toastIsError`, `clearToast()` | Тосты справа внизу |
 | `browseIntoFolder`, `browseUp`, `addDroppedUrls` | Браузер и DnD |
-| `canFileUpload/Download/OpenRemote`, `canManageFileShares/Roles` | Права текущего пользователя |
+| `canFileUpload/Download/OpenRemote`, `canManageFileShares/Roles` | Права на текущий уровень (Обзор или Ресурсы) |
+| `canDownloadFileAt(root, rel)`, `canOpenRemoteFileAt(root, rel)` | Права на конкретный объект (кнопки в списке) |
+| `downloadFile(hash, name, root, rel)`, `downloadRemoteFolder(root, rel)` | Скачать файл (диалог «Сохранить как») или папку (выбор каталога) |
 | `fileRoleList`, `fileMemberAccess`, `setMemberFileRole`, `createFileRole` | Роли поля |
+| `refreshFieldRoster()` | Обновить roster поля из hub/хранилища (участники, «Доступ») |
 | `addIndexedFolder(url)` | Индекс + drag-and-drop |
 | `lastGroupInvite`, `copyLastGroupInvite()` | Invite поля |
 | `trayAvailable`, `hideToTray()`, `showMainWindow` | Системный tray |

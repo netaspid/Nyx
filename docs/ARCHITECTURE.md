@@ -84,6 +84,10 @@ game.ru/
 
 Зависимость: **noise-c** (FetchContent), C++17, Winsock2 на Windows.
 
+## NodeService и потоки
+
+Сессии поля и чата работают в фоновом `worker_`. UI вызывает `list_groups()` и ACL из главного потока Qt. Roster активного поля UI получает из **`live_group_snapshot_`** (mutex): worker обновляет снимок после join, hub poll и chat-сообщений о составе. Прямой доступ к `GroupHub` / `GroupMemberService` из UI запрещён — иначе гонка при открытии вкладки «Файлы».
+
 ## Модули библиотеки
 
 ### types.hpp
