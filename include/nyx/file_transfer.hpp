@@ -13,6 +13,8 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace nyx {
 
@@ -39,8 +41,11 @@ class FileTransferService {
   /** Запрос списка файлов у peer. */
   bool request_list();
 
-  /** Запрос файла по hex-хешу. */
-  bool request_file(const std::string& hash_hex);
+  /** Запрос актуальной политики ACL у hub. */
+  bool request_policy();
+
+  /** Запрос файла по hex-хешу; dest_path — полный путь сохранения (необязательно). */
+  bool request_file(const std::string& hash_hex, const std::string& dest_path = {});
 
   /** Проактивная отправка локального файла (из индекса или по пути). */
   bool send_file(const std::string& path_or_hash_hex);
@@ -61,17 +66,26 @@ class FileTransferService {
 
   const std::vector<FileEntry>& remote_list() const { return remote_list_; }
 
+  /** Копия remote_list_ (потокобезопасно для UI). */
+  std::vector<FileEntry> remote_list_snapshot() const;
+
+  /** Идёт исходящая/входящая передача или ожидание Offer. */
   bool busy() const;
 
  private:
   bool send_bulk(const ByteBuffer& payload);
+  void emit_event(const std::string& text);
+  void emit_progress(const FileHash& hash, uint64_t done, uint64_t total);
+  void flush_deferred();
   void start_outgoing(const FileEntry& entry);
   void send_next_chunk();
   void finish_outgoing();
   void handle_offer(const FileOffer& offer);
   void handle_chunk(const FileChunk& chunk);
   void handle_complete(const FileComplete& complete);
+  void handle_deny(const FileDeny& deny);
   void handle_request(const FileRequest& req);
+  void reset_incoming();
 
   Connection& connection_;
   FileIndex& index_;
@@ -99,7 +113,12 @@ class FileTransferService {
   mutable std::mutex mutex_;
   std::optional<OutgoingState> outgoing_;
   std::optional<IncomingState> incoming_;
+  /** Запрос отправлен, ждём Offer или Deny. */
+  std::optional<FileHash> awaiting_offer_;
+  /** hash_hex → полный путь, выбранный до запроса. */
+  std::unordered_map<std::string, std::string> pending_dest_paths_;
   std::vector<FileEntry> remote_list_;
+  std::vector<std::function<void()>> deferred_callbacks_;
 
   EventCallback on_event_;
   ProgressCallback on_progress_;
