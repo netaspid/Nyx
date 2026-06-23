@@ -12,6 +12,7 @@
 #include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_access.hpp"
+#include "nyx/file_proto.hpp"
 #include "nyx/file_transfer.hpp"
 #include "nyx/group.hpp"
 #include "nyx/group_hub.hpp"
@@ -946,6 +947,32 @@ static void test_is_lan_ipv4() {
   std::cout << "is lan ipv4 ok\n";
 }
 
+static void test_group_member_persistence() {
+  std::remove(nyx::GroupStore::store_path().c_str());
+  nyx::Profile owner = nyx::generate_profile("Owner");
+  nyx::GroupStore store;
+  auto group = store.create("Q", owner.user_id(), owner.nickname);
+  nyx::UserId member{};
+  nyx::random_bytes(member.data(), member.size());
+  group.members.push_back({member, "Test", nyx::GroupRole::Member});
+  assert(store.upsert(group));
+
+  nyx::GroupStore reloaded;
+  assert(reloaded.load());
+  const auto found = reloaded.find(group.id);
+  assert(found);
+  assert(found->members.size() == 2);
+  bool has_test = false;
+  bool has_owner = false;
+  for (const auto& m : found->members) {
+    if (m.user_id == member) has_test = true;
+    if (m.role == nyx::GroupRole::Owner) has_owner = true;
+  }
+  assert(has_test);
+  assert(has_owner);
+  std::cout << "group member persistence ok\n";
+}
+
 static void test_file_access_roles() {
   std::remove(nyx::FileAccessStore::store_path().c_str());
   nyx::GroupId gid{};
@@ -973,6 +1000,67 @@ static void test_file_access_roles() {
   assert(store.set_member_role(gid, member, nyx::FileAccessStore::role_id_viewer()));
   assert(store.has_permission(store.permissions_for(gid, member), nyx::FilePermission::List));
   assert(!store.has_permission(store.permissions_for(gid, member), nyx::FilePermission::Upload));
+
+  nyx::FilePermissionPreset preset;
+  preset.id = "preset_test";
+  preset.name = "Редактор";
+  preset.permissions = static_cast<uint32_t>(nyx::FilePermission::List) |
+                       static_cast<uint32_t>(nyx::FilePermission::Upload);
+  assert(store.upsert_permission_preset(gid, preset));
+
+  nyx::FileRole custom;
+  custom.id = "role_editor";
+  custom.name = "Редактор";
+  custom.permissions = preset.permissions;
+  assert(store.upsert_role(gid, custom));
+
+  assert(store.save());
+
+  nyx::FileAccessStore reloaded;
+  assert(reloaded.load());
+  const auto* loaded = reloaded.find_policy(gid);
+  assert(loaded);
+  assert(loaded->permission_presets.size() == 1);
+  assert(loaded->permission_presets[0].id == "preset_test");
+  assert(loaded->roles.size() >= 4);
+  bool found_custom = false;
+  for (const auto& role : loaded->roles) {
+    if (role.id == "role_editor") {
+      found_custom = true;
+      assert(role.permissions == preset.permissions);
+    }
+  }
+  assert(found_custom);
+
+  assert(store.set_path_member_role(gid, "C:/Share", "StratumD", member,
+                                    nyx::FileAccessStore::role_id_viewer()));
+  assert(store.save());
+  nyx::FileAccessStore grants_reloaded;
+  assert(grants_reloaded.load());
+  const auto* gp = grants_reloaded.find_policy(gid);
+  assert(gp);
+  assert(gp->root_grants.size() == 1);
+  assert(gp->root_grants[0].relative_path == "StratumD");
+
+  assert(store.set_root_member_role(gid, "C:/Share", member,
+                                    nyx::FileAccessStore::role_id_viewer()));
+  assert(store.save());
+  const auto* synced = store.find_policy(gid);
+  assert(synced);
+  const auto wire = nyx::encode_policy_push(*synced);
+  const auto decoded = nyx::decode_policy_push(wire);
+  assert(decoded);
+  assert(decoded->root_grants.size() == 2);
+
+  assert(store.set_path_member_role(gid, "C:/Share", "StratumD", member, "role_editor"));
+  const std::string indexed_root = "C:/Share/StratumD";
+  assert(store.has_permission(store.permissions_for(gid, member, indexed_root, "documentation"),
+                              nyx::FilePermission::Upload));
+  assert(store.has_permission(store.permissions_for(gid, member, indexed_root, "installer"),
+                              nyx::FilePermission::Upload));
+  assert(!store.has_permission(store.permissions_for(gid, member, indexed_root, "documentation"),
+                               nyx::FilePermission::Download));
+
   std::cout << "file access roles ok\n";
 }
 
@@ -1239,6 +1327,7 @@ int main() {
   test_file_index_unicode();
 #endif
   test_file_transfer_1mb();
+  test_group_member_persistence();
   test_file_access_roles();
   test_share_policy();
   test_conversation_list();

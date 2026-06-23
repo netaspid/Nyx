@@ -1,5 +1,6 @@
 #include "nyx/file_proto.hpp"
 
+#include "nyx/file_access.hpp"
 #include "nyx/util.hpp"
 
 #include <cstring>
@@ -147,6 +148,8 @@ ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
     out.insert(out.end(), e.relative_path.begin(), e.relative_path.end());
     write_u16_le(out, static_cast<uint16_t>(e.mime.size()));
     out.insert(out.end(), e.mime.begin(), e.mime.end());
+    write_u16_le(out, static_cast<uint16_t>(e.root_path.size()));
+    out.insert(out.end(), e.root_path.begin(), e.root_path.end());
   }
   return out;
 }
@@ -175,6 +178,12 @@ std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& dat
     off += 2;
     if (!read_string(data, off, mime_len, kMaxMimeLen, entry.mime)) return std::nullopt;
     off += mime_len;
+    if (off + 2 <= data.size()) {
+      const uint16_t root_len = read_u16_le(data.data() + off);
+      off += 2;
+      if (!read_string(data, off, root_len, kMaxPathLen, entry.root_path)) return std::nullopt;
+      off += root_len;
+    }
     entries.push_back(std::move(entry));
   }
   return entries;
@@ -214,6 +223,10 @@ std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data) {
     off += 2 + path_len;
     const uint16_t mime_len = read_u16_le(data.data() + off);
     off += 2 + mime_len;
+    if (off + 2 <= data.size()) {
+      const uint16_t root_len = read_u16_le(data.data() + off);
+      off += 2 + root_len;
+    }
   }
   if (off + 2 > data.size()) return payload;
   const uint16_t roots_in_payload = read_u16_le(data.data() + off);
@@ -227,6 +240,40 @@ std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data) {
     off += len;
   }
   return payload;
+}
+
+namespace {
+
+constexpr std::size_t kMaxPolicyJson = 512 * 1024;
+
+}  // namespace
+
+ByteBuffer encode_policy_push(const GroupFileAccess& policy) {
+  const std::string json = FileAccessStore::encode_group_policy_json(policy);
+  ByteBuffer out;
+  out.reserve(1 + 4 + json.size());
+  out.push_back(static_cast<uint8_t>(FileKind::PolicyPush));
+  write_u32_le(out, static_cast<uint32_t>(json.size()));
+  out.insert(out.end(), json.begin(), json.end());
+  return out;
+}
+
+std::optional<GroupFileAccess> decode_policy_push(const ByteBuffer& data) {
+  if (data.size() < 5 || data[0] != static_cast<uint8_t>(FileKind::PolicyPush)) {
+    return std::nullopt;
+  }
+  const uint32_t len = read_u32_le(data.data() + 1);
+  if (len == 0 || len > kMaxPolicyJson || data.size() < 5 + len) return std::nullopt;
+  const std::string json(reinterpret_cast<const char*>(data.data() + 5), len);
+  GroupFileAccess policy;
+  if (!FileAccessStore::decode_group_policy_json(json, policy)) return std::nullopt;
+  return policy;
+}
+
+ByteBuffer encode_policy_request() {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::PolicyReq));
+  return out;
 }
 
 }  // namespace nyx

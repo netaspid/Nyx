@@ -1,6 +1,7 @@
 #include "nyx/util.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <cctype>
 #include <random>
@@ -220,6 +221,14 @@ std::string path_to_utf8(const std::filesystem::path& path) {
 
 std::string normalize_utf8_path(const std::string& utf8) {
   return path_to_utf8(path_from_utf8(utf8).lexically_normal());
+}
+
+std::string normalize_grant_root(const std::string& root_path) {
+  std::string out = normalize_utf8_path(root_path);
+#ifdef _WIN32
+  for (char& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+#endif
+  return out;
 }
 
 }  // namespace nyx

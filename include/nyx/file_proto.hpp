@@ -4,6 +4,7 @@
  *  Протокол передачи файлов на kBulkStream (фаза 4).
  */
 
+#include "nyx/file_access.hpp"
 #include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/types.hpp"
@@ -25,6 +26,10 @@ enum class FileKind : uint8_t {
   Deny = 7,
   /** Участник публикует свой индекс поля на hub. */
   IndexPush = 8,
+  /** Hub → участник: полная политика ACL поля. */
+  PolicyPush = 9,
+  /** Участник → hub: запрос актуальной политики ACL. */
+  PolicyReq = 10,
 };
 
 constexpr std::size_t kFileChunkSize = 8192;
@@ -87,5 +92,12 @@ struct IndexPushPayload {
 };
 
 std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data);
+
+/** Hub отправляет участнику JSON политики поля. */
+ByteBuffer encode_policy_push(const GroupFileAccess& policy);
+/** Разбор PolicyPush; std::nullopt при ошибке. */
+std::optional<GroupFileAccess> decode_policy_push(const ByteBuffer& data);
+
+ByteBuffer encode_policy_request();
 
 }  // namespace nyx

@@ -46,4 +46,7 @@ std::string path_to_utf8(const std::filesystem::path& path);
 /** Нормализованный UTF-8 путь (lexically_normal). */
 std::string normalize_utf8_path(const std::string& utf8);
 
+/** Нормализует share-корень для сравнения в grants (на Windows — нижний регистр). */
+std::string normalize_grant_root(const std::string& root_path);
+
 }  // namespace nyx
