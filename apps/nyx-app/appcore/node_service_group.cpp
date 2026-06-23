@@ -87,6 +87,8 @@ void NodeService::run_group_hub(std::string group_id_hex) {
       [this](const nyx::ChatMessage& msg, bool outgoing) { emit_message(msg, outgoing); });
   group_hub_->set_on_event([this](const std::string& text) { emit_status(text); });
 
+  sync_live_group_from_session();
+
   const nyx::InviteToken hub_invite = group->invite_token;
   const auto rv_servers = network_config_.rendezvous_servers;
   const auto refresh_interval =
@@ -99,12 +101,15 @@ void NodeService::run_group_hub(std::string group_id_hex) {
       nyx::register_token_on(group_hub_->socket(), rv_servers, hub_invite);
       last_register = now;
     }
+    drain_file_download_queue();
     group_hub_->poll();
+    sync_live_group_from_session();
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
   nyx::unregister_token_on(group_hub_->socket(), rv_servers, hub_invite);
   group_hub_.reset();
+  clear_live_group_snapshot();
   busy_.store(false);
   set_mode(NodeMode::Idle);
   emit_session_ended();
@@ -236,6 +241,8 @@ void NodeService::run_group_join(std::string invite_hex) {
     group_name = view.name;
   }
 
+  sync_live_group_from_session();
+
   emit_status("в поле «" + group_name + "»");
   emit_chat_ready(group_name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
                   nyx::GroupStore::group_id_hex(share_scope_group_));
@@ -245,8 +252,10 @@ void NodeService::run_group_join(std::string invite_hex) {
   files_->set_share_scope(share_scope_group_);
   wire_file_transfer(*files_);
   publish_field_index();
+  request_file_access_policy();
 
   while (running_.load() && group_member_->joined()) {
+    drain_file_download_queue();
     group_member_->tick();
     connection_->drive();
     if (files_) files_->pump();
@@ -255,8 +264,11 @@ void NodeService::run_group_join(std::string invite_hex) {
     while (connection_->recv_stream(stream_id, payload)) {
       if (stream_id == nyx::kChatStream) {
         group_member_->handle_payload(payload);
-      } else if (stream_id == nyx::kBulkStream && files_) {
-        files_->handle_bulk(payload);
+        sync_live_group_from_session();
+      } else if (stream_id == nyx::kBulkStream) {
+        if (!try_apply_file_access_policy(payload) && files_) {
+          files_->handle_bulk(payload);
+        }
       }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -266,6 +278,7 @@ void NodeService::run_group_join(std::string invite_hex) {
 
   group_member_.reset();
   connection_.reset();
+  clear_live_group_snapshot();
   busy_.store(false);
   set_mode(NodeMode::Idle);
   emit_session_ended();

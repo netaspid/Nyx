@@ -14,6 +14,7 @@ namespace nyx_app {
 void pump_direct_chat(nyx::ChatService& chat, nyx::FileTransferService& files,
                       nyx::Connection& connection,
                       const std::function<bool()>& should_continue,
-                      const std::function<void()>& on_user_stop = {});
+                      const std::function<void()>& on_user_stop = {},
+                      const std::function<void()>& on_tick = {});
 
 }  // namespace nyx_app

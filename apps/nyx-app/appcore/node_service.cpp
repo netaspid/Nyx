@@ -117,7 +117,7 @@ void NodeService::reload_account_data() {
 
 void NodeService::clear_account_data() {
   file_index_.clear();
-  file_access_.load();
+  file_access_.clear();
 }
 
 namespace {
@@ -194,6 +194,11 @@ void NodeService::set_on_file_index_progress(FileIndexProgressCallback cb) {
 void NodeService::set_on_remote_files(RemoteFilesCallback cb) {
   std::lock_guard lock(cb_mutex_);
   on_remote_files_ = std::move(cb);
+}
+
+void NodeService::set_on_file_access_sync(FileAccessSyncCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_file_access_sync_ = std::move(cb);
 }
 
 void NodeService::set_on_mode(std::function<void(NodeMode)> cb) {
@@ -295,6 +300,7 @@ void NodeService::stop() {
   group_member_.reset();
   connection_.reset();
   share_scope_group_ = {};
+  clear_live_group_snapshot();
   set_mode(NodeMode::Idle);
   busy_.store(false);
 }
@@ -434,7 +440,92 @@ bool NodeService::start_group_join(const std::string& invite_hex) {
 std::vector<nyx::GroupRecord> NodeService::list_groups() const {
   nyx::GroupStore store;
   store.load();
-  return store.all();
+  auto groups = store.all();
+
+  /** Подмешивает снимок roster: объединяет с диском, не затирая ушедших участников. */
+  auto merge_live = [&](const nyx::GroupRecord& live) {
+    for (auto& g : groups) {
+      if (g.id != live.id) continue;
+      nyx::GroupStore::merge_member_roster(g.members, live.members);
+      if (!live.name.empty()) g.name = live.name;
+      for (const auto& m : live.members) {
+        if (m.role != nyx::GroupRole::Owner) continue;
+        g.owner_id = m.user_id;
+        break;
+      }
+      nyx::GroupStore::ensure_roster(g);
+      return;
+    }
+    nyx::GroupRecord copy = live;
+    nyx::GroupStore::ensure_roster(copy);
+    groups.push_back(std::move(copy));
+  };
+
+  {
+    std::lock_guard lock(live_group_mutex_);
+    if (live_group_snapshot_) merge_live(*live_group_snapshot_);
+  }
+
+  return groups;
+}
+
+void NodeService::set_live_group_snapshot(nyx::GroupRecord rec) {
+  std::lock_guard lock(live_group_mutex_);
+  live_group_snapshot_ = std::move(rec);
+}
+
+void NodeService::clear_live_group_snapshot() {
+  std::lock_guard lock(live_group_mutex_);
+  live_group_snapshot_.reset();
+}
+
+void NodeService::sync_live_group_from_session() {
+  nyx::GroupRecord live;
+  if (group_hub_) {
+    live = group_hub_->group();
+  } else if (group_member_) {
+    const auto& view = group_member_->view();
+    live.id = view.id;
+    live.name = view.name;
+    live.members = view.members;
+    nyx::GroupStore store;
+    store.load();
+    if (const auto stored = store.find(live.id)) {
+      live.invite_token = stored->invite_token;
+      nyx::UserId zero{};
+      if (stored->owner_id != zero) live.owner_id = stored->owner_id;
+      nyx::GroupStore::merge_member_roster(live.members, stored->members);
+    }
+    for (const auto& m : view.members) {
+      if (m.role == nyx::GroupRole::Owner) {
+        live.owner_id = m.user_id;
+        break;
+      }
+    }
+  } else {
+    clear_live_group_snapshot();
+    return;
+  }
+
+  nyx::GroupStore::ensure_roster(live);
+
+  {
+    nyx::GroupStore store;
+    store.load();
+    if (const auto stored = store.find(live.id)) {
+      nyx::GroupRecord merged = *stored;
+      nyx::GroupStore::merge_member_roster(merged.members, live.members);
+      if (!live.name.empty()) merged.name = live.name;
+      nyx::UserId zero{};
+      if (live.owner_id != zero) merged.owner_id = live.owner_id;
+      nyx::GroupStore::ensure_roster(merged);
+      store.upsert(merged);
+    } else {
+      store.upsert(live);
+    }
+  }
+
+  set_live_group_snapshot(std::move(live));
 }
 
 }  // namespace nyx_app

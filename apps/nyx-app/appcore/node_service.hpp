@@ -22,9 +22,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -89,9 +91,11 @@ class NodeService {
   using FileIndexProgressCallback =
       std::function<void(const std::string& path, int files_scanned, bool finished)>;
   using RemoteFilesCallback = std::function<void(const std::vector<nyx::FileEntry>&)>;
+  using FileAccessSyncCallback = std::function<void()>;
   void set_on_file_progress(FileProgressCallback cb);
   void set_on_file_index_progress(FileIndexProgressCallback cb);
   void set_on_remote_files(RemoteFilesCallback cb);
+  void set_on_file_access_sync(FileAccessSyncCallback cb);
   void set_on_mode(std::function<void(NodeMode)> cb);
   using SessionEndedCallback = std::function<void()>;
   void set_on_session_ended(SessionEndedCallback cb);
@@ -134,7 +138,12 @@ class NodeService {
   bool rescan_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   int file_count_in_root(const std::string& root_path) const;
   bool request_remote_files();
-  bool download_file(const std::string& hash_hex);
+  bool request_file_access_policy();
+  bool download_file(const std::string& hash_hex, const std::string& dest_path = {});
+  /** Ставит в очередь скачивание всех файлов под folder_rel (включая подпапки). */
+  std::size_t enqueue_folder_downloads(const std::string& root_path,
+                                       const std::string& folder_rel,
+                                       const std::string& dest_dir = {});
   bool send_file(const std::string& path_or_hash);
   /** Можно запрашивать файлы peer (не hub-only режим). */
   bool can_request_remote_files() const;
@@ -143,9 +152,10 @@ class NodeService {
   std::vector<nyx::ShareRoot> share_roots_for_scope(const std::string& scope_group_id_hex) const;
   std::vector<nyx::FileEntry> remote_files() const;
 
-  /** Права текущего пользователя в области (личка — все). root_path — share-папка поля. */
+  /** Права текущего пользователя в области. root_path и relative_path — для ACL на объект. */
   uint32_t my_file_permissions(const std::string& scope_group_id_hex,
-                               const std::string& root_path = {}) const;
+                               const std::string& root_path = {},
+                               const std::string& relative_path = {}) const;
   nyx::GroupFileAccess file_access_policy(const std::string& scope_group_id_hex);
   bool set_member_file_role(const std::string& scope_group_id_hex,
                             const std::string& user_id_hex, const std::string& role_id);
@@ -155,6 +165,22 @@ class NodeService {
                                  const std::string& root_path,
                                  const std::string& user_id_hex,
                                  const std::string& role_id);
+  bool set_path_member_file_role(const std::string& scope_group_id_hex,
+                                 const std::string& root_path,
+                                 const std::string& relative_path,
+                                 const std::string& user_id_hex,
+                                 const std::string& role_id);
+  bool set_path_direct_file_permissions(const std::string& scope_group_id_hex,
+                                        const std::string& root_path,
+                                        const std::string& relative_path,
+                                        const std::string& user_id_hex,
+                                        uint32_t permissions);
+  bool set_path_role(const std::string& scope_group_id_hex, const std::string& root_path,
+                     const std::string& relative_path, const std::string& role_id);
+  bool upsert_permission_preset(const std::string& scope_group_id_hex,
+                                const nyx::FilePermissionPreset& preset);
+  bool remove_permission_preset(const std::string& scope_group_id_hex,
+                                const std::string& preset_id);
 
   std::vector<nyx::ShareRoot> all_share_roots() const;
   std::vector<nyx::FileEntry> local_files_at_root(const std::string& share_root_path,
@@ -188,15 +214,27 @@ class NodeService {
   void run_group_hub(std::string group_id_hex);
   void run_group_join(std::string invite_hex);
 
+  /** Копирует roster активной сессии поля (только worker). */
+  void sync_live_group_from_session();
+  void set_live_group_snapshot(nyx::GroupRecord rec);
+  void clear_live_group_snapshot();
+
   void run_direct_chat(std::unique_ptr<nyx::Connection> connection,
                        const nyx::Profile& profile, bool incoming, ConnectionVia via);
 
   void wire_file_transfer(nyx::FileTransferService& files);
+  void drain_file_download_queue();
+  void try_pump_download_queue();
+  void after_file_access_changed(const std::string& scope_group_id_hex);
+  bool try_apply_file_access_policy(const nyx::ByteBuffer& payload);
+  std::string resolve_share_root_path(const std::string& root_path) const;
   nyx::GroupId scope_from_hex(const std::string& scope_group_id_hex) const;
 
   bool session_blocks_new_work() const;
 
   mutable std::mutex cb_mutex_;
+  mutable std::mutex live_group_mutex_;
+  std::optional<nyx::GroupRecord> live_group_snapshot_;
   StatusCallback on_status_;
   MessageCallback on_message_;
   TokenCallback on_invite_token_;
@@ -206,6 +244,7 @@ class NodeService {
   FileProgressCallback on_file_progress_;
   FileIndexProgressCallback on_file_index_progress_;
   RemoteFilesCallback on_remote_files_;
+  FileAccessSyncCallback on_file_access_sync_;
   std::function<void(NodeMode)> on_mode_;
   SessionEndedCallback on_session_ended_;
 
@@ -230,6 +269,13 @@ class NodeService {
   nyx::FileIndex file_index_;
   mutable nyx::FileAccessStore file_access_;
   nyx::GroupId share_scope_group_{};
+
+  struct FileDownloadRequest {
+    std::string hash_hex;
+    std::string dest_path;
+  };
+  std::deque<FileDownloadRequest> file_download_queue_;
+  std::mutex file_download_queue_mutex_;
 };
 
 }  // namespace nyx_app

@@ -8,6 +8,7 @@
 #include "nyx/app.hpp"
 #include "nyx/chat_service.hpp"
 #include "nyx/file_hash.hpp"
+#include "nyx/file_proto.hpp"
 #include "nyx/group.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
@@ -100,7 +101,8 @@ void NodeService::run_direct_chat(std::unique_ptr<nyx::Connection> connection,
   }
 
   pump_direct_chat(*chat_, *files_, *connection_, [this]() { return running_.load(); },
-                   [this]() { chat_->send_bye("пользователь вышел"); });
+                   [this]() { chat_->send_bye("пользователь вышел"); },
+                   [this]() { drain_file_download_queue(); });
 
   chat_.reset();
   files_.reset();
@@ -188,12 +190,12 @@ bool NodeService::remove_share_root(const std::string& path,
 }
 
 bool NodeService::can_request_remote_files() const {
-  return files_ != nullptr;
+  return files_ != nullptr || group_hub_ != nullptr;
 }
 
 std::string NodeService::file_exchange_hint() const {
   if (group_hub_) {
-    return "Hub поля: ваши файлы доступны участникам. Запрос списка у peer недоступен в режиме hub.";
+    return "Hub поля: каталог и скачивание своего индекса доступны. Файлы участников — через клиент участника.";
   }
   if (files_) return {};
   if (mode_.load() == NodeMode::Idle) {
@@ -248,11 +250,27 @@ std::vector<nyx::ShareRoot> NodeService::share_roots_for_scope(
 }
 
 std::vector<nyx::FileEntry> NodeService::remote_files() const {
-  if (!files_) return {};
-  return files_->remote_list();
+  if (files_) return files_->remote_list_snapshot();
+  if (group_hub_) {
+    const auto profile = load_profile();
+    return group_hub_->catalog_for(profile.user_id());
+  }
+  return {};
 }
 
 bool NodeService::request_remote_files() {
+  if (group_hub_) {
+    const auto profile = load_profile();
+    const auto entries = group_hub_->catalog_for(profile.user_id());
+    RemoteFilesCallback cb;
+    {
+      std::lock_guard lock(cb_mutex_);
+      cb = on_remote_files_;
+    }
+    if (cb) cb(entries);
+    emit_status("каталог поля: " + std::to_string(entries.size()) + " объектов");
+    return true;
+  }
   if (!files_) {
     emit_status(file_exchange_hint());
     return false;
@@ -264,16 +282,137 @@ bool NodeService::request_remote_files() {
   return true;
 }
 
-bool NodeService::download_file(const std::string& hash_hex) {
-  if (!files_) {
-    emit_status(file_exchange_hint());
-    return false;
+bool NodeService::request_file_access_policy() {
+  if (!files_) return false;
+  return files_->request_policy();
+}
+
+bool NodeService::download_file(const std::string& hash_hex, const std::string& dest_path) {
+  if (hash_hex.empty() || dest_path.empty()) return false;
+  if (!files_ && !group_hub_) return false;
+  std::lock_guard lock(file_download_queue_mutex_);
+  for (const auto& item : file_download_queue_) {
+    if (item.hash_hex == hash_hex) return true;
   }
-  if (!files_->request_file(hash_hex)) {
-    emit_status("не удалось запросить файл");
-    return false;
-  }
+  file_download_queue_.push_back(FileDownloadRequest{hash_hex, dest_path});
   return true;
+}
+
+void NodeService::drain_file_download_queue() {
+  if (files_ && files_->busy()) return;
+
+  FileDownloadRequest next;
+  {
+    std::lock_guard lock(file_download_queue_mutex_);
+    if (file_download_queue_.empty()) return;
+    next = file_download_queue_.front();
+  }
+
+  if (group_hub_ && !files_) {
+    nyx::FileHash hash{};
+    if (!nyx::hash_from_hex(next.hash_hex, hash)) {
+      std::lock_guard lock(file_download_queue_mutex_);
+      if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
+        file_download_queue_.pop_front();
+      }
+      emit_status("неверный hash файла");
+      return;
+    }
+    std::string saved;
+    if (group_hub_->download_local_file(hash, next.dest_path, &saved)) {
+      std::lock_guard lock(file_download_queue_mutex_);
+      if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
+        file_download_queue_.pop_front();
+      }
+      emit_status("файл сохранён: " + saved);
+      return;
+    }
+    emit_status("не удалось скачать файл (режим hub: только локальный индекс hub)");
+    std::lock_guard lock(file_download_queue_mutex_);
+    if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
+      file_download_queue_.pop_front();
+    }
+    return;
+  }
+
+  if (!files_) return;
+
+  if (!files_->request_file(next.hash_hex, next.dest_path)) {
+    if (files_->busy()) return;
+    std::lock_guard lock(file_download_queue_mutex_);
+    if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
+      file_download_queue_.pop_front();
+    }
+    emit_status("не удалось запросить файл");
+    return;
+  }
+
+  {
+    std::lock_guard lock(file_download_queue_mutex_);
+    if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
+      file_download_queue_.pop_front();
+    }
+  }
+  const std::string short_hash =
+      next.hash_hex.size() > 8 ? next.hash_hex.substr(0, 8) + "…" : next.hash_hex;
+  emit_status("запрос файла " + short_hash);
+}
+
+void NodeService::try_pump_download_queue() {
+  drain_file_download_queue();
+}
+
+std::size_t NodeService::enqueue_folder_downloads(const std::string& root_path,
+                                                  const std::string& folder_rel,
+                                                  const std::string& dest_dir) {
+  if (dest_dir.empty()) return 0;
+  const std::string root_norm = nyx::normalize_grant_root(root_path);
+  std::string folder = folder_rel;
+  for (char& c : folder) {
+    if (c == '\\') c = '/';
+  }
+  while (!folder.empty() && folder.front() == '/') folder.erase(folder.begin());
+  while (!folder.empty() && folder.back() == '/') folder.pop_back();
+
+  struct QueuedFile {
+    std::string hash_hex;
+    std::string dest_path;
+  };
+  std::vector<QueuedFile> items;
+  for (const auto& e : remote_files()) {
+    if (e.is_directory()) continue;
+    if (nyx::normalize_grant_root(e.root_path) != root_norm) continue;
+    std::string rel = e.relative_path;
+    for (char& c : rel) {
+      if (c == '\\') c = '/';
+    }
+    if (!folder.empty()) {
+      if (rel.size() <= folder.size()) continue;
+      if (rel.compare(0, folder.size(), folder) != 0) continue;
+      if (rel[folder.size()] != '/') continue;
+      rel = rel.substr(folder.size() + 1);
+    }
+    std::string dest = dest_dir;
+    if (!dest.empty() && dest.back() != '/' && dest.back() != '\\') dest += '/';
+    dest += rel;
+    items.push_back(QueuedFile{nyx::hash_hex(e.hash), std::move(dest)});
+  }
+  if (items.empty()) return 0;
+  if (!files_ && !group_hub_) return 0;
+
+  const std::size_t total = items.size();
+  {
+    std::lock_guard lock(file_download_queue_mutex_);
+    for (auto& item : items) {
+      const bool exists = std::any_of(
+          file_download_queue_.begin(), file_download_queue_.end(),
+          [&](const FileDownloadRequest& q) { return q.hash_hex == item.hash_hex; });
+      if (exists) continue;
+      file_download_queue_.push_back(
+          FileDownloadRequest{std::move(item.hash_hex), std::move(item.dest_path)});
+    }
+  }
+  return total;
 }
 
 bool NodeService::send_file(const std::string& path_or_hash) {
