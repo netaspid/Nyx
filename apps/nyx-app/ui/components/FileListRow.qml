@@ -7,15 +7,18 @@ import "../controls"
 Rectangle {
     id: root
     required property var theme
-    required property string name
-    required property string hash
-    required property string sizeLabel
-    required property string mime
-    required property bool isRemote
-    required property bool isDirectory
-    required property string navPath
-    required property string rootPath
+    property string fileName: ""
+    property string fileHash: ""
+    property string fileSizeLabel: ""
+    property string fileMime: ""
+    property bool fileIsRemote: false
+    property bool fileIsDirectory: false
+    property string fileNavPath: ""
+    property string fileRootPath: ""
+    property string fileFullRelPath: ""
     property var node
+    /** ПКМ по строке — назначение прав (только в поле). */
+    signal accessContextMenuRequested()
 
     default property alias actions: actionsLayout.data
 
@@ -23,17 +26,19 @@ Rectangle {
     height: row.implicitHeight + 16
     radius: theme.radiusBtn
     color: mouseArea.containsMouse ? theme.btnSecondaryHover : theme.btnSecondary
-    border.color: theme.border
-    border.width: 1
+    border.color: fileIsDirectory ? theme.accent : theme.border
+    border.width: fileIsDirectory ? 1 : 1
 
     RowLayout {
         id: row
         anchors.fill: parent
         anchors.margins: 10
         spacing: 10
+        z: 1
 
         Text {
-            text: fileGlyph(name, mime, isDirectory)
+            Layout.alignment: Qt.AlignVCenter
+            text: fileGlyph(fileName, fileMime, fileIsDirectory)
             font.family: "Segoe MDL2 Assets"
             font.pixelSize: 20
             color: theme.accent
@@ -41,47 +46,58 @@ Rectangle {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
+            Layout.minimumWidth: 40
             spacing: 2
-            Label {
-                text: name
-                color: theme.textPrimary
+            Text {
+                text: fileName.length > 0 ? fileName : qsTr("(без имени)")
+                color: fileName.length > 0 ? theme.textPrimary : theme.textMuted
                 font.pixelSize: 13
-                font.weight: isDirectory ? Font.DemiBold : Font.Normal
+                font.weight: fileIsDirectory ? Font.DemiBold : Font.Normal
                 elide: Text.ElideMiddle
                 Layout.fillWidth: true
             }
-            Label {
-                text: isDirectory ? sizeLabel : (sizeLabel + " · " + mime)
+            Text {
+                text: fileIsDirectory ? fileSizeLabel : (fileSizeLabel + " · " + fileMime)
                 color: theme.textMuted
                 font.pixelSize: 10
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+                visible: fileSizeLabel.length > 0
             }
         }
 
         RowLayout {
             id: actionsLayout
+            Layout.alignment: Qt.AlignVCenter
             spacing: 6
         }
     }
 
     MouseArea {
         id: mouseArea
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: Math.max(0, parent.width - actionsLayout.width - 16)
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: {
-            if (isDirectory && node)
-                node.browseIntoFolder(navPath)
-        }
-        onDoubleClicked: {
-            if (isDirectory && node)
-                node.browseIntoFolder(navPath)
+        cursorShape: fileIsDirectory ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                if (node && node.fileScopeGroupId.length > 0 && node.canManageFileRoles)
+                    root.accessContextMenuRequested()
+                return
+            }
+            if (fileIsDirectory && node)
+                node.browseIntoFolder(fileNavPath, fileRootPath)
         }
     }
 
-    function fileGlyph(fileName, mimeType, dir) {
+    function fileGlyph(entryName, mimeType, dir) {
         if (dir || mimeType === "application/x-nyx-directory")
             return "\uE8B7"
-        const n = fileName.toLowerCase()
+        const n = entryName.toLowerCase()
         if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".gif"))
             return "\uEB9F"
         if (n.endsWith(".mp4") || n.endsWith(".mkv") || n.endsWith(".avi"))

@@ -35,6 +35,7 @@ QtObject {
     readonly property color border: darkMode ? "#2b3847" : "#dadce0"
     readonly property color online: darkMode ? "#4caf50" : "#4caf50"
     readonly property color toastBg: darkMode ? "#323232" : "#323232"
+    readonly property color toastErrorBg: darkMode ? "#4a2c2c" : "#ffebee"
     readonly property color focusRing: darkMode ? "#6ab2f2" : "#3390ec"
     readonly property real fontScale: 1.0
     readonly property int radiusBubble: 16

@@ -70,35 +70,49 @@ ApplicationWindow {
         node: app
     }
 
-    RowLayout {
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
         visible: app.sessionUnlocked
 
-        ChatListPanel {
-            Layout.preferredWidth: root.width < 860 ? (root.width * 0.42) : 320
-            Layout.fillHeight: true
-            theme: appTheme
-            node: app
-            avatarColorFn: avatarColor
-            visible: root.width >= 720
-            onSettingsRequested: settingsDialog.open()
-        }
-
-        Rectangle {
-            Layout.preferredWidth: 1
-            Layout.fillHeight: true
-            color: appTheme.border
-            visible: root.width >= 720
-        }
-
-        MainContentPanel {
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            spacing: 0
+
+            ChatListPanel {
+                Layout.preferredWidth: root.width < 860 ? (root.width * 0.42) : 320
+                Layout.fillHeight: true
+                theme: appTheme
+                node: app
+                avatarColorFn: avatarColor
+                visible: root.width >= 720
+                onSettingsRequested: settingsDialog.open()
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 1
+                Layout.fillHeight: true
+                color: appTheme.border
+                visible: root.width >= 720
+            }
+
+            MainContentPanel {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                theme: appTheme
+                node: app
+                avatarColorFn: avatarColor
+                formatMsgTimeFn: formatMsgTime
+            }
+        }
+
+        StatusBar {
+            id: statusBar
+            Layout.fillWidth: true
             theme: appTheme
-            node: app
-            avatarColorFn: avatarColor
-            formatMsgTimeFn: formatMsgTime
+            text: app.statusText
+            busy: app.busy
         }
     }
 
@@ -123,24 +137,16 @@ ApplicationWindow {
         node: app
     }
 
-    Rectangle {
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 24
-        visible: app.toast.length > 0
-        radius: 20
-        color: appTheme.toastBg
-        Label {
-            anchors.centerIn: parent
-            anchors.margins: 16
-            text: app.toast
-            color: appTheme.textPrimary
-        }
-        Timer {
-            interval: 1800
-            running: parent.visible
-            onTriggered: app.clearToast()
-        }
+    ToastHost {
+        id: toastHost
+        anchors.right: parent.right
+        anchors.bottom: app.sessionUnlocked ? statusBar.top : parent.bottom
+        anchors.rightMargin: appTheme.spacing
+        anchors.bottomMargin: appTheme.spacing
+        theme: appTheme
+        message: app.toast
+        isError: app.toastIsError
+        clearFn: function() { app.clearToast() }
     }
 
     Connections {

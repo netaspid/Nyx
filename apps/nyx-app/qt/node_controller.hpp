@@ -1,7 +1,6 @@
 #pragma once
 
 #include "chat_list_model.hpp"
-#include "file_list_model.hpp"
 #include "lan_peer_model.hpp"
 #include "message_model.hpp"
 #include "../appcore/node_service.hpp"
@@ -57,13 +56,16 @@ class NodeController : public QObject {
   Q_PROPERTY(QString fileProgressLabel READ fileProgressLabel NOTIFY fileProgressChanged)
   Q_PROPERTY(int fileProgressPercent READ fileProgressPercent NOTIFY fileProgressChanged)
   Q_PROPERTY(bool fileProgressVisible READ fileProgressVisible NOTIFY fileProgressChanged)
-  Q_PROPERTY(FileListModel* localFiles READ localFiles CONSTANT)
-  Q_PROPERTY(FileListModel* remoteFiles READ remoteFiles CONSTANT)
+  Q_PROPERTY(QVariantList localFileList READ localFileList NOTIFY filesChanged)
+  Q_PROPERTY(QVariantList remoteFileList READ remoteFileList NOTIFY filesChanged)
   Q_PROPERTY(QVariantList fileShareRoots READ fileShareRoots NOTIFY filesChanged)
   Q_PROPERTY(QString fileSelectedShareRoot READ fileSelectedShareRoot WRITE setFileSelectedShareRoot
                  NOTIFY filesChanged)
   Q_PROPERTY(QString fileBrowsePath READ fileBrowsePath NOTIFY filesChanged)
   Q_PROPERTY(QVariantList fileBrowseCrumbs READ fileBrowseCrumbs NOTIFY filesChanged)
+  Q_PROPERTY(QString fileResourcesRoot READ fileResourcesRoot NOTIFY filesChanged)
+  Q_PROPERTY(QVariantList fileRemoteBrowseCrumbs READ fileRemoteBrowseCrumbs NOTIFY filesChanged)
+  Q_PROPERTY(int filesSection READ filesSection WRITE setFilesSection NOTIFY filesChanged)
   Q_PROPERTY(bool canFileList READ canFileList NOTIFY fileAccessChanged)
   Q_PROPERTY(bool canRemoveShareFolder READ canRemoveShareFolder NOTIFY fileAccessChanged)
   Q_PROPERTY(QString fileScopeGroupId READ fileScopeGroupId WRITE setFileScopeGroupId
@@ -76,7 +78,15 @@ class NodeController : public QObject {
   Q_PROPERTY(QString fileIndexProgressLabel READ fileIndexProgressLabel NOTIFY fileIndexProgressChanged)
   Q_PROPERTY(int mainViewMode READ mainViewMode WRITE setMainViewMode NOTIFY mainViewModeChanged)
   Q_PROPERTY(QVariantList fileRoleList READ fileRoleList NOTIFY fileAccessChanged)
+  Q_PROPERTY(QVariantList filePermissionPresetList READ filePermissionPresetList NOTIFY fileAccessChanged)
   Q_PROPERTY(QVariantList fileMemberAccess READ fileMemberAccess NOTIFY fileAccessChanged)
+  Q_PROPERTY(QVariantList filePathMemberAccess READ filePathMemberAccess NOTIFY fileAccessChanged)
+  Q_PROPERTY(QString filePathRoleId READ filePathRoleId NOTIFY fileAccessChanged)
+  Q_PROPERTY(QString filePathRoleInheritedFrom READ filePathRoleInheritedFrom NOTIFY fileAccessChanged)
+  Q_PROPERTY(QString fileAccessTargetLabel READ fileAccessTargetLabel NOTIFY fileAccessChanged)
+  Q_PROPERTY(QString fileAccessTargetRoot READ fileAccessTargetRoot NOTIFY fileAccessChanged)
+  Q_PROPERTY(QString fileAccessTargetRel READ fileAccessTargetRel NOTIFY fileAccessChanged)
+  Q_PROPERTY(bool toastIsError READ toastIsError NOTIFY toastChanged)
   Q_PROPERTY(bool canManageFileRoles READ canManageFileRoles NOTIFY fileAccessChanged)
   Q_PROPERTY(bool canFileUpload READ canFileUpload NOTIFY fileAccessChanged)
   Q_PROPERTY(bool canFileDownload READ canFileDownload NOTIFY fileAccessChanged)
@@ -136,12 +146,15 @@ class NodeController : public QObject {
   QString fileProgressLabel() const { return file_progress_label_; }
   int fileProgressPercent() const { return file_progress_percent_; }
   bool fileProgressVisible() const { return file_progress_visible_; }
-  FileListModel* localFiles() { return &local_files_; }
-  FileListModel* remoteFiles() { return &remote_files_; }
+  QVariantList localFileList() const { return local_file_list_; }
+  QVariantList remoteFileList() const { return remote_file_list_; }
   QVariantList fileShareRoots() const { return file_share_roots_; }
   QString fileSelectedShareRoot() const { return file_selected_share_root_; }
   QString fileBrowsePath() const { return file_browse_path_; }
   QVariantList fileBrowseCrumbs() const { return file_browse_crumbs_; }
+  QString fileResourcesRoot() const { return file_resources_root_; }
+  QVariantList fileRemoteBrowseCrumbs() const { return file_remote_browse_crumbs_; }
+  int filesSection() const { return files_section_; }
   bool canFileList() const;
   bool canRemoveShareFolder() const;
   QString fileScopeGroupId() const { return file_scope_group_id_; }
@@ -153,11 +166,23 @@ class NodeController : public QObject {
   QString fileIndexProgressLabel() const { return file_index_progress_label_; }
   int mainViewMode() const { return main_view_mode_; }
   QVariantList fileRoleList() const { return file_role_list_; }
+  QVariantList filePermissionPresetList() const { return file_permission_preset_list_; }
   QVariantList fileMemberAccess() const { return file_member_access_; }
+  QVariantList filePathMemberAccess() const { return file_path_member_access_; }
+  QString filePathRoleId() const { return file_path_role_id_; }
+  QString filePathRoleInheritedFrom() const { return file_path_role_inherited_from_; }
+  QString fileAccessTargetLabel() const { return file_access_target_label_; }
+  QString fileAccessTargetRoot() const { return file_access_target_root_; }
+  QString fileAccessTargetRel() const { return file_access_target_rel_; }
+  bool toastIsError() const { return toast_is_error_; }
   bool canManageFileRoles() const;
   bool canFileUpload() const;
   bool canFileDownload() const;
+  bool canFileDownloadAt(const QString& rootPath, const QString& relativePath) const;
+  Q_INVOKABLE bool canDownloadFolderAt(const QString& rootPath,
+                                       const QString& relativePath) const;
   bool canFileOpenRemote() const;
+  bool canFileOpenRemoteAt(const QString& rootPath, const QString& relativePath) const;
   bool canManageFileShares() const;
   bool canAddShareFolder() const;
   int permFileList() const { return static_cast<int>(nyx::FilePermission::List); }
@@ -202,25 +227,57 @@ class NodeController : public QObject {
   Q_INVOKABLE void showChatView();
   Q_INVOKABLE void openFilesDialog();
   Q_INVOKABLE QString pickFolder();
+  /** Диалог «Сохранить как»; suggestedFileName — исходное имя файла. */
+  Q_INVOKABLE QString pickSaveFile(const QString& suggestedFileName);
+  /** Выбор папки для сохранения нескольких файлов. */
+  Q_INVOKABLE QString pickSaveFolder();
   Q_INVOKABLE void refreshFileLists();
   Q_INVOKABLE void refreshFileAccess();
+  Q_INVOKABLE void refreshFieldRoster();
   Q_INVOKABLE bool hasFilePermission(int permissionBit) const;
   Q_INVOKABLE void setMemberFileRole(const QString& userIdHex, const QString& roleId);
   Q_INVOKABLE void createFileRole(const QString& name, int permissions);
   Q_INVOKABLE void updateFileRole(const QString& roleId, const QString& name, int permissions);
   Q_INVOKABLE void deleteFileRole(const QString& roleId);
-  Q_INVOKABLE void openRemoteFile(const QString& hashHex);
+  Q_INVOKABLE void openRemoteFile(const QString& hashHex, const QString& fileName = {},
+                                  const QString& rootPath = {},
+                                  const QString& relativePath = {});
   Q_INVOKABLE void addIndexedFolder(const QString& path);
   Q_INVOKABLE void setFileSelectedShareRoot(const QString& path);
-  Q_INVOKABLE void browseIntoFolder(const QString& navPath);
+  Q_INVOKABLE void setFilesSection(int section);
+  Q_INVOKABLE void browseIntoFolder(const QString& navPath, const QString& itemRootPath = {});
   Q_INVOKABLE void browseUp();
   Q_INVOKABLE void browseToCrumb(int index);
   Q_INVOKABLE void toggleFileRolePermission(const QString& roleId, int permissionBit);
+  Q_INVOKABLE bool canEditFileRolePermissions(const QString& roleId) const;
+  Q_INVOKABLE void syncFileAccessTargetFromBrowse();
+  Q_INVOKABLE void setFileAccessTarget(const QString& rootPath, const QString& relativePath);
+  Q_INVOKABLE void openAccessForPath(const QString& rootPath, const QString& relativePath,
+                                     const QString& label);
+  Q_INVOKABLE void setPathRole(const QString& roleId);
+  Q_INVOKABLE void clearPathRole();
+  Q_INVOKABLE void createPermissionPreset(const QString& name, int permissions);
+  Q_INVOKABLE void deletePermissionPreset(const QString& presetId);
+  Q_INVOKABLE void togglePermissionPresetBit(const QString& presetId, int permissionBit);
+  Q_INVOKABLE void applyPresetToRole(const QString& presetId, const QString& roleId);
+  Q_INVOKABLE void setPathMemberFileRole(const QString& userIdHex, const QString& roleId);
+  Q_INVOKABLE void setPathGrantDirect(const QString& userIdHex);
+  Q_INVOKABLE void clearPathMemberGrant(const QString& userIdHex);
+  Q_INVOKABLE void togglePathDirectPermission(const QString& userIdHex, int permissionBit);
   Q_INVOKABLE void addDroppedUrls(const QVariantList& urls);
   Q_INVOKABLE void removeIndexedFolder(const QString& path);
   Q_INVOKABLE void rescanIndexedFolder(const QString& path);
   Q_INVOKABLE void refreshRemoteFileList();
-  Q_INVOKABLE void downloadFile(const QString& hashHex);
+  Q_INVOKABLE void downloadFile(const QString& hashHex, const QString& fileName = {},
+                                const QString& rootPath = {},
+                                const QString& relativePath = {});
+  Q_INVOKABLE void downloadRemoteFolder(const QString& rootPath, const QString& relativePath);
+  Q_INVOKABLE bool canDownloadFileAt(const QString& rootPath, const QString& relativePath) const {
+    return canFileDownloadAt(rootPath, relativePath);
+  }
+  Q_INVOKABLE bool canOpenRemoteFileAt(const QString& rootPath, const QString& relativePath) const {
+    return canFileOpenRemoteAt(rootPath, relativePath);
+  }
   Q_INVOKABLE void sendFileByHash(const QString& hashHex);
   Q_INVOKABLE void openConversation(const QString& key, int kind, const QString& refId,
                                     const QString& title, const QString& lastSeen);
@@ -275,7 +332,7 @@ class NodeController : public QObject {
  private:
   void wireCallbacks();
   void setStatus(const QString& text);
-  void showToast(const QString& text);
+  void showToast(const QString& text, bool isError = false);
   QString normalizeInviteHex(const QString& hex) const;
   void enterChat(const QString& peerName, const QString& connectionLabel = {},
                  int kind = 0, const QString& refId = {});
@@ -293,6 +350,8 @@ class NodeController : public QObject {
   void maybeAutoStartOwnedHub();
   void syncFileScopeLabel();
   void syncFileBrowseCrumbs();
+  void syncRemoteBrowseCrumbs();
+  std::vector<nyx::FileEntry> remoteRootsCatalog(const std::vector<nyx::FileEntry>& all) const;
   void resetFilesUiState();
   void resetFileBrowse();
   void syncFileScopeFromSavedOrRoots();
@@ -300,19 +359,24 @@ class NodeController : public QObject {
   bool shareRootPathsEqual(const QString& a, const QString& b) const;
   QString scopeLabelForGroupId(const QString& groupIdHex) const;
   bool canRemoveShareRoot(const nyx::ShareRoot& root) const;
+  bool isFileScopeOwner() const;
+  void refreshFilePathMemberAccess();
+  void refreshPathRoleState();
+  void updateFileAccessTargetLabel();
   void refreshFileShareRoots();
   void refreshLocalFileModel();
   void refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries = {});
   void refreshFileAccessLists();
   uint32_t currentFilePermissions() const;
+  uint32_t filePermissionsAt(const QString& rootPath, const QString& relativePath) const;
+  QString joinFileRelPath(const QString& browseRel, const QString& entryRel) const;
+  QString resolveAccessRootPath(const QString& rootPath) const;
   QVariantList entriesToVariant(const std::vector<nyx::FileEntry>& entries, bool remote) const;
 
   nyx_app::NodeService service_;
   MessageModel messages_;
   ChatListModel chat_list_;
   LanPeerModel lan_peers_;
-  FileListModel local_files_;
-  FileListModel remote_files_;
   QTimer lan_discovery_timer_;
 
   QString profile_nickname_;
@@ -334,6 +398,7 @@ class NodeController : public QObject {
   QString network_status_;
   QString profile_path_;
   QString toast_;
+  bool toast_is_error_ = false;
   bool in_chat_ = false;
   bool needs_onboarding_ = false;
   bool session_unlocked_ = false;
@@ -356,12 +421,25 @@ class NodeController : public QObject {
   QString file_selected_share_root_;
   QString file_browse_path_;
   QVariantList file_browse_crumbs_;
+  QString file_resources_root_;
+  QString file_remote_browse_path_;
+  QVariantList file_remote_browse_crumbs_;
+  QVariantList local_file_list_;
+  QVariantList remote_file_list_;
+  int files_section_ = 0;
   bool file_index_progress_visible_ = false;
   int file_index_progress_percent_ = 0;
   QString file_index_progress_label_;
   int file_index_files_scanned_ = 0;
   QVariantList file_role_list_;
+  QVariantList file_permission_preset_list_;
   QVariantList file_member_access_;
+  QVariantList file_path_member_access_;
+  QString file_path_role_id_;
+  QString file_path_role_inherited_from_;
+  QString file_access_target_root_;
+  QString file_access_target_rel_;
+  QString file_access_target_label_;
   QSystemTrayIcon* tray_icon_ = nullptr;
   QMenu* tray_menu_ = nullptr;
 };

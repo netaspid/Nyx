@@ -7,6 +7,43 @@ ComboBox {
 
     implicitHeight: 36
 
+    palette.button: theme.inputBg
+    palette.buttonText: theme.textPrimary
+    palette.highlight: theme.btnSecondaryHover
+    palette.highlightedText: theme.textPrimary
+    palette.base: theme.bgSidebar
+    palette.text: theme.textPrimary
+    palette.window: theme.bgSidebar
+    palette.windowText: theme.textPrimary
+
+    /** Строка модели по индексу (ListModel или QVariantList/массив). */
+    function rowAt(index) {
+        if (!model || index < 0)
+            return null
+        if (typeof model.get === "function")
+            return model.get(index)
+        if (model.length !== undefined)
+            return model[index]
+        return null
+    }
+
+    /** Подпись пункта по индексу и textRole. */
+    function itemTextAt(index) {
+        const row = rowAt(index)
+        if (!row)
+            return ""
+        if (textRole && textRole.length > 0 && typeof row === "object")
+            return row[textRole] || ""
+        return String(row)
+    }
+
+    /** Текст выбранного пункта; displayText не работает с QVariantList из C++. */
+    readonly property string labelText: {
+        if (displayText.length > 0)
+            return displayText
+        return itemTextAt(currentIndex)
+    }
+
     background: Rectangle {
         radius: theme.radiusInput
         color: theme.inputBg
@@ -17,7 +54,7 @@ ComboBox {
     contentItem: Text {
         leftPadding: 10
         rightPadding: ctrl.indicator.width + 8
-        text: ctrl.displayText
+        text: ctrl.labelText
         color: theme.textPrimary
         font.pixelSize: 13
         verticalAlignment: Text.AlignVCenter
@@ -38,6 +75,11 @@ ComboBox {
         width: ctrl.width
         padding: 4
 
+        palette.window: theme.bgSidebar
+        palette.text: theme.textPrimary
+        palette.highlight: theme.btnSecondaryHover
+        palette.highlightedText: theme.textPrimary
+
         background: Rectangle {
             radius: theme.radiusBtn
             color: theme.bgSidebar
@@ -49,18 +91,23 @@ ComboBox {
             implicitHeight: Math.min(contentHeight, 240)
             model: ctrl.delegateModel
             delegate: ItemDelegate {
-                width: ctrl.width - 8
-                text: model[ctrl.textRole]
+                id: del
+                width: ListView.view.width - 8
+                height: 36
+                leftPadding: 8
+                rightPadding: 8
                 highlighted: ctrl.highlightedIndex === index
-                padding: 8
+
+                readonly property string itemLabel: ctrl.itemTextAt(index)
 
                 background: Rectangle {
                     radius: theme.radiusBtn - 2
-                    color: parent.highlighted ? theme.btnSecondaryHover : "transparent"
+                    color: del.highlighted ? theme.btnSecondaryHover
+                         : (del.hovered ? theme.btnSecondary : "transparent")
                 }
 
                 contentItem: Text {
-                    text: parent.text
+                    text: del.itemLabel
                     color: theme.textPrimary
                     font.pixelSize: 13
                     verticalAlignment: Text.AlignVCenter

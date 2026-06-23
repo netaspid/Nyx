@@ -272,10 +272,13 @@ Drawer {
 
         Label {
             Layout.fillWidth: true
-            text: node.statusText
+            text: node.statusText.length > 0
+                  ? qsTr("Подробности — в строке статуса внизу окна.")
+                  : ""
             wrapMode: Text.WordWrap
-            color: theme.accent
-            font.pixelSize: 11
+            color: theme.textMuted
+            font.pixelSize: 10
+            visible: text.length > 0
         }
 
         Item { Layout.fillHeight: true }

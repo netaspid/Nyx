@@ -23,13 +23,34 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QSystemTrayIcon>
 #include <QUrl>
 #include <QVariantMap>
 
 #include <cstring>
+#include <map>
 
 namespace {
+
+QString formatFileSizeLabel(quint64 bytes, bool is_directory) {
+  if (is_directory) {
+    if (bytes == 0) return QStringLiteral("пустая папка");
+    if (bytes == 1) return QStringLiteral("1 файл");
+    return QStringLiteral("%1 файлов").arg(bytes);
+  }
+  if (bytes < 1024) return QString::number(bytes) + QStringLiteral(" B");
+  if (bytes < 1024 * 1024) return QString::number(bytes / 1024.0, 'f', 1) + QStringLiteral(" KB");
+  if (bytes < 1024ULL * 1024 * 1024) {
+    return QString::number(bytes / (1024.0 * 1024.0), 'f', 1) + QStringLiteral(" MB");
+  }
+  return QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 1) + QStringLiteral(" GB");
+}
+
+QString utf8q(const std::string& s) {
+  if (s.empty()) return {};
+  return QString::fromUtf8(s.data(), static_cast<int>(s.size()));
+}
 
 QIcon makeTrayIcon() {
   QIcon icon(QStringLiteral(":/icons/nyx-mark.svg"));
@@ -99,13 +120,14 @@ void NodeController::beginMainSession() {
   resetFileBrowse();
 
   refreshFileLists();
-  refreshFileAccessLists();
 
   service_.load_network_config();
   syncNetworkSettingsFromService();
   refreshProfile();
   refreshChatList();
   refreshGroupList();
+  refreshFileAccessLists();
+
   lan_discovery_timer_.setInterval(5000);
   connect(&lan_discovery_timer_, &QTimer::timeout, this, &NodeController::tickLanDiscovery);
   lan_discovery_timer_.start();
@@ -275,6 +297,7 @@ void NodeController::setMainViewMode(int mode) {
         !active_chat_ref_id_.isEmpty()) {
       setFileScopeGroupId(active_chat_ref_id_);
     }
+    refreshGroupList();
     refreshFileLists();
     refreshFileAccessLists();
     if (fileExchangeReady()) refreshRemoteFileList();
@@ -282,8 +305,40 @@ void NodeController::setMainViewMode(int mode) {
   emit mainViewModeChanged();
 }
 
+QString NodeController::joinFileRelPath(const QString& browseRel,
+                                        const QString& entryRel) const {
+  QString rel = entryRel.trimmed();
+  rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
+  const QString browse = browseRel.trimmed();
+  if (browse.isEmpty()) return rel;
+  if (rel.isEmpty()) return browse;
+  if (rel.startsWith(browse + QLatin1Char('/'))) return rel;
+  return browse + QLatin1Char('/') + rel;
+}
+
+uint32_t NodeController::filePermissionsAt(const QString& rootPath,
+                                           const QString& relativePath) const {
+  if (file_scope_group_id_.isEmpty()) return nyx::kFilePermissionAll;
+  if (isFileScopeOwner()) return nyx::kFilePermissionAll;
+  const QString root = resolveAccessRootPath(rootPath);
+  return service_.my_file_permissions(file_scope_group_id_.toStdString(),
+                                      root.toStdString(), relativePath.toStdString());
+}
+
 uint32_t NodeController::currentFilePermissions() const {
-  return service_.my_file_permissions(file_scope_group_id_.toStdString(), {});
+  if (file_scope_group_id_.isEmpty()) return nyx::kFilePermissionAll;
+  if (isFileScopeOwner()) return nyx::kFilePermissionAll;
+
+  QString root;
+  QString rel;
+  if (files_section_ == 1) {
+    root = file_resources_root_;
+    rel = file_remote_browse_path_;
+  } else if (files_section_ == 0) {
+    root = file_selected_share_root_;
+    rel = file_browse_path_;
+  }
+  return filePermissionsAt(root, rel);
 }
 
 bool NodeController::canFileList() const {
@@ -296,7 +351,20 @@ bool NodeController::hasFilePermission(int permissionBit) const {
                                               static_cast<nyx::FilePermission>(permissionBit));
 }
 
+bool NodeController::isFileScopeOwner() const {
+  if (file_scope_group_id_.isEmpty()) return false;
+  const QString scope = file_scope_group_id_.trimmed().toLower();
+  for (const QVariant& v : group_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("groupId")).toString().trimmed().toLower() != scope) continue;
+    return m.value(QStringLiteral("isOwner")).toBool();
+  }
+  return false;
+}
+
 bool NodeController::canManageFileRoles() const {
+  if (file_scope_group_id_.isEmpty()) return false;
+  if (isFileScopeOwner()) return true;
   return hasFilePermission(static_cast<int>(nyx::FilePermission::ManageRoles));
 }
 
@@ -308,8 +376,32 @@ bool NodeController::canFileDownload() const {
   return hasFilePermission(static_cast<int>(nyx::FilePermission::Download));
 }
 
+bool NodeController::canFileDownloadAt(const QString& rootPath, const QString& relativePath) const {
+  if (file_scope_group_id_.isEmpty()) return true;
+  if (isFileScopeOwner()) return true;
+  return nyx::FileAccessStore::has_permission(
+      filePermissionsAt(rootPath, relativePath), nyx::FilePermission::Download);
+}
+
+bool NodeController::canDownloadFolderAt(const QString& rootPath,
+                                         const QString& relativePath) const {
+  if (canFileDownloadAt(rootPath, relativePath)) return true;
+  if (files_section_ == 1 && !file_remote_browse_path_.isEmpty()) {
+    return canFileDownloadAt(rootPath, file_remote_browse_path_);
+  }
+  return false;
+}
+
 bool NodeController::canFileOpenRemote() const {
   return hasFilePermission(static_cast<int>(nyx::FilePermission::OpenRemote));
+}
+
+bool NodeController::canFileOpenRemoteAt(const QString& rootPath,
+                                         const QString& relativePath) const {
+  if (file_scope_group_id_.isEmpty()) return true;
+  if (isFileScopeOwner()) return true;
+  return nyx::FileAccessStore::has_permission(
+      filePermissionsAt(rootPath, relativePath), nyx::FilePermission::OpenRemote);
 }
 
 bool NodeController::canManageFileShares() const {
@@ -335,13 +427,22 @@ bool NodeController::canAddShareFolder() const {
 
 void NodeController::refreshFileAccessLists() {
   file_role_list_.clear();
+  file_permission_preset_list_.clear();
   file_member_access_.clear();
   if (file_scope_group_id_.isEmpty()) {
+    refreshPathRoleState();
     emit fileAccessChanged();
     return;
   }
 
   const auto policy = service_.file_access_policy(file_scope_group_id_.toStdString());
+  for (const auto& preset : policy.permission_presets) {
+    QVariantMap pm;
+    pm.insert(QStringLiteral("presetId"), QString::fromStdString(preset.id));
+    pm.insert(QStringLiteral("name"), QString::fromStdString(preset.name));
+    pm.insert(QStringLiteral("permissions"), static_cast<int>(preset.permissions));
+    file_permission_preset_list_.append(pm);
+  }
   for (const auto& role : policy.roles) {
     QVariantMap rm;
     rm.insert(QStringLiteral("roleId"), QString::fromStdString(role.id));
@@ -352,13 +453,13 @@ void NodeController::refreshFileAccessLists() {
   }
 
   const QString scope = file_scope_group_id_.trimmed().toLower();
-  for (const QVariant& gv : group_list_) {
-    const QVariantMap gm = gv.toMap();
-    if (gm.value(QStringLiteral("groupId")).toString() != scope) continue;
-    const QVariantList members = gm.value(QStringLiteral("members")).toList();
-    for (const QVariant& mv : members) {
-      const QVariantMap mm = mv.toMap();
-      const QString uid = mm.value(QStringLiteral("userId")).toString();
+  for (const auto& g : service_.list_groups()) {
+    const QString gid =
+        QString::fromStdString(nyx::GroupStore::group_id_hex(g.id)).trimmed().toLower();
+    if (gid != scope) continue;
+    for (const auto& member : g.members) {
+      const QString uid =
+          QString::fromStdString(nyx::to_hex(member.user_id.data(), member.user_id.size()));
       QString role_id = QString::fromStdString(nyx::FileAccessStore::role_id_viewer());
       for (const auto& a : policy.assignments) {
         const QString auid =
@@ -377,9 +478,10 @@ void NodeController::refreshFileAccessLists() {
       }
       QVariantMap row;
       row.insert(QStringLiteral("userId"), uid);
-      row.insert(QStringLiteral("nickname"), mm.value(QStringLiteral("nickname")));
-      row.insert(QStringLiteral("idShort"), mm.value(QStringLiteral("idShort")));
-      row.insert(QStringLiteral("isOwner"), mm.value(QStringLiteral("isOwner")));
+      row.insert(QStringLiteral("nickname"), QString::fromStdString(member.nickname));
+      row.insert(QStringLiteral("idShort"),
+                 QString::fromStdString(nyx::short_user_id(member.user_id)));
+      row.insert(QStringLiteral("isOwner"), member.role == nyx::GroupRole::Owner);
       row.insert(QStringLiteral("roleId"), role_id);
       row.insert(QStringLiteral("roleName"), role_name);
       file_member_access_.append(row);
@@ -387,10 +489,348 @@ void NodeController::refreshFileAccessLists() {
     break;
   }
 
+  refreshFilePathMemberAccess();
+  refreshPathRoleState();
   emit fileAccessChanged();
 }
 
+void NodeController::refreshFilePathMemberAccess() {
+  file_path_member_access_.clear();
+  if (file_scope_group_id_.isEmpty() || file_access_target_root_.isEmpty()) return;
+
+  const auto policy = service_.file_access_policy(file_scope_group_id_.toStdString());
+  const std::string root_norm =
+      nyx::normalize_grant_root(file_access_target_root_.toStdString());
+  const std::string rel_posix = file_access_target_rel_.toStdString();
+  auto rel_posix_norm = rel_posix;
+  for (char& c : rel_posix_norm) {
+    if (c == '\\') c = '/';
+  }
+
+  auto find_grant = [&](const std::string& rel, const nyx::UserId& user) -> const nyx::FileRootGrant* {
+    for (const auto& g : policy.root_grants) {
+      if (nyx::normalize_grant_root(g.root_path) != root_norm) continue;
+      std::string gr = g.relative_path;
+      for (char& c : gr) {
+        if (c == '\\') c = '/';
+      }
+      if (gr != rel) continue;
+      if (g.user_id != user) continue;
+      return &g;
+    }
+    return nullptr;
+  };
+
+  for (const QVariant& mv : file_member_access_) {
+    const QVariantMap mm = mv.toMap();
+    if (mm.value(QStringLiteral("isOwner")).toBool()) continue;
+    const QString uid = mm.value(QStringLiteral("userId")).toString();
+    nyx::UserId user{};
+    nyx::ByteBuffer buf;
+    if (!nyx::from_hex(uid.toStdString(), buf) || buf.size() != user.size()) continue;
+    std::memcpy(user.data(), buf.data(), buf.size());
+
+    QString grantMode = QStringLiteral("inherit");
+    QString role_id;
+    int direct_perms = 0;
+    QString inherited_from;
+
+    if (const nyx::FileRootGrant* exact = find_grant(rel_posix_norm, user)) {
+      if (exact->direct_only) {
+        grantMode = QStringLiteral("direct");
+        direct_perms = static_cast<int>(exact->direct_permissions);
+      } else if (!exact->role_id.empty()) {
+        grantMode = QStringLiteral("role");
+        role_id = utf8q(exact->role_id);
+      }
+    }
+
+    std::string walk = rel_posix_norm;
+    while (grantMode == QStringLiteral("inherit")) {
+      const std::size_t slash = walk.rfind('/');
+      walk = slash == std::string::npos ? std::string{} : walk.substr(0, slash);
+      if (const nyx::FileRootGrant* anc = find_grant(walk, user)) {
+        if (!anc->direct_only && !anc->role_id.empty()) {
+          grantMode = QStringLiteral("inherited");
+          role_id = utf8q(anc->role_id);
+          inherited_from = walk.empty() ? QStringLiteral("корень") : utf8q(walk);
+          break;
+        }
+      }
+      if (walk.empty()) break;
+    }
+
+    QVariantMap row = mm;
+    row.insert(QStringLiteral("grantMode"), grantMode);
+    row.insert(QStringLiteral("roleId"), role_id);
+    row.insert(QStringLiteral("directPermissions"), direct_perms);
+    row.insert(QStringLiteral("inheritedFrom"), inherited_from);
+    file_path_member_access_.append(row);
+  }
+}
+
+void NodeController::refreshPathRoleState() {
+  file_path_role_id_.clear();
+  file_path_role_inherited_from_.clear();
+  if (file_scope_group_id_.isEmpty() || file_access_target_root_.isEmpty()) return;
+
+  const auto policy = service_.file_access_policy(file_scope_group_id_.toStdString());
+  const std::string root_norm =
+      nyx::normalize_grant_root(file_access_target_root_.toStdString());
+  std::string rel_posix_norm = file_access_target_rel_.toStdString();
+  for (char& c : rel_posix_norm) {
+    if (c == '\\') c = '/';
+  }
+
+  const nyx::UserId wildcard = nyx::FileAccessStore::path_role_user();
+  auto find_wildcard = [&](const std::string& rel) -> const nyx::FileRootGrant* {
+    for (const auto& g : policy.root_grants) {
+      if (nyx::normalize_grant_root(g.root_path) != root_norm) continue;
+      std::string gr = g.relative_path;
+      for (char& c : gr) {
+        if (c == '\\') c = '/';
+      }
+      if (gr != rel) continue;
+      if (g.user_id != wildcard) continue;
+      return &g;
+    }
+    return nullptr;
+  };
+
+  if (const nyx::FileRootGrant* exact = find_wildcard(rel_posix_norm)) {
+    if (!exact->direct_only && !exact->role_id.empty()) {
+      file_path_role_id_ = utf8q(exact->role_id);
+      return;
+    }
+  }
+
+  std::string walk = rel_posix_norm;
+  while (true) {
+    const std::size_t slash = walk.rfind('/');
+    walk = slash == std::string::npos ? std::string{} : walk.substr(0, slash);
+    if (const nyx::FileRootGrant* anc = find_wildcard(walk)) {
+      if (!anc->direct_only && !anc->role_id.empty()) {
+        file_path_role_id_ = utf8q(anc->role_id);
+        file_path_role_inherited_from_ =
+            walk.empty() ? QStringLiteral("корень") : utf8q(walk);
+        return;
+      }
+    }
+    if (walk.empty()) break;
+  }
+}
+
+void NodeController::updateFileAccessTargetLabel() {
+  if (file_access_target_root_.isEmpty()) {
+    file_access_target_label_.clear();
+    return;
+  }
+  const QFileInfo rootInfo(file_access_target_root_);
+  QString label = rootInfo.fileName().isEmpty() ? file_access_target_root_ : rootInfo.fileName();
+  if (!file_access_target_rel_.isEmpty()) {
+    label += QStringLiteral(" / ") + file_access_target_rel_;
+  }
+  file_access_target_label_ = label;
+}
+
+void NodeController::syncFileAccessTargetFromBrowse() {
+  file_access_target_root_ = file_selected_share_root_;
+  file_access_target_rel_ = file_browse_path_;
+  updateFileAccessTargetLabel();
+  refreshFilePathMemberAccess();
+}
+
+void NodeController::setFileAccessTarget(const QString& rootPath, const QString& relativePath) {
+  file_access_target_root_ = resolveAccessRootPath(rootPath);
+  file_access_target_rel_ = relativePath.trimmed();
+  file_access_target_rel_.replace(QLatin1Char('\\'), QLatin1Char('/'));
+  updateFileAccessTargetLabel();
+  refreshFilePathMemberAccess();
+  emit fileAccessChanged();
+}
+
+QString NodeController::resolveAccessRootPath(const QString& rootPath) const {
+  QString p = rootPath.trimmed();
+  if (p.startsWith(QStringLiteral("file:///"))) p = QUrl(p).toLocalFile();
+  if (p.isEmpty()) return p;
+  for (const auto& r : service_.all_share_roots()) {
+    if (shareRootPathsEqual(p, QString::fromStdString(r.path))) {
+      return QString::fromStdString(r.path);
+    }
+  }
+  return normalizeShareRootPath(p);
+}
+
+void NodeController::openAccessForPath(const QString& rootPath, const QString& relativePath,
+                                       const QString& label) {
+  setFileAccessTarget(rootPath, relativePath);
+  if (!label.trimmed().isEmpty()) file_access_target_label_ = label.trimmed();
+  emit fileAccessChanged();
+}
+
+bool NodeController::canEditFileRolePermissions(const QString& roleId) const {
+  return roleId.trimmed().toLower() !=
+         QString::fromStdString(nyx::FileAccessStore::role_id_owner());
+}
+
+void NodeController::setPathMemberFileRole(const QString& userIdHex, const QString& roleId) {
+  if (!canManageFileRoles()) {
+    showToast(QStringLiteral("Нет права управлять ролями"), true);
+    return;
+  }
+  if (file_access_target_root_.isEmpty()) {
+    showToast(QStringLiteral("Выберите объект для назначения прав"), true);
+    return;
+  }
+  if (!service_.set_path_member_file_role(
+          file_scope_group_id_.toStdString(), file_access_target_root_.toStdString(),
+          file_access_target_rel_.toStdString(), userIdHex.toStdString(),
+          roleId.toStdString())) {
+    showToast(QStringLiteral("Не удалось назначить роль"), true);
+    return;
+  }
+  refreshFileAccessLists();
+  showToast(QStringLiteral("Права на объект обновлены"));
+}
+
+void NodeController::setPathGrantDirect(const QString& userIdHex) {
+  if (!canManageFileRoles()) return;
+  const int perms = static_cast<int>(nyx::FilePermission::List) |
+                    static_cast<int>(nyx::FilePermission::Download);
+  if (!service_.set_path_direct_file_permissions(
+          file_scope_group_id_.toStdString(), file_access_target_root_.toStdString(),
+          file_access_target_rel_.toStdString(), userIdHex.toStdString(),
+          static_cast<uint32_t>(perms))) {
+    showToast(QStringLiteral("Не удалось задать прямые права"), true);
+    return;
+  }
+  refreshFileAccessLists();
+}
+
+void NodeController::clearPathMemberGrant(const QString& userIdHex) {
+  if (!canManageFileRoles()) return;
+  service_.set_path_member_file_role(file_scope_group_id_.toStdString(),
+                                     file_access_target_root_.toStdString(),
+                                     file_access_target_rel_.toStdString(),
+                                     userIdHex.toStdString(), {});
+  refreshFileAccessLists();
+}
+
+void NodeController::setPathRole(const QString& roleId) {
+  if (!canManageFileRoles()) {
+    showToast(QStringLiteral("Нет права управлять ролями"), true);
+    return;
+  }
+  if (file_access_target_root_.isEmpty()) {
+    showToast(QStringLiteral("Выберите объект"), true);
+    return;
+  }
+  if (!service_.set_path_role(file_scope_group_id_.toStdString(),
+                              file_access_target_root_.toStdString(),
+                              file_access_target_rel_.toStdString(), roleId.toStdString())) {
+    showToast(QStringLiteral("Не удалось назначить роль"), true);
+    return;
+  }
+  refreshFileAccessLists();
+  showToast(QStringLiteral("Роль на объект обновлена"));
+}
+
+void NodeController::clearPathRole() { setPathRole({}); }
+
+void NodeController::createPermissionPreset(const QString& name, int permissions) {
+  if (!canManageFileRoles()) return;
+  const QString trimmed = name.trimmed();
+  if (trimmed.isEmpty()) return;
+  nyx::FilePermissionPreset preset;
+  uint8_t id_bytes[4];
+  nyx::random_bytes(id_bytes, sizeof(id_bytes));
+  preset.id = "preset_" + nyx::to_hex(id_bytes, sizeof(id_bytes));
+  preset.name = trimmed.toStdString();
+  preset.permissions = static_cast<uint32_t>(permissions);
+  if (!service_.upsert_permission_preset(file_scope_group_id_.toStdString(), preset)) {
+    showToast(QStringLiteral("Не удалось создать пресет"), true);
+    return;
+  }
+  refreshFileAccessLists();
+  showToast(QStringLiteral("Пресет прав создан"));
+}
+
+void NodeController::deletePermissionPreset(const QString& presetId) {
+  if (!canManageFileRoles()) return;
+  if (!service_.remove_permission_preset(file_scope_group_id_.toStdString(),
+                                         presetId.toStdString())) {
+    showToast(QStringLiteral("Не удалось удалить пресет"), true);
+    return;
+  }
+  refreshFileAccessLists();
+}
+
+void NodeController::togglePermissionPresetBit(const QString& presetId, int permissionBit) {
+  if (!canManageFileRoles()) return;
+  for (const QVariant& pv : file_permission_preset_list_) {
+    const QVariantMap pm = pv.toMap();
+    if (pm.value(QStringLiteral("presetId")).toString() != presetId) continue;
+    int perms = pm.value(QStringLiteral("permissions")).toInt();
+    perms ^= permissionBit;
+    nyx::FilePermissionPreset preset;
+    preset.id = presetId.toStdString();
+    preset.name = pm.value(QStringLiteral("name")).toString().toStdString();
+    preset.permissions = static_cast<uint32_t>(perms);
+    service_.upsert_permission_preset(file_scope_group_id_.toStdString(), preset);
+    refreshFileAccessLists();
+    return;
+  }
+}
+
+void NodeController::applyPresetToRole(const QString& presetId, const QString& roleId) {
+  if (!canManageFileRoles() || !canEditFileRolePermissions(roleId)) return;
+  int perms = 0;
+  QString preset_name;
+  for (const QVariant& pv : file_permission_preset_list_) {
+    const QVariantMap pm = pv.toMap();
+    if (pm.value(QStringLiteral("presetId")).toString() != presetId) continue;
+    perms = pm.value(QStringLiteral("permissions")).toInt();
+    preset_name = pm.value(QStringLiteral("name")).toString();
+    break;
+  }
+  for (const QVariant& rv : file_role_list_) {
+    const QVariantMap rm = rv.toMap();
+    if (rm.value(QStringLiteral("roleId")).toString() != roleId) continue;
+    updateFileRole(roleId, rm.value(QStringLiteral("name")).toString(), perms);
+    showToast(QStringLiteral("К роли применён пресет «") + preset_name + QStringLiteral("»"));
+    return;
+  }
+}
+
+void NodeController::togglePathDirectPermission(const QString& userIdHex, int permissionBit) {
+  if (!canManageFileRoles()) return;
+  int perms = static_cast<int>(nyx::FilePermission::List) |
+              static_cast<int>(nyx::FilePermission::Download);
+  for (const QVariant& pv : file_path_member_access_) {
+    const QVariantMap pm = pv.toMap();
+    if (pm.value(QStringLiteral("userId")).toString() != userIdHex) continue;
+    if (pm.value(QStringLiteral("grantMode")).toString() == QStringLiteral("direct")) {
+      perms = pm.value(QStringLiteral("directPermissions")).toInt();
+    }
+    break;
+  }
+  perms ^= permissionBit;
+  if (!service_.set_path_direct_file_permissions(
+          file_scope_group_id_.toStdString(), file_access_target_root_.toStdString(),
+          file_access_target_rel_.toStdString(), userIdHex.toStdString(),
+          static_cast<uint32_t>(perms))) {
+    showToast(QStringLiteral("Не удалось обновить права"), true);
+    return;
+  }
+  refreshFileAccessLists();
+}
+
 void NodeController::refreshFileAccess() { refreshFileAccessLists(); }
+
+void NodeController::refreshFieldRoster() {
+  refreshGroupList();
+  refreshFileAccessLists();
+}
 
 void NodeController::setMemberFileRole(const QString& userIdHex, const QString& roleId) {
   if (!canManageFileRoles()) {
@@ -437,6 +877,8 @@ void NodeController::updateFileRole(const QString& roleId, const QString& name, 
     return;
   }
   refreshFileAccessLists();
+  if (files_section_ == 1) refreshRemoteFileModel({});
+  emit filesChanged();
 }
 
 void NodeController::deleteFileRole(const QString& roleId) {
@@ -453,17 +895,16 @@ void NodeController::deleteFileRole(const QString& roleId) {
 
 void NodeController::toggleFileRolePermission(const QString& roleId, int permissionBit) {
   if (!canManageFileRoles()) {
-    showToast(QStringLiteral("Нет права управлять ролями"));
+    showToast(QStringLiteral("Нет права управлять ролями"), true);
+    return;
+  }
+  if (!canEditFileRolePermissions(roleId)) {
+    showToast(QStringLiteral("Роль владельца нельзя менять"), true);
     return;
   }
   for (const QVariant& rv : file_role_list_) {
     const QVariantMap rm = rv.toMap();
     if (rm.value(QStringLiteral("roleId")).toString() != roleId) continue;
-    if (rm.value(QStringLiteral("builtin")).toBool() &&
-        roleId == QString::fromStdString(nyx::FileAccessStore::role_id_owner())) {
-      showToast(QStringLiteral("Роль владельца нельзя менять"));
-      return;
-    }
     int perms = rm.value(QStringLiteral("permissions")).toInt();
     perms ^= permissionBit;
     updateFileRole(roleId, rm.value(QStringLiteral("name")).toString(), perms);
@@ -471,16 +912,20 @@ void NodeController::toggleFileRolePermission(const QString& roleId, int permiss
   }
 }
 
-void NodeController::openRemoteFile(const QString& hashHex) {
-  if (!canFileOpenRemote()) {
+void NodeController::openRemoteFile(const QString& hashHex, const QString& fileName,
+                                    const QString& rootPath, const QString& relativePath) {
+  if (!canFileOpenRemoteAt(rootPath, relativePath)) {
     showToast(QStringLiteral("Нет права открывать файлы по сети"));
     return;
   }
-  if (!service_.download_file(hashHex.trimmed().toStdString())) {
+  const QString suggested = fileName.trimmed().isEmpty() ? QStringLiteral("download") : fileName.trimmed();
+  const QString dest = pickSaveFile(suggested);
+  if (dest.isEmpty()) return;
+  if (!service_.download_file(hashHex.trimmed().toStdString(), dest.toStdString())) {
     showToast(QStringLiteral("Не удалось запросить файл"));
     return;
   }
-  showToast(QStringLiteral("Скачивание для локального открытия…"));
+  showToast(QStringLiteral("Запрос файла отправлен…"));
 }
 
 void NodeController::openFilesView() { setMainViewMode(1); }
@@ -518,16 +963,40 @@ QString NodeController::fileExchangeHint() const {
 QVariantList NodeController::entriesToVariant(const std::vector<nyx::FileEntry>& entries,
                                               bool remote) const {
   QVariantList list;
+  const QString browse_rel = remote ? file_remote_browse_path_ : file_browse_path_;
   for (const auto& e : entries) {
     QVariantMap m;
-    m.insert(QStringLiteral("name"), QString::fromStdString(e.leaf_name()));
-    m.insert(QStringLiteral("navPath"), QString::fromStdString(e.relative_path));
-    m.insert(QStringLiteral("rootPath"), QString::fromStdString(e.root_path));
-    m.insert(QStringLiteral("hash"), QString::fromStdString(nyx::hash_hex(e.hash)));
-    m.insert(QStringLiteral("size"), static_cast<qulonglong>(e.size));
-    m.insert(QStringLiteral("mime"), QString::fromStdString(e.mime));
+    const std::string leaf = e.leaf_name();
+    const std::string rel = e.relative_path;
+    QString display = utf8q(leaf);
+    if (display.isEmpty() && !rel.empty()) display = utf8q(rel);
+    const bool is_dir = e.is_directory();
+    QString full_rel;
+    if (is_dir) {
+      full_rel = utf8q(rel);
+      full_rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    } else {
+      full_rel = joinFileRelPath(browse_rel, utf8q(rel));
+    }
+    const QString root = utf8q(e.root_path);
+    m.insert(QStringLiteral("name"), display);
+    m.insert(QStringLiteral("navPath"), utf8q(rel));
+    m.insert(QStringLiteral("fullRelPath"), full_rel);
+    m.insert(QStringLiteral("rootPath"), root);
+    m.insert(QStringLiteral("hash"), utf8q(nyx::hash_hex(e.hash)));
+    const auto size = static_cast<qulonglong>(e.size);
+    m.insert(QStringLiteral("size"), size);
+    m.insert(QStringLiteral("sizeLabel"), formatFileSizeLabel(size, is_dir));
+    m.insert(QStringLiteral("mime"), utf8q(e.mime));
     m.insert(QStringLiteral("isRemote"), remote);
-    m.insert(QStringLiteral("isDirectory"), e.is_directory());
+    m.insert(QStringLiteral("isDirectory"), is_dir);
+    if (remote) {
+      const bool can_dl = is_dir ? canDownloadFolderAt(root, full_rel)
+                                 : canFileDownloadAt(root, full_rel);
+      m.insert(QStringLiteral("canDownload"), can_dl);
+      m.insert(QStringLiteral("canOpenRemote"),
+                !is_dir && canFileOpenRemoteAt(root, full_rel));
+    }
     list.append(m);
   }
   return list;
@@ -586,8 +1055,11 @@ void NodeController::resetFilesUiState() {
   file_member_access_.clear();
   file_browse_path_.clear();
   file_browse_crumbs_.clear();
-  local_files_.setEntries({});
-  remote_files_.setEntries({});
+  file_resources_root_.clear();
+  file_remote_browse_path_.clear();
+  file_remote_browse_crumbs_.clear();
+  local_file_list_.clear();
+  remote_file_list_.clear();
   file_scope_label_ = QStringLiteral("Личные файлы");
 }
 
@@ -630,6 +1102,43 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   service_.save_files_scope_group_id(gid.toStdString());
 }
 
+void NodeController::setFilesSection(int section) {
+  if (section < 0) section = 0;
+  if (section > 2) section = 2;
+  if (files_section_ == section && section != 2) return;
+  files_section_ = section;
+  if (files_section_ == 1 && fileExchangeReady()) refreshRemoteFileList();
+  if (files_section_ == 2) {
+    refreshGroupList();
+    refreshFileAccessLists();
+  }
+  emit filesChanged();
+  emit fileAccessChanged();
+}
+
+std::vector<nyx::FileEntry> NodeController::remoteRootsCatalog(
+    const std::vector<nyx::FileEntry>& all) const {
+  std::map<std::string, int> root_counts;
+  nyx::GroupId scope{};
+  if (!file_scope_group_id_.isEmpty()) {
+    nyx::FileIndex::group_id_from_hex(file_scope_group_id_.toStdString(), scope);
+  }
+  for (const auto& e : all) {
+    if (e.is_directory()) continue;
+    const std::string norm = nyx::normalize_utf8_path(e.root_path);
+    root_counts[norm]++;
+  }
+  std::vector<nyx::FileEntry> out;
+  out.reserve(root_counts.size());
+  for (const auto& [path, count] : root_counts) {
+    nyx::ShareRoot sr;
+    sr.path = path;
+    sr.group_id = scope;
+    out.push_back(nyx::FileIndex::make_directory_marker(sr, count));
+  }
+  return out;
+}
+
 void NodeController::syncFileBrowseCrumbs() {
   file_browse_crumbs_.clear();
   if (file_selected_share_root_.isEmpty()) return;
@@ -657,6 +1166,37 @@ void NodeController::syncFileBrowseCrumbs() {
       crumb.insert(QStringLiteral("label"), segment);
       crumb.insert(QStringLiteral("path"), built);
       file_browse_crumbs_.append(crumb);
+    }
+    if (slash < 0) break;
+    from = slash + 1;
+  }
+}
+
+void NodeController::syncRemoteBrowseCrumbs() {
+  file_remote_browse_crumbs_.clear();
+  if (file_resources_root_.isEmpty()) return;
+
+  const QFileInfo rootInfo(file_resources_root_);
+  QVariantMap rootCrumb;
+  rootCrumb.insert(QStringLiteral("label"), rootInfo.fileName().isEmpty() ? file_resources_root_
+                                                                         : rootInfo.fileName());
+  rootCrumb.insert(QStringLiteral("path"), QString());
+  file_remote_browse_crumbs_.append(rootCrumb);
+
+  QString rel = file_remote_browse_path_;
+  if (rel.isEmpty()) return;
+  rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
+  int from = 0;
+  QString built;
+  while (from < rel.length()) {
+    const int slash = rel.indexOf(QLatin1Char('/'), from);
+    const QString segment = slash < 0 ? rel.mid(from) : rel.mid(from, slash - from);
+    if (!segment.isEmpty()) {
+      built = built.isEmpty() ? segment : built + QLatin1Char('/') + segment;
+      QVariantMap crumb;
+      crumb.insert(QStringLiteral("label"), segment);
+      crumb.insert(QStringLiteral("path"), built);
+      file_remote_browse_crumbs_.append(crumb);
     }
     if (slash < 0) break;
     from = slash + 1;
@@ -691,23 +1231,60 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
   file_selected_share_root_ = canonical;
   resetFileBrowse();
   refreshLocalFileModel();
-  refreshRemoteFileModel({});
   service_.save_files_selected_root(canonical.toStdString());
   emit filesChanged();
 }
 
-void NodeController::browseIntoFolder(const QString& navPath) {
+void NodeController::browseIntoFolder(const QString& navPath, const QString& itemRootPath) {
+  if (files_section_ == 1) {
+    if (file_resources_root_.isEmpty()) {
+      QString root = itemRootPath.trimmed();
+      if (root.isEmpty()) root = navPath.trimmed();
+      if (root.isEmpty()) return;
+      for (const auto& e : service_.remote_files()) {
+        if (shareRootPathsEqual(root, QString::fromStdString(e.root_path))) {
+          root = QString::fromStdString(e.root_path);
+          break;
+        }
+      }
+      file_resources_root_ = root;
+      file_remote_browse_path_.clear();
+    } else {
+      QString rel = navPath.trimmed();
+      rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
+      file_remote_browse_path_ = rel;
+    }
+    syncRemoteBrowseCrumbs();
+    refreshRemoteFileModel({});
+    emit filesChanged();
+    return;
+  }
+
   if (navPath.trimmed().isEmpty()) return;
   QString rel = navPath.trimmed();
   rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
   file_browse_path_ = rel;
   syncFileBrowseCrumbs();
   refreshLocalFileModel();
-  refreshRemoteFileModel({});
   emit filesChanged();
 }
 
 void NodeController::browseUp() {
+  if (files_section_ == 1) {
+    if (!file_remote_browse_path_.isEmpty()) {
+      QString rel = file_remote_browse_path_;
+      rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
+      const int slash = rel.lastIndexOf(QLatin1Char('/'));
+      file_remote_browse_path_ = slash < 0 ? QString() : rel.left(slash);
+    } else if (!file_resources_root_.isEmpty()) {
+      file_resources_root_.clear();
+    }
+    syncRemoteBrowseCrumbs();
+    refreshRemoteFileModel({});
+    emit filesChanged();
+    return;
+  }
+
   if (file_browse_path_.isEmpty()) return;
   QString rel = file_browse_path_;
   rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
@@ -715,16 +1292,25 @@ void NodeController::browseUp() {
   file_browse_path_ = slash < 0 ? QString() : rel.left(slash);
   syncFileBrowseCrumbs();
   refreshLocalFileModel();
-  refreshRemoteFileModel({});
   emit filesChanged();
 }
 
 void NodeController::browseToCrumb(int index) {
+  if (files_section_ == 1) {
+    if (index < 0 || index >= file_remote_browse_crumbs_.size()) return;
+    file_remote_browse_path_ =
+        file_remote_browse_crumbs_.at(index).toMap().value(QStringLiteral("path")).toString();
+    if (index == 0) file_remote_browse_path_.clear();
+    syncRemoteBrowseCrumbs();
+    refreshRemoteFileModel({});
+    emit filesChanged();
+    return;
+  }
+
   if (index < 0 || index >= file_browse_crumbs_.size()) return;
   file_browse_path_ = file_browse_crumbs_.at(index).toMap().value(QStringLiteral("path")).toString();
   syncFileBrowseCrumbs();
   refreshLocalFileModel();
-  refreshRemoteFileModel({});
   emit filesChanged();
 }
 
@@ -782,6 +1368,9 @@ void NodeController::refreshFileShareRoots() {
                                       .toLower();
     QVariantMap m;
     m.insert(QStringLiteral("path"), path);
+    const QFileInfo fi(path);
+    m.insert(QStringLiteral("displayName"),
+             fi.fileName().isEmpty() ? path : fi.fileName());
     m.insert(QStringLiteral("isPersonal"), r.is_personal());
     m.insert(QStringLiteral("scopeGroupId"), scopeId);
     m.insert(QStringLiteral("scopeLabel"), scopeLabelForGroupId(scopeId));
@@ -811,7 +1400,7 @@ void NodeController::refreshFileShareRoots() {
 
 void NodeController::refreshLocalFileModel() {
   if (file_selected_share_root_.isEmpty()) {
-    local_files_.setEntries({});
+    local_file_list_.clear();
     return;
   }
   std::string root_path = file_selected_share_root_.toStdString();
@@ -822,25 +1411,26 @@ void NodeController::refreshLocalFileModel() {
     }
   }
   const auto entries = service_.local_files_at_root(root_path, file_browse_path_.toStdString());
-  local_files_.setEntries(entriesToVariant(entries, false));
+  local_file_list_ = entriesToVariant(entries, false);
 }
 
 void NodeController::refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries) {
-  if (file_selected_share_root_.isEmpty()) {
-    remote_files_.setEntries({});
-    return;
-  }
-  std::string root_path = file_selected_share_root_.toStdString();
-  for (const auto& r : service_.all_share_roots()) {
-    if (shareRootPathsEqual(file_selected_share_root_, QString::fromStdString(r.path))) {
-      root_path = r.path;
-      break;
-    }
-  }
   const auto& all = entries.empty() ? service_.remote_files() : entries;
-  const auto level = nyx::FileIndex::listing_level(
-      all, root_path, file_browse_path_.toStdString());
-  remote_files_.setEntries(entriesToVariant(level, true));
+  std::vector<nyx::FileEntry> level;
+  if (file_resources_root_.isEmpty()) {
+    level = remoteRootsCatalog(all);
+  } else {
+    std::string root_path = file_resources_root_.toStdString();
+    for (const auto& e : all) {
+      if (shareRootPathsEqual(file_resources_root_, QString::fromStdString(e.root_path))) {
+        root_path = e.root_path;
+        break;
+      }
+    }
+    level = nyx::FileIndex::listing_level(all, root_path, file_remote_browse_path_.toStdString());
+  }
+  remote_file_list_ = entriesToVariant(level, true);
+  syncRemoteBrowseCrumbs();
 }
 
 void NodeController::refreshFileLists() {
@@ -855,6 +1445,26 @@ QString NodeController::pickFolder() {
       QFileDialog::getExistingDirectory(nullptr, QStringLiteral("Выберите папку для индекса"),
                                         QDir::homePath());
   return dir;
+}
+
+QString NodeController::pickSaveFile(const QString& suggestedFileName) {
+  const QString downloads =
+      QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+  const QString base = downloads.isEmpty() ? QDir::homePath() : downloads;
+  const QString name = suggestedFileName.trimmed().isEmpty()
+                           ? QStringLiteral("download")
+                           : suggestedFileName.trimmed();
+  const QString suggested = QDir(base).filePath(name);
+  return QFileDialog::getSaveFileName(nullptr, QStringLiteral("Сохранить файл"), suggested,
+                                      QStringLiteral("Все файлы (*.*)"));
+}
+
+QString NodeController::pickSaveFolder() {
+  const QString downloads =
+      QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+  const QString start = downloads.isEmpty() ? QDir::homePath() : downloads;
+  return QFileDialog::getExistingDirectory(nullptr, QStringLiteral("Выберите папку для сохранения"),
+                                           start);
 }
 
 void NodeController::addIndexedFolder(const QString& path) {
@@ -925,14 +1535,54 @@ void NodeController::refreshRemoteFileList() {
   }
 }
 
-void NodeController::downloadFile(const QString& hashHex) {
-  if (!canFileDownload()) {
+void NodeController::downloadFile(const QString& hashHex, const QString& fileName,
+                                  const QString& rootPath, const QString& relativePath) {
+  if (!fileExchangeReady()) {
+    showToast(fileExchangeHint().isEmpty()
+                  ? QStringLiteral("Подключитесь к полю или чату для скачивания")
+                  : fileExchangeHint());
+    return;
+  }
+  if (!canFileDownloadAt(rootPath, relativePath)) {
     showToast(QStringLiteral("Нет права скачивать файлы"));
     return;
   }
-  if (!service_.download_file(hashHex.trimmed().toStdString())) {
-    showToast(QStringLiteral("Не удалось скачать файл"));
+  const QString hash = hashHex.trimmed();
+  if (hash.size() != 64) {
+    showToast(QStringLiteral("Неверный hash файла"));
+    return;
   }
+  const QString suggested = fileName.trimmed().isEmpty() ? QStringLiteral("download") : fileName.trimmed();
+  const QString dest = pickSaveFile(suggested);
+  if (dest.isEmpty()) return;
+  if (!service_.download_file(hash.toStdString(), dest.toStdString())) {
+    showToast(QStringLiteral("Не удалось скачать файл"));
+    return;
+  }
+  showToast(QStringLiteral("Скачивание…"));
+}
+
+void NodeController::downloadRemoteFolder(const QString& rootPath, const QString& relativePath) {
+  if (!canFileDownloadAt(rootPath, relativePath)) {
+    showToast(QStringLiteral("Нет права скачивать файлы"));
+    return;
+  }
+  const QString destDir = pickSaveFolder();
+  if (destDir.isEmpty()) return;
+  const QString canonical = resolveAccessRootPath(rootPath);
+  std::string root = canonical.toStdString();
+  for (const auto& e : service_.remote_files()) {
+    if (!shareRootPathsEqual(canonical, QString::fromStdString(e.root_path))) continue;
+    root = e.root_path;
+    break;
+  }
+  const std::size_t queued =
+      service_.enqueue_folder_downloads(root, relativePath.toStdString(), destDir.toStdString());
+  if (queued == 0) {
+    showToast(QStringLiteral("В папке нет файлов для скачивания"));
+    return;
+  }
+  showToast(QStringLiteral("Скачивание %1 файлов…").arg(static_cast<qulonglong>(queued)));
 }
 
 void NodeController::sendFileByHash(const QString& hashHex) {
@@ -953,9 +1603,18 @@ void NodeController::wireCallbacks() {
           const QString q = QString::fromStdString(text);
           setStatus(q);
           const QString lower = q.toLower();
+          if (lower.contains(QStringLiteral("вошёл")) ||
+              lower.contains(QStringLiteral("вошел"))) {
+            refreshGroupList();
+            if (main_view_mode_ == 1) refreshFileAccessLists();
+          }
           if (lower.contains(QStringLiteral("failed")) ||
               lower.contains(QStringLiteral("не удалось")) ||
               lower.contains(QStringLiteral("неверн")) ||
+              lower.contains(QStringLiteral("отказ")) ||
+              lower.contains(QStringLiteral("файл сохранён")) ||
+              lower.contains(QStringLiteral("приём")) ||
+              lower.contains(QStringLiteral("запрос файла")) ||
               lower.contains(QStringLiteral("lookup")) ||
               lower.contains(QStringLiteral("register")) ||
               lower.contains(QStringLiteral("timeout")) ||
@@ -965,7 +1624,7 @@ void NodeController::wireCallbacks() {
               lower.contains(QStringLiteral("invite")) ||
               lower.contains(QStringLiteral("rendezvous")) ||
               lower.contains(QStringLiteral("bind"))) {
-            showToast(q);
+            showToast(q, lower.contains(QStringLiteral("отказ")));
             if (!in_chat_ &&
                 active_chat_kind_ == static_cast<int>(nyx::ConversationKind::Group)) {
               peer_status_text_ = QStringLiteral("поле");
@@ -1149,7 +1808,19 @@ void NodeController::wireCallbacks() {
         this,
         [this, entries]() {
           refreshRemoteFileModel(entries);
-          showToast(QStringLiteral("Список файлов собеседника обновлён"));
+          emit filesChanged();
+          showToast(QStringLiteral("Ресурсы поля обновлены: %1").arg(remote_file_list_.size()));
+        },
+        Qt::QueuedConnection);
+  });
+
+  service_.set_on_file_access_sync([this]() {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          refreshFileAccessLists();
+          refreshRemoteFileModel({});
+          emit filesChanged();
         },
         Qt::QueuedConnection);
   });
@@ -1282,14 +1953,25 @@ void NodeController::refreshGroupList() {
   const auto groups = service_.list_groups();
   const QString running_hub =
       QString::fromStdString(service_.running_group_hub_id_hex()).toLower();
-  for (const auto& g : groups) {
+  for (auto g : groups) {
+    const std::string owner_nick =
+        (g.owner_id == profile.user_id()) ? profile.nickname : std::string{};
+    nyx::GroupStore::ensure_roster(g, owner_nick);
     QVariantMap m;
     const QString gid = QString::fromStdString(nyx::GroupStore::group_id_hex(g.id));
     m.insert(QStringLiteral("groupId"), gid);
     m.insert(QStringLiteral("name"), QString::fromStdString(g.name));
     m.insert(QStringLiteral("invite"),
              QString::fromStdString(nyx::GroupStore::invite_hex(g.invite_token)));
-    const bool is_owner = g.owner_id == profile.user_id();
+    bool is_owner = g.owner_id == profile.user_id();
+    if (!is_owner) {
+      for (const auto& m : g.members) {
+        if (m.role == nyx::GroupRole::Owner && m.user_id == profile.user_id()) {
+          is_owner = true;
+          break;
+        }
+      }
+    }
     m.insert(QStringLiteral("isOwner"), is_owner);
     m.insert(QStringLiteral("roleLabel"),
              is_owner ? QStringLiteral("Создатель") : QStringLiteral("Участник"));
@@ -1313,7 +1995,6 @@ void NodeController::refreshGroupList() {
   }
   emit groupListChanged();
   emit chatChanged();
-  if (main_view_mode_ == 1) refreshFileAccessLists();
 }
 
 void NodeController::loadStoredHistory(int kind, const QString& refId,
@@ -1378,9 +2059,10 @@ void NodeController::setStatus(const QString& text) {
   emit logLine(QDateTime::currentDateTime().toString("hh:mm:ss") + "  " + text);
 }
 
-void NodeController::showToast(const QString& text) {
+void NodeController::showToast(const QString& text, bool isError) {
   if (text.isEmpty()) return;
-  toast_ = text.length() > 100 ? text.left(97) + QStringLiteral("…") : text;
+  toast_is_error_ = isError;
+  toast_ = text.length() > 120 ? text.left(117) + QStringLiteral("…") : text;
   emit toastChanged();
 }
 
@@ -1709,6 +2391,7 @@ void NodeController::copyLastGroupInvite() { copyToClipboard(last_group_invite_)
 void NodeController::clearToast() {
   if (toast_.isEmpty()) return;
   toast_.clear();
+  toast_is_error_ = false;
   emit toastChanged();
 }
 

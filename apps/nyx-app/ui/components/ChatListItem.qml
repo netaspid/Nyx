@@ -19,6 +19,16 @@ Rectangle {
 
     property bool selected: false
 
+    readonly property string fieldMemberHint: {
+        if (kind !== 1) return ""
+        for (let i = 0; i < node.groupList.length; ++i) {
+            const g = node.groupList[i]
+            if (String(g.groupId).toLowerCase() === String(refId).toLowerCase())
+                return qsTr("%1 участн.").arg(g.memberCount || 0)
+        }
+        return ""
+    }
+
     height: 64
     color: selected ? theme.btnSecondary : (mouseArea.containsMouse ? theme.btnSecondaryHover : "transparent")
 
@@ -60,7 +70,9 @@ Rectangle {
                 Layout.fillWidth: true
                 Label {
                     Layout.fillWidth: true
-                    text: preview || qsTr("Нет сообщений")
+                    text: preview || (kind === 1 && fieldMemberHint.length
+                                      ? fieldMemberHint
+                                      : qsTr("Нет сообщений"))
                     color: theme.textSecondary
                     font.pixelSize: 12
                     elide: Text.ElideRight

@@ -17,7 +17,12 @@
     <file>ui/panels/MainContentPanel.qml</file>
     <file>ui/panels/FilesPanel.qml</file>
     <file>ui/components/FileListRow.qml</file>
+    <file>ui/components/FileAccessAssignPopup.qml</file>
+    <file>ui/components/FieldInfoPopup.qml</file>
+    <file>ui/components/StatusBar.qml</file>
+    <file>ui/components/ToastHost.qml</file>
     <file>ui/controls/NyxComboBox.qml</file>
+    <file>ui/controls/NyxMenu.qml</file>
     <file>ui/controls/NyxSegmentTabButton.qml</file>
     <file>ui/AccountGate.qml</file>
     <file>ui/dialogs/SettingsDialog.qml</file>

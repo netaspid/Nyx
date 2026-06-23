@@ -11,6 +11,22 @@ ColumnLayout {
     required property var avatarColorFn
     required property var formatMsgTimeFn
 
+    FieldInfoPopup {
+        id: fieldInfoPopup
+        theme: root.theme
+        node: root.node
+    }
+
+    readonly property string activeFieldSubtitle: {
+        if (node.activeChatKind !== 1) return qsTr("в поле")
+        for (let i = 0; i < node.groupList.length; ++i) {
+            const g = node.groupList[i]
+            if (String(g.groupId).toLowerCase() === String(node.activeChatRefId).toLowerCase())
+                return qsTr("в поле · %1 участн.").arg(g.memberCount || 0)
+        }
+        return qsTr("в поле")
+    }
+
     spacing: 0
 
     Rectangle {
@@ -34,17 +50,33 @@ ColumnLayout {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 0
-                Label {
-                    text: node.peerTitle.length ? node.peerTitle : qsTr("Выберите чат")
-                    color: theme.textPrimary
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: fieldTitleLabel.implicitHeight
+                    Label {
+                        id: fieldTitleLabel
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        text: node.peerTitle.length ? node.peerTitle : qsTr("Выберите чат")
+                        color: node.activeChatKind === 1 ? theme.accent : theme.textPrimary
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: node.activeChatKind === 1 && node.peerTitle.length > 0
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        hoverEnabled: enabled
+                        ToolTip.visible: enabled && containsMouse
+                        ToolTip.text: qsTr("Информация о поле и участники")
+                        onClicked: fieldInfoPopup.openForGroup(node.activeChatRefId)
+                    }
                 }
                 Label {
                     visible: node.peerTitle.length > 0
                     text: node.inChat
                           ? (node.activeChatKind === 1
-                             ? qsTr("в поле")
+                             ? root.activeFieldSubtitle
                              : node.peerConnectionLabel)
                           : node.peerStatusText
                     color: (node.inChat && node.activeChatKind !== 1)
