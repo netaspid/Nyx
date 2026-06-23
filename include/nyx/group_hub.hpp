@@ -71,7 +71,18 @@ class GroupHub {
   /** Отключает участника и обновляет roster. */
   bool remove_member(const UserId& user_id);
 
+  /** Рассылает актуальную ACL всем участникам поля. */
+  void broadcast_file_access_policy();
+
+  /** Каталог поля с учётом ACL для requester. */
+  std::vector<FileEntry> catalog_for(const UserId& requester) const;
+
+  /** Копирует файл из локального индекса hub в dest_path; проверяет hash. */
+  bool download_local_file(const FileHash& hash, const std::string& dest_path,
+                           std::string* saved_path = nullptr) const;
+
  private:
+  void send_file_access_policy(HubMember& member);
   HubMember* find_member(const std::string& host, uint16_t port);
   bool try_accept(const std::string& host, uint16_t port, const ByteBuffer& first_packet);
   void complete_join(HubMember& member);

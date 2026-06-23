@@ -1,6 +1,7 @@
 #include "nyx/group_hub.hpp"
 
 #include "nyx/app.hpp"
+#include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/group.hpp"
 #include "nyx/group_proto.hpp"
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <set>
 
 namespace nyx {
@@ -96,11 +98,42 @@ std::vector<FileEntry> GroupHub::merged_field_entries_for(const UserId& requeste
   std::vector<FileEntry> filtered;
   filtered.reserve(out.size());
   for (const auto& e : out) {
-    const uint32_t perms = file_access_->permissions_for(file_scope_, requester, e.root_path);
+    const uint32_t perms =
+        file_access_->permissions_for(file_scope_, requester, e.root_path, e.relative_path);
     if (!FileAccessStore::has_permission(perms, FilePermission::List)) continue;
     filtered.push_back(e);
   }
   return filtered;
+}
+
+std::vector<FileEntry> GroupHub::catalog_for(const UserId& requester) const {
+  return merged_field_entries_for(requester);
+}
+
+bool GroupHub::download_local_file(const FileHash& hash, const std::string& dest_path,
+                                   std::string* saved_path) const {
+  if (!file_index_ || dest_path.empty()) return false;
+  const auto entry = file_index_->find_for_session(hash, file_scope_);
+  if (!entry) return false;
+
+  std::error_code ec;
+  const auto fs_dest = path_from_utf8(dest_path);
+  const auto parent = fs_dest.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+  }
+
+  std::filesystem::copy_file(path_from_utf8(entry->absolute_path()), fs_dest,
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  if (ec) return false;
+
+  FileHash verify{};
+  if (!hash_file(dest_path, verify) || verify != hash) {
+    std::filesystem::remove(fs_dest, ec);
+    return false;
+  }
+  if (saved_path) *saved_path = dest_path;
+  return true;
 }
 
 HubMember* GroupHub::find_hash_provider(const FileHash& hash) {
@@ -127,6 +160,11 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
   if (kind == FileKind::ListReq) {
     member.connection.send_payload(kBulkStream,
                                   encode_list_response(merged_field_entries_for(member.user_id)));
+    return;
+  }
+
+  if (kind == FileKind::PolicyReq) {
+    send_file_access_policy(member);
     return;
   }
 
@@ -171,8 +209,9 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
         }
       }
       if (entry && file_access_ && member.user_id != owner_.public_key) {
-        const uint32_t perms =
-            file_access_->permissions_for(file_scope_, member.user_id, entry->root_path);
+        const uint32_t perms = file_access_->permissions_for(file_scope_, member.user_id,
+                                                             entry->root_path,
+                                                             entry->relative_path);
         if (!FileAccessStore::has_permission(perms, FilePermission::Download)) {
           FileDeny deny;
           deny.hash = req->hash;
@@ -334,6 +373,26 @@ void GroupHub::complete_join(HubMember& member) {
 
   if (on_event_) {
     on_event_(member.nickname + " вошёл в поле «" + group_.name + "»");
+  }
+
+  send_file_access_policy(member);
+}
+
+void GroupHub::send_file_access_policy(HubMember& member) {
+  if (!file_access_) return;
+  const GroupFileAccess* policy = file_access_->find_policy(file_scope_);
+  if (!policy) return;
+  member.connection.send_payload(kBulkStream, encode_policy_push(*policy));
+}
+
+void GroupHub::broadcast_file_access_policy() {
+  if (!file_access_) return;
+  const GroupFileAccess* policy = file_access_->find_policy(file_scope_);
+  if (!policy) return;
+  const ByteBuffer wire = encode_policy_push(*policy);
+  for (auto& m : members_) {
+    if (!m.joined) continue;
+    m.connection.send_payload(kBulkStream, wire);
   }
 }
 

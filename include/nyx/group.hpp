@@ -65,6 +65,13 @@ class GroupStore {
   static std::string invite_hex(const InviteToken& token);
   static bool invite_from_hex(const std::string& hex, InviteToken& out);
 
+  /** Добавляет в target участников из live (без удаления уже сохранённых). */
+  static void merge_member_roster(std::vector<GroupMemberRecord>& target,
+                                  const std::vector<GroupMemberRecord>& live);
+
+  /** Гарантирует создателя в members по owner_id. */
+  static void ensure_roster(GroupRecord& group, const std::string& owner_nickname_fallback = {});
+
  private:
   std::vector<GroupRecord> groups_;
 };
