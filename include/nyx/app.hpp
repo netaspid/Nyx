@@ -15,11 +15,17 @@
 
 namespace nyx {
 
+/** Bit в HelloMessage::capabilities: следом идёт 32-байтный DM-inbox token. */
+constexpr uint32_t kHelloCapDmInboxToken = 1u << 0;
+
 /** Приветствие после handshake: публичный ключ, nickname, capabilities. */
 struct HelloMessage {
   PublicKey public_key{};
   std::string nickname;
   uint32_t capabilities = 0;
+  /** Стабильный inbox token отправителя (если capabilities & kHelloCapDmInboxToken). */
+  InviteToken dm_inbox_token{};
+  bool has_dm_inbox_token = false;
 
   ByteBuffer encode() const;
   static std::optional<HelloMessage> decode(const ByteBuffer& data);

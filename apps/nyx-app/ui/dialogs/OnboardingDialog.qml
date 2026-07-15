@@ -9,10 +9,11 @@ Dialog {
     required property var theme
     required property var node
 
-    title: qsTr("Добро пожаловать в Nyx")
     modal: true
+    standardButtons: Dialog.NoButton
     anchors.centerIn: parent
     width: Math.min(400, parent ? parent.width - 48 : 400)
+    padding: 0
     visible: node.needsOnboarding
     onVisibleChanged: if (visible) open()
 
@@ -27,9 +28,24 @@ Dialog {
         border.color: theme.border
     }
 
-    ColumnLayout {
+    header: DialogChrome {
+        theme: root.theme
+        title: qsTr("Добро пожаловать в Nyx")
+        dialog: root
+    }
+
+    contentItem: ColumnLayout {
         spacing: theme.spacing
         width: parent.width
+
+        Item { height: 4 }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.leftMargin: theme.spacing
+            Layout.rightMargin: theme.spacing
+            Layout.bottomMargin: theme.spacing
+            spacing: theme.spacing
 
         NyxLogo {
             Layout.alignment: Qt.AlignHCenter
@@ -61,6 +77,7 @@ Dialog {
                 node.completeOnboarding(nickField.text)
                 root.close()
             }
+        }
         }
     }
 }

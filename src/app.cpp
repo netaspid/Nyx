@@ -4,6 +4,7 @@
 #include "nyx/account_store.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/paths.hpp"
+#include "nyx/session_intent.hpp"
 #include "nyx/util.hpp"
 
 #include <chrono>
@@ -28,12 +29,16 @@ bool read_nickname(const ByteBuffer& data, std::size_t offset, std::size_t len,
 
 ByteBuffer HelloMessage::encode() const {
   ByteBuffer out;
-  out.reserve(1 + kPublicKeySize + 2 + nickname.size() + 4);
+  out.reserve(1 + kPublicKeySize + 2 + nickname.size() + 4 +
+              (has_dm_inbox_token ? kInviteTokenSize : 0));
   out.push_back(static_cast<uint8_t>(ChatKind::Hello));
   out.insert(out.end(), public_key.begin(), public_key.end());
   write_u16_le(out, static_cast<uint16_t>(nickname.size()));
   out.insert(out.end(), nickname.begin(), nickname.end());
   write_u32_le(out, capabilities);
+  if (has_dm_inbox_token && (capabilities & kHelloCapDmInboxToken) != 0) {
+    out.insert(out.end(), dm_inbox_token.begin(), dm_inbox_token.end());
+  }
   return out;
 }
 
@@ -49,6 +54,12 @@ std::optional<HelloMessage> HelloMessage::decode(const ByteBuffer& data) {
   const std::size_t cap_off = nick_off + nick_len;
   if (cap_off + 4 > data.size()) return std::nullopt;
   msg.capabilities = read_u32_le(data.data() + cap_off);
+  const std::size_t token_off = cap_off + 4;
+  if ((msg.capabilities & kHelloCapDmInboxToken) != 0 &&
+      token_off + kInviteTokenSize <= data.size()) {
+    std::memcpy(msg.dm_inbox_token.data(), data.data() + token_off, kInviteTokenSize);
+    msg.has_dm_inbox_token = true;
+  }
   return msg;
 }
 
@@ -76,6 +87,10 @@ bool exchange_hello(Connection& connection, const Profile& profile, HelloMessage
   HelloMessage hello;
   hello.public_key = profile.public_key;
   hello.nickname = profile.nickname;
+  if (load_or_create_dm_inbox_token(hello.dm_inbox_token)) {
+    hello.has_dm_inbox_token = true;
+    hello.capabilities |= kHelloCapDmInboxToken;
+  }
   if (!connection.send_payload(kChatStream, hello.encode())) return false;
 
   const auto deadline =
@@ -108,6 +123,9 @@ void remember_contact(const HelloMessage& peer) {
   contact.user_id = peer.public_key;
   contact.nickname = peer.nickname;
   contact.last_seen_ms = now_ms();
+  if (peer.has_dm_inbox_token) {
+    contact.dm_inbox_token_hex = to_hex(peer.dm_inbox_token.data(), peer.dm_inbox_token.size());
+  }
   book.upsert(std::move(contact));
   book.save();
 }

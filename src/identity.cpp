@@ -178,6 +178,14 @@ bool ContactBook::load() {
         contact.last_seen_ms = 0;
       }
     }
+    const auto inbox_key = json.find("\"dm_inbox\":\"", pos);
+    if (inbox_key != std::string::npos && inbox_key < nick_end + 200) {
+      const auto start = inbox_key + 12;
+      const auto end = json.find('"', start);
+      if (end != std::string::npos) {
+        contact.dm_inbox_token_hex = json.substr(start, end - start);
+      }
+    }
     contacts_.push_back(std::move(contact));
     pos = nick_end;
   }
@@ -195,7 +203,8 @@ bool ContactBook::save() const {
     file << "{\"id\":\"" << to_hex(c.user_id.data(), c.user_id.size())
          << "\",\"nickname\":\"" << json_escape(c.nickname)
          << "\",\"trust\":" << static_cast<int>(c.trust_level)
-         << ",\"last_seen\":" << c.last_seen_ms << "}";
+         << ",\"last_seen\":" << c.last_seen_ms << ",\"dm_inbox\":\""
+         << json_escape(c.dm_inbox_token_hex) << "\"}";
   }
   file << "]}\n";
   return static_cast<bool>(file);
@@ -207,6 +216,9 @@ void ContactBook::upsert(Contact contact) {
       existing.nickname = contact.nickname;
       existing.trust_level = contact.trust_level;
       if (contact.last_seen_ms != 0) existing.last_seen_ms = contact.last_seen_ms;
+      if (!contact.dm_inbox_token_hex.empty()) {
+        existing.dm_inbox_token_hex = contact.dm_inbox_token_hex;
+      }
       return;
     }
   }

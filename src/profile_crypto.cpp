@@ -191,8 +191,9 @@ bool encrypt_profile_blob(const Profile& profile, const std::array<uint8_t, 32>&
 }  // namespace
 
 bool save_encrypted_profile(const std::string& path, const Profile& profile,
-                            const std::string& password, std::string* err) {
-  if (password.size() < 8) {
+                            const std::string& password, std::string* err,
+                            std::array<uint8_t, 32>* derived_key_out) {
+  if (password.size() < kMinAccountPasswordLen) {
     if (err) *err = "пароль должен быть не короче 8 символов";
     return false;
   }
@@ -204,19 +205,24 @@ bool save_encrypted_profile(const std::string& path, const Profile& profile,
   std::vector<uint8_t> blob;
   if (!encrypt_profile_blob(profile, key, salt.data(), blob)) return false;
 
-  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  std::ofstream out(path_from_utf8(path), std::ios::binary | std::ios::trunc);
   if (!out) {
     if (err) *err = "не удалось записать профиль";
     return false;
   }
   out.write(reinterpret_cast<const char*>(blob.data()),
             static_cast<std::streamsize>(blob.size()));
-  return static_cast<bool>(out);
+  if (!out) {
+    if (err) *err = "не удалось записать профиль";
+    return false;
+  }
+  if (derived_key_out) *derived_key_out = key;
+  return true;
 }
 
 bool load_encrypted_profile(const std::string& path, Profile& out, const std::string& password,
                             std::string* err, std::array<uint8_t, 32>* derived_key_out) {
-  std::ifstream in(path, std::ios::binary);
+  std::ifstream in(path_from_utf8(path), std::ios::binary);
   if (!in) {
     if (err) *err = "файл профиля не найден";
     return false;
@@ -281,7 +287,7 @@ bool save_encrypted_profile_with_key(const std::string& path, const Profile& pro
   }
   std::vector<uint8_t> blob;
   if (!encrypt_profile_blob(profile, derived_key, salt.data(), blob)) return false;
-  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  std::ofstream out(path_from_utf8(path), std::ios::binary | std::ios::trunc);
   if (!out) {
     if (err) *err = "не удалось записать профиль";
     return false;
@@ -291,8 +297,46 @@ bool save_encrypted_profile_with_key(const std::string& path, const Profile& pro
   return static_cast<bool>(out);
 }
 
+bool load_encrypted_profile_with_key(const std::string& path, Profile& out,
+                                     const std::array<uint8_t, 32>& derived_key,
+                                     std::string* err) {
+  std::ifstream in(path_from_utf8(path), std::ios::binary);
+  if (!in) {
+    if (err) *err = "файл профиля не найден";
+    return false;
+  }
+  std::vector<uint8_t> blob((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  const std::size_t header = 4 + 2 + 1 + 4 + kSaltSize + kNonceSize + kMacSize;
+  if (blob.size() < header) {
+    if (err) *err = "повреждённый профиль";
+    return false;
+  }
+  if (std::memcmp(blob.data(), kProfileMagic, 4) != 0) {
+    if (err) *err = "неизвестный формат профиля";
+    return false;
+  }
+  const uint8_t* salt = blob.data() + 11;
+  (void)salt;
+  const uint8_t* nonce = blob.data() + 11 + kSaltSize;
+  const uint8_t* mac = blob.data() + blob.size() - kMacSize;
+  const uint8_t* cipher = nonce + kNonceSize;
+  const std::size_t cipher_len = static_cast<std::size_t>(mac - cipher);
+  if (!mac_verify(derived_key.data(), nonce, cipher, cipher_len, mac)) {
+    if (err) *err = "сохранённая сессия не подходит к профилю";
+    return false;
+  }
+  std::vector<uint8_t> plain(cipher_len);
+  stream_xor(plain.data(), cipher, cipher_len, derived_key.data(), nonce);
+  const std::string json(reinterpret_cast<char*>(plain.data()), plain.size());
+  if (!parse_profile_json(json, out)) {
+    if (err) *err = "не удалось разобрать профиль";
+    return false;
+  }
+  return true;
+}
+
 bool read_profile_kdf_salt(const std::string& path, std::array<uint8_t, 16>& salt_out) {
-  std::ifstream in(path, std::ios::binary);
+  std::ifstream in(path_from_utf8(path), std::ios::binary);
   if (!in) return false;
   std::vector<uint8_t> blob((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   const std::size_t need = 11 + kSaltSize;

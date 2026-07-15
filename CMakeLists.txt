@@ -61,6 +61,7 @@ add_library(nyx
   src/paths.cpp
   src/identity.cpp
   src/profile_crypto.cpp
+  src/recovery_phrase.cpp
   src/account_store.cpp
   src/app.cpp
   src/messaging.cpp
@@ -90,7 +91,7 @@ target_include_directories(nyx PUBLIC include)
 target_link_libraries(nyx PUBLIC noise-c-lib)
 
 if(WIN32)
-  target_link_libraries(nyx PUBLIC ws2_32)
+  target_link_libraries(nyx PUBLIC ws2_32 crypt32)
   foreach(_app nyx-node nyx-rendezvous nyx-tests nyx-appcore-tests nyx-app)
     if(TARGET ${_app})
       target_compile_options(${_app} PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)

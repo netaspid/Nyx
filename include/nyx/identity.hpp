@@ -49,6 +49,8 @@ struct Contact {
   std::string nickname;
   uint8_t trust_level = 0;
   uint64_t last_seen_ms = 0;
+  /** Стабильный DM-inbox token peer (hex, 64); пусто если неизвестен. */
+  std::string dm_inbox_token_hex;
 };
 
 /** Локальная книга контактов (JSON на диске). */

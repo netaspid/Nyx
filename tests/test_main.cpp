@@ -1,7 +1,9 @@
+#include "nyx/account_store.hpp"
 #include "nyx/app.hpp"
 #include "nyx/crypto.hpp"
 #include "nyx/connection.hpp"
 #include "nyx/identity.hpp"
+#include "nyx/recovery_phrase.hpp"
 #include "nyx/log.hpp"
 #include "nyx/mdns.hpp"
 #include "nyx/network_config.hpp"
@@ -27,6 +29,8 @@
 #include <atomic>
 #include <algorithm>
 #include <cassert>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <cstdio>
 #include <filesystem>
@@ -35,6 +39,10 @@
 #include <map>
 #include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#include <stdlib.h>
+#endif
 
 static void test_frame_roundtrip() {
   nyx::ByteBuffer payload = {1, 2, 3, 4, 5};
@@ -795,6 +803,17 @@ static void test_group_chat_id() {
 static void test_group_three_members() {
   std::remove(nyx::GroupStore::store_path().c_str());
 
+  const std::string alice_dir = nyx::data_root() + "/test_group3_alice";
+  const std::string bob_dir = nyx::data_root() + "/test_group3_bob";
+  const std::string charlie_dir = nyx::data_root() + "/test_group3_charlie";
+  std::filesystem::remove_all(alice_dir);
+  std::filesystem::remove_all(bob_dir);
+  std::filesystem::remove_all(charlie_dir);
+  std::filesystem::create_directories(alice_dir);
+  std::filesystem::create_directories(bob_dir);
+  std::filesystem::create_directories(charlie_dir);
+
+  nyx::set_account_data_dir(alice_dir);
   nyx::Profile alice = nyx::generate_profile("Alice");
   nyx::Profile bob = nyx::generate_profile("Bob");
   nyx::Profile charlie = nyx::generate_profile("Charlie");
@@ -817,6 +836,7 @@ static void test_group_three_members() {
   });
 
   auto connect_member = [&](const nyx::Profile& profile) {
+    (void)profile;
     nyx::UdpSocket sock;
     assert(sock.bind("127.0.0.1", 0));
     return nyx::Connection::connect_initiator(std::move(sock), "127.0.0.1", hub_port);
@@ -830,7 +850,10 @@ static void test_group_three_members() {
   assert(test_exchange_hello(*charlie_conn, charlie));
 
   nyx::GroupId zero{};
+  // У каждого участника свой data_dir — иначе общий groups/*.jsonl ломает дедуп id.
+  nyx::set_account_data_dir(bob_dir);
   nyx::GroupMemberService bob_svc(*bob_conn, bob, zero, "");
+  nyx::set_account_data_dir(charlie_dir);
   nyx::GroupMemberService charlie_svc(*charlie_conn, charlie, zero, "");
 
   std::vector<std::string> bob_got;
@@ -842,10 +865,14 @@ static void test_group_three_members() {
     if (!outgoing) charlie_got.push_back(m.text);
   });
 
+  nyx::set_account_data_dir(bob_dir);
   assert(bob_svc.join(15000));
+  nyx::set_account_data_dir(charlie_dir);
   assert(charlie_svc.join(15000));
 
+  nyx::set_account_data_dir(bob_dir);
   assert(bob_svc.send_message("from-bob"));
+  nyx::set_account_data_dir(charlie_dir);
   assert(charlie_svc.send_message("from-charlie"));
   hub.send_message("from-alice");
 
@@ -875,7 +902,11 @@ static void test_group_three_members() {
   assert(std::find(charlie_got.begin(), charlie_got.end(), "from-bob") != charlie_got.end());
   assert(std::find(charlie_got.begin(), charlie_got.end(), "from-alice") != charlie_got.end());
 
+  nyx::clear_account_data_dir();
   std::remove(nyx::GroupStore::store_path().c_str());
+  std::filesystem::remove_all(alice_dir);
+  std::filesystem::remove_all(bob_dir);
+  std::filesystem::remove_all(charlie_dir);
   std::cout << "group three members ok\n";
 }
 
@@ -1304,6 +1335,72 @@ static void test_file_log() {
   std::cout << "file log ok\n";
 }
 
+static void test_recovery_phrase_roundtrip() {
+  const std::string phrase = nyx::generate_recovery_phrase();
+  assert(!phrase.empty());
+  std::string normalized;
+  assert(nyx::normalize_recovery_phrase(phrase, &normalized));
+  assert(normalized == phrase);
+  assert(nyx::split_recovery_words(normalized).size() == 12);
+
+  std::string upper;
+  upper.reserve(phrase.size());
+  for (unsigned char c : phrase) upper.push_back(static_cast<char>(std::toupper(c)));
+  assert(nyx::normalize_recovery_phrase(upper, &normalized));
+  assert(normalized == phrase);
+
+  std::string err;
+  assert(!nyx::normalize_recovery_phrase("not a valid phrase here at all xx", &normalized, &err));
+  std::cout << "recovery phrase roundtrip ok\n";
+}
+
+static void test_account_recovery_and_remember() {
+  const std::string tmp = "test_nyx_auth_root";
+  std::filesystem::remove_all(tmp);
+  std::filesystem::create_directories(tmp);
+
+#ifdef _WIN32
+  const char* prev = std::getenv("APPDATA");
+  const std::string prev_appdata = prev ? prev : "";
+  _putenv_s("APPDATA", tmp.c_str());
+#else
+  const char* prev = std::getenv("HOME");
+  const std::string prev_home = prev ? prev : "";
+  setenv("HOME", tmp.c_str(), 1);
+#endif
+
+  std::string phrase;
+  std::string err;
+  assert(nyx::create_account("AuthTest", "password123", &phrase, nullptr, &err));
+  assert(!phrase.empty());
+  const std::string account_id = nyx::active_account_id();
+  assert(!account_id.empty());
+  assert(nyx::account_has_recovery(account_id));
+  assert(nyx::enable_remember_me(&err));
+  assert(nyx::account_remember_active(account_id));
+
+  nyx::lock_session(false);
+  assert(nyx::active_account_id().empty());
+  assert(nyx::try_unlock_remembered(account_id, nullptr, &err));
+  assert(nyx::active_account_id() == account_id);
+
+  nyx::lock_session(true);
+  assert(!nyx::account_remember_active(account_id));
+  assert(nyx::reset_password_with_recovery(account_id, phrase, "newpass1234", &err));
+  assert(nyx::unlock_account(account_id, "newpass1234", false, nullptr, &err));
+  nyx::lock_session(true);
+
+#ifdef _WIN32
+  if (prev_appdata.empty()) _putenv_s("APPDATA", "");
+  else _putenv_s("APPDATA", prev_appdata.c_str());
+#else
+  if (prev_home.empty()) unsetenv("HOME");
+  else setenv("HOME", prev_home.c_str(), 1);
+#endif
+  std::filesystem::remove_all(tmp);
+  std::cout << "account recovery and remember ok\n";
+}
+
 int main() {
   test_frame_roundtrip();
   test_noise_handshake();
@@ -1340,6 +1437,8 @@ int main() {
   test_guess_lan_ipv4();
   test_is_lan_ipv4();
   test_file_log();
+  test_recovery_phrase_roundtrip();
+  test_account_recovery_and_remember();
   std::cout << "all tests passed\n";
   return 0;
 }
