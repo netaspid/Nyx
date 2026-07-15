@@ -64,13 +64,37 @@ Popup {
         spacing: theme.spacing
         width: root.availableWidth
 
-        Label {
+        RowLayout {
             Layout.fillWidth: true
-            text: objectTitle
-            color: theme.textPrimary
-            font.pixelSize: 15
-            font.weight: Font.DemiBold
-            elide: Text.ElideMiddle
+            Label {
+                Layout.fillWidth: true
+                text: objectTitle
+                color: theme.textPrimary
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+                elide: Text.ElideMiddle
+            }
+            Rectangle {
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                radius: theme.radiusBtn
+                color: accessCloseArea.containsMouse ? (theme.darkMode ? "#c42b1c" : "#e81123")
+                                                     : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "\uE8BB"
+                    font.family: "Segoe MDL2 Assets"
+                    font.pixelSize: 12
+                    color: accessCloseArea.containsMouse ? "#ffffff" : theme.textSecondary
+                }
+                MouseArea {
+                    id: accessCloseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.close()
+                }
+            }
         }
 
         // --- Роль на объект (не требует участников) ---
@@ -332,15 +356,6 @@ Popup {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            NyxButtonSecondary {
-                theme: root.theme
-                text: qsTr("Закрыть")
-                onClicked: root.close()
-            }
-        }
     }
 
     ListModel {

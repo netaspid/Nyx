@@ -48,6 +48,38 @@ Popup {
 
     contentItem: ColumnLayout {
         id: contentCol
+
+        RowLayout {
+            Layout.fillWidth: true
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("О поле")
+                color: theme.textPrimary
+                font.pixelSize: 16
+                font.bold: true
+            }
+            Rectangle {
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                radius: theme.radiusBtn
+                color: fieldCloseArea.containsMouse ? (theme.darkMode ? "#c42b1c" : "#e81123")
+                                                    : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "\uE8BB"
+                    font.family: "Segoe MDL2 Assets"
+                    font.pixelSize: 12
+                    color: fieldCloseArea.containsMouse ? "#ffffff" : theme.textSecondary
+                }
+                MouseArea {
+                    id: fieldCloseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.close()
+                }
+            }
+        }
         spacing: theme.spacing
         width: root.availableWidth
 
@@ -173,23 +205,11 @@ Popup {
             font.pixelSize: 11
         }
 
-        RowLayout {
+        NyxButtonSecondary {
             Layout.fillWidth: true
-            spacing: 8
-
-            Item { Layout.fillWidth: true }
-
-            NyxButtonSecondary {
-                theme: root.theme
-                text: qsTr("Обновить")
-                onClicked: node.refreshFieldRoster()
-            }
-
-            NyxButton {
-                theme: root.theme
-                text: qsTr("Закрыть")
-                onClicked: root.close()
-            }
+            theme: root.theme
+            text: qsTr("Обновить список участников")
+            onClicked: node.refreshFieldRoster()
         }
     }
 }

@@ -51,6 +51,10 @@ QVariant ChatListModel::data(const QModelIndex& index, int role) const {
       return row.lastSeen;
     case TimeLabelRole:
       return row.timeLabel;
+    case SessionStateRole:
+      return row.sessionState;
+    case SelectedRole:
+      return row.key == selected_key_;
     default:
       return {};
   }
@@ -67,6 +71,8 @@ QHash<int, QByteArray> ChatListModel::roleNames() const {
       {UnreadRole, "unread"},
       {LastSeenRole, "lastSeen"},
       {TimeLabelRole, "timeLabel"},
+      {SessionStateRole, "sessionState"},
+      {SelectedRole, "selected"},
   };
 }
 
@@ -101,6 +107,7 @@ void ChatListModel::refreshFromDisk(const QString& selfIdHex) {
                        ? QStringLiteral("поле")
                        : QString::fromStdString(nyx::format_last_seen(s.last_seen_ms, now));
     row.timeLabel = formatListTime(row.timestamp);
+    row.sessionState = session_states_.value(row.key, QStringLiteral("idle"));
     rows_.append(std::move(row));
   }
   endResetModel();
@@ -128,4 +135,23 @@ void ChatListModel::bumpUnread(const QString& key) {
 
 void ChatListModel::clearUnread(const QString& key) {
   setUnread(key, 0);
+}
+
+void ChatListModel::setSessionState(const QString& key, const QString& state) {
+  session_states_[key] = state;
+  const int idx = indexForKey(key);
+  if (idx >= 0) {
+    rows_[idx].sessionState = state;
+    emit dataChanged(index(idx), index(idx), {SessionStateRole});
+  }
+}
+
+void ChatListModel::setSelectedKey(const QString& key) {
+  if (selected_key_ == key) return;
+  const QString prev = selected_key_;
+  selected_key_ = key;
+  const int prevIdx = indexForKey(prev);
+  const int nextIdx = indexForKey(key);
+  if (prevIdx >= 0) emit dataChanged(index(prevIdx), index(prevIdx), {SelectedRole});
+  if (nextIdx >= 0) emit dataChanged(index(nextIdx), index(nextIdx), {SelectedRole});
 }

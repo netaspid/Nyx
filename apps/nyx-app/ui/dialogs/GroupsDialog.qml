@@ -1,81 +1,47 @@
 import QtQuick
-
 import QtQuick.Controls
-
 import QtQuick.Layouts
-
 import "../controls"
-
-
+import "../components"
 
 Dialog {
-
     id: root
-
     required property var theme
-
     required property var node
 
-
-
-    title: qsTr("Поля")
-
     modal: true
-
+    standardButtons: Dialog.NoButton
     width: Math.min(520, parent ? parent.width - 48 : 520)
-
     height: Math.min(580, parent ? parent.height - 80 : 580)
-
-    padding: theme.spacing
-
-
+    padding: 0
 
     onAboutToShow: node.refreshGroupList()
 
-
-
     background: Rectangle {
-
         color: theme.bgSidebar
-
         radius: theme.radiusBtn
-
         border.color: theme.border
-
     }
 
-
-
-    header: Label {
-
-        text: qsTr("Групповые чаты Nyx")
-
-        color: theme.textPrimary
-
-        font.pixelSize: 16
-
-        font.bold: true
-
-        padding: theme.spacing
-
+    header: DialogChrome {
+        theme: root.theme
+        title: qsTr("Поля")
+        dialog: root
     }
 
 
 
     contentItem: ColumnLayout {
-
         spacing: theme.spacing
-
-
+        anchors.margins: theme.spacing
 
         Label {
-
             Layout.fillWidth: true
-
+            Layout.leftMargin: theme.spacing
+            Layout.rightMargin: theme.spacing
+            Layout.topMargin: theme.spacing
             wrapMode: Text.WordWrap
-
             text: qsTr("Создатель запускает hub поля. Участники подключаются по invite, когда hub в сети.")
-
             color: theme.textMuted
 
             font.pixelSize: 11
@@ -535,31 +501,7 @@ Dialog {
 
 
 
-    footer: Item {
-
-        implicitHeight: footerRow.implicitHeight
-
-        RowLayout {
-
-            id: footerRow
-
-            anchors.right: parent.right
-
-            anchors.verticalCenter: parent.verticalCenter
-
-            NyxButtonSecondary {
-
-                theme: root.theme
-
-                text: qsTr("Закрыть")
-
-                onClicked: root.close()
-
-            }
-
-        }
-
-    }
+    footer: Item { implicitHeight: 8 }
 
 
 

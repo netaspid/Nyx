@@ -55,8 +55,6 @@ ApplicationWindow {
                 app.showChatView()
             else if (app.connectionPanelOpen)
                 app.connectionPanelOpen = false
-            else if (app.inChat)
-                app.disconnectSession()
         }
     }
 
@@ -111,6 +109,7 @@ ApplicationWindow {
             id: statusBar
             Layout.fillWidth: true
             theme: appTheme
+            node: app
             text: app.statusText
             busy: app.busy
         }

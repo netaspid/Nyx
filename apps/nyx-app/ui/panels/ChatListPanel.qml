@@ -90,7 +90,7 @@ Rectangle {
                 TabButton {
                     id: fieldsTab
                     text: qsTr("Поля")
-                    width: (sidebarTabs.width - sidebarTabs.spacing * 2) / 3
+                    width: (sidebarTabs.width - sidebarTabs.spacing) / 2
                     onClicked: node.openGroupsDialog()
 
                     background: Rectangle {
@@ -112,7 +112,7 @@ Rectangle {
                 TabButton {
                     id: filesTab
                     text: qsTr("Файлы")
-                    width: (sidebarTabs.width - sidebarTabs.spacing * 2) / 3
+                    width: (sidebarTabs.width - sidebarTabs.spacing) / 2
                     onClicked: node.openFilesView()
 
                     background: Rectangle {
@@ -128,28 +128,6 @@ Rectangle {
                         color: filesTab.checked ? theme.textPrimary : theme.textSecondary
                         font.pixelSize: 13
                         font.weight: filesTab.checked ? Font.DemiBold : Font.Normal
-                    }
-                }
-
-                TabButton {
-                    id: connectionTab
-                    text: qsTr("Подключение")
-                    width: (sidebarTabs.width - sidebarTabs.spacing * 2) / 3
-                    onClicked: node.connectionPanelOpen = !node.connectionPanelOpen
-
-                    background: Rectangle {
-                        radius: theme.radiusBtn - 2
-                        color: connectionTab.checked ? theme.accent
-                             : connectionTab.hovered ? theme.btnSecondaryHover
-                             : "transparent"
-                    }
-                    contentItem: Label {
-                        text: connectionTab.text
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        color: connectionTab.checked ? theme.textPrimary : theme.textSecondary
-                        font.pixelSize: 13
-                        font.weight: connectionTab.checked ? Font.DemiBold : Font.Normal
                     }
                 }
             }
@@ -186,6 +164,8 @@ Rectangle {
                 theme: root.theme
                 node: root.node
                 avatarColorFn: root.avatarColorFn
+                selected: model.selected
+                sessionState: model.sessionState || "idle"
                 visible: chatFilter.text.length === 0
                          || title.toLowerCase().indexOf(chatFilter.text.toLowerCase()) >= 0
                          || preview.toLowerCase().indexOf(chatFilter.text.toLowerCase()) >= 0
@@ -199,16 +179,13 @@ Rectangle {
                 theme: root.theme
                 emoji: "💬"
                 title: qsTr("Нет чатов")
-                hint: qsTr("Подключитесь к peer или создайте поле")
+                hint: qsTr("Создайте поле или примите invite от peer")
             }
         }
     }
 
     Connections {
         target: node
-        function onConnectionPanelOpenChanged() {
-            connectionTab.checked = node.connectionPanelOpen
-        }
         function onGroupsDialogOpenChanged() {
             fieldsTab.checked = node.groupsDialogOpen
         }

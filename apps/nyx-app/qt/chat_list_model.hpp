@@ -20,6 +20,8 @@ class ChatListModel : public QAbstractListModel {
     UnreadRole,
     LastSeenRole,
     TimeLabelRole,
+    SessionStateRole,
+    SelectedRole,
   };
 
   explicit ChatListModel(QObject* parent = nullptr);
@@ -33,6 +35,8 @@ class ChatListModel : public QAbstractListModel {
   Q_INVOKABLE void setUnread(const QString& key, int count);
   Q_INVOKABLE void bumpUnread(const QString& key);
   Q_INVOKABLE void clearUnread(const QString& key);
+  Q_INVOKABLE void setSessionState(const QString& key, const QString& state);
+  Q_INVOKABLE void setSelectedKey(const QString& key);
 
  private:
   struct Row {
@@ -45,8 +49,11 @@ class ChatListModel : public QAbstractListModel {
     int unread = 0;
     QString lastSeen;
     QString timeLabel;
+    QString sessionState;
   };
 
   QVector<Row> rows_;
   QHash<QString, int> unread_;
+  QHash<QString, QString> session_states_;
+  QString selected_key_;
 };

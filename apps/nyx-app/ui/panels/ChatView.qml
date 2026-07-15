@@ -96,11 +96,12 @@ ColumnLayout {
             }
 
             IconButton {
-                visible: node.inChat
+                visible: node.inChat || node.sessionStateForKey(node.activeChatKey) === "live"
+                         || node.sessionStateForKey(node.activeChatKey) === "connecting"
                 theme: root.theme
                 glyph: "\uE711"
                 ToolTip.text: qsTr("Отключиться")
-                onClicked: node.disconnectSession()
+                onClicked: node.disconnectChat(node.activeChatKey)
             }
         }
 
@@ -123,7 +124,7 @@ ColumnLayout {
             theme: root.theme
             emoji: "💬"
             title: qsTr("Выберите чат")
-            hint: qsTr("Или откройте панель подключения")
+            hint: qsTr("Сессии поднимаются автоматически")
         }
 
         ListView {
@@ -175,27 +176,16 @@ ColumnLayout {
                     onClicked: node.openFilesView()
                 }
 
-                NyxButton {
-                    Layout.fillWidth: true
-                    visible: node.activeChatKind === 1 && !node.inChat && node.peerTitle.length > 0
-                    theme: root.theme
-                    text: node.activeFieldIsOwner
-                          ? qsTr("Запустить hub поля")
-                          : qsTr("Подключиться к полю")
-                    onClicked: node.connectActiveField()
-                }
-
                 NyxTextField {
                     id: msgField
                     Layout.fillWidth: true
-                    visible: !(node.activeChatKind === 1 && !node.inChat && node.peerTitle.length > 0)
                     theme: root.theme
                     enabled: node.canSendMessage
                     placeholderText: node.canSendMessage
                         ? qsTr("Сообщение (Ctrl+Enter)")
                         : (node.activeChatKind === 1
-                           ? qsTr("Подключитесь к полю для отправки")
-                           : qsTr("Подключитесь для отправки"))
+                           ? qsTr("Поле не в сети — нельзя писать")
+                           : qsTr("Нет связи — нельзя писать"))
                     wrapMode: TextInput.Wrap
                     Keys.onPressed: function(event) {
                         if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)

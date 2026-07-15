@@ -11,6 +11,7 @@
     <file>ui/components/IconButton.qml</file>
     <file>ui/controls/NyxButton.qml</file>
     <file>ui/controls/NyxButtonSecondary.qml</file>
+    <file>ui/controls/NyxCheckBox.qml</file>
     <file>ui/controls/NyxTextField.qml</file>
     <file>ui/panels/ChatListPanel.qml</file>
     <file>ui/panels/ChatView.qml</file>
@@ -20,6 +21,7 @@
     <file>ui/components/FileAccessAssignPopup.qml</file>
     <file>ui/components/FieldInfoPopup.qml</file>
     <file>ui/components/StatusBar.qml</file>
+    <file>ui/components/DialogChrome.qml</file>
     <file>ui/components/ToastHost.qml</file>
     <file>ui/controls/NyxComboBox.qml</file>
     <file>ui/controls/NyxMenu.qml</file>

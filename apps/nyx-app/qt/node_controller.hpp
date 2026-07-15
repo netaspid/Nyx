@@ -42,6 +42,9 @@ class NodeController : public QObject {
   Q_PROPERTY(QVariantList accountList READ accountList NOTIFY accountGateChanged)
   Q_PROPERTY(QString accountGateError READ accountGateError NOTIFY accountGateChanged)
   Q_PROPERTY(bool legacyProfilePending READ legacyProfilePending NOTIFY accountGateChanged)
+  Q_PROPERTY(QString pendingRecoveryPhrase READ pendingRecoveryPhrase NOTIFY accountGateChanged)
+  Q_PROPERTY(QString lastAccountId READ lastAccountId NOTIFY accountGateChanged)
+  Q_PROPERTY(bool needsRecoveryConfirm READ needsRecoveryConfirm NOTIFY accountGateChanged)
   Q_PROPERTY(bool needsOnboarding READ needsOnboarding NOTIFY profileChanged)
   Q_PROPERTY(MessageModel* messages READ messages CONSTANT)
   Q_PROPERTY(ChatListModel* chatList READ chatList CONSTANT)
@@ -105,6 +108,9 @@ class NodeController : public QObject {
   Q_PROPERTY(bool groupsDialogOpen READ groupsDialogOpen WRITE setGroupsDialogOpen
                  NOTIFY groupsDialogOpenChanged)
   Q_PROPERTY(bool trayAvailable READ trayAvailable CONSTANT)
+  Q_PROPERTY(QString activeChatKey READ activeChatKey NOTIFY chatChanged)
+  Q_PROPERTY(QString sessionSummary READ sessionSummary NOTIFY sessionsChanged)
+  Q_PROPERTY(QString dmInboxToken READ dmInboxToken NOTIFY inviteTokenChanged)
 
  public:
   explicit NodeController(QObject* parent = nullptr);
@@ -126,11 +132,14 @@ class NodeController : public QObject {
   bool busy() const { return service_.busy(); }
   bool listening() const { return service_.mode() == nyx_app::NodeMode::Listening; }
   bool inChat() const { return in_chat_; }
-  bool canSendMessage() const { return in_chat_; }
+  bool canSendMessage() const;
   bool sessionUnlocked() const { return session_unlocked_; }
   QVariantList accountList() const { return account_list_; }
   QString accountGateError() const { return account_gate_error_; }
   bool legacyProfilePending() const { return legacy_profile_pending_; }
+  QString pendingRecoveryPhrase() const { return pending_recovery_phrase_; }
+  QString lastAccountId() const { return last_account_id_; }
+  bool needsRecoveryConfirm() const { return !pending_recovery_phrase_.isEmpty(); }
   bool needsOnboarding() const { return needs_onboarding_; }
   MessageModel* messages() { return &messages_; }
   ChatListModel* chatList() { return &chat_list_; }
@@ -195,6 +204,9 @@ class NodeController : public QObject {
   bool connectionPanelOpen() const { return connection_panel_open_; }
   bool groupsDialogOpen() const { return groups_dialog_open_; }
   bool trayAvailable() const { return tray_icon_ != nullptr; }
+  QString activeChatKey() const { return active_chat_key_; }
+  QString sessionSummary() const;
+  QString dmInboxToken() const;
 
   void setWindowActive(bool active);
   void setConnectionPanelOpen(bool open);
@@ -214,8 +226,16 @@ class NodeController : public QObject {
 
   Q_INVOKABLE void refreshAccountList();
   Q_INVOKABLE bool createAccount(const QString& nickname, const QString& password,
-                                 const QString& confirmPassword);
-  Q_INVOKABLE bool unlockAccount(const QString& accountId, const QString& password);
+                                 const QString& confirmPassword, bool rememberMe = false);
+  Q_INVOKABLE bool unlockAccount(const QString& accountId, const QString& password,
+                                 bool rememberMe = false);
+  Q_INVOKABLE bool tryUnlockRemembered(const QString& accountId);
+  Q_INVOKABLE bool resetPasswordWithRecovery(const QString& accountId,
+                                             const QString& recoveryPhrase,
+                                             const QString& newPassword,
+                                             const QString& confirmPassword);
+  Q_INVOKABLE void confirmRecoveryPhraseSaved();
+  Q_INVOKABLE void copyRecoveryPhrase();
   Q_INVOKABLE bool importLegacyProfile(const QString& password);
   Q_INVOKABLE void signOut();
   Q_INVOKABLE void refreshProfile();
@@ -289,6 +309,9 @@ class NodeController : public QObject {
   Q_INVOKABLE void connectPeer(const QString& host, int port);
   Q_INVOKABLE void refreshLanPeers();
   Q_INVOKABLE void disconnectSession();
+  Q_INVOKABLE void disconnectChat(const QString& key);
+  Q_INVOKABLE QString sessionStateForKey(const QString& key) const;
+  Q_INVOKABLE bool isChatSelectable(const QString& key) const;
   Q_INVOKABLE void sendMessage(const QString& text);
   Q_INVOKABLE void createGroup(const QString& name);
   Q_INVOKABLE void deleteGroup(const QString& groupIdHex);
@@ -298,6 +321,7 @@ class NodeController : public QObject {
   Q_INVOKABLE void connectActiveField();
   Q_INVOKABLE void copyToClipboard(const QString& text);
   Q_INVOKABLE void copyInviteToken();
+  Q_INVOKABLE void copyDmInboxToken();
   Q_INVOKABLE void copyLastGroupInvite();
   Q_INVOKABLE void clearToast();
 
@@ -324,6 +348,7 @@ class NodeController : public QObject {
   void connectionPanelOpenChanged();
   void groupsDialogOpenChanged();
   void groupListChanged();
+  void sessionsChanged();
   void incomingMessage(const QString& author, const QString& preview);
   void logLine(const QString& line);
   void requestCloseToTray();
@@ -338,8 +363,6 @@ class NodeController : public QObject {
                  int kind = 0, const QString& refId = {});
   void endLiveSession();
   void leaveChat();
-  /** Останавливает hub/чат и сбрасывает live-сессию перед listen/connect. */
-  void prepareForConnection();
   void showGroupInView(const QString& groupIdHex);
   void loadStoredHistory(int kind, const QString& refId, const QString& convKey);
   void tickLanDiscovery();
@@ -347,7 +370,7 @@ class NodeController : public QObject {
   void updateOnboardingFlag();
   void syncNetworkSettingsFromService();
   bool applyRendezvousList(const QString& v);
-  void maybeAutoStartOwnedHub();
+  void maybeAutoReconnectSessions();
   void syncFileScopeLabel();
   void syncFileBrowseCrumbs();
   void syncRemoteBrowseCrumbs();
@@ -378,6 +401,7 @@ class NodeController : public QObject {
   ChatListModel chat_list_;
   LanPeerModel lan_peers_;
   QTimer lan_discovery_timer_;
+  QTimer session_reconnect_timer_;
 
   QString profile_nickname_;
   QString profile_id_short_;
@@ -405,11 +429,12 @@ class NodeController : public QObject {
   bool legacy_profile_pending_ = false;
   QVariantList account_list_;
   QString account_gate_error_;
+  QString pending_recovery_phrase_;
+  QString last_account_id_;
+  void finishAccountUnlock(bool begin_session);
   bool window_active_ = true;
   bool connection_panel_open_ = false;
   bool groups_dialog_open_ = false;
-  bool resume_hub_after_p2p_ = false;
-  QString resume_hub_id_;
   QVariantList group_list_;
   QString file_progress_label_;
   int file_progress_percent_ = 0;
