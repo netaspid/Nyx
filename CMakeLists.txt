@@ -86,6 +86,7 @@ add_library(nyx
   src/network_config.cpp
   src/rendezvous_pool.cpp
   src/rendezvous_server.cpp
+  src/session_intent.cpp
 )
 target_include_directories(nyx PUBLIC include)
 target_link_libraries(nyx PUBLIC noise-c-lib)

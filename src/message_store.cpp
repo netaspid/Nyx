@@ -112,6 +112,12 @@ std::string MessageStore::chat_path(const UserId& peer_id) {
 
 MessageStore::MessageStore(std::string path) : path_(std::move(path)) {}
 
+void MessageStore::rebind(std::string path) {
+  path_ = std::move(path);
+  cache_.clear();
+  loaded_ = false;
+}
+
 bool MessageStore::load_from_disk() const {
   if (loaded_) return true;
   loaded_ = true;
@@ -140,6 +146,7 @@ bool MessageStore::load_from_disk() const {
 
 bool MessageStore::append(const StoredMessage& message) {
   load_from_disk();
+  if (contains_id(message.id)) return true;
   ensure_data_dir();
   std::error_code ec;
   std::filesystem::create_directories(
@@ -157,6 +164,15 @@ bool MessageStore::append(const StoredMessage& message) {
 
   cache_.push_back(message);
   return static_cast<bool>(file);
+}
+
+bool MessageStore::contains_id(uint64_t id) const {
+  if (id == 0) return false;
+  load_from_disk();
+  for (const auto& msg : cache_) {
+    if (msg.id == id) return true;
+  }
+  return false;
 }
 
 std::vector<StoredMessage> MessageStore::recent(std::size_t count) const {

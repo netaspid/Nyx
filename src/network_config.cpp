@@ -129,10 +129,10 @@ bool NetworkConfig::load() {
 
   if (auto stun = json_get_string(json, "stun_host")) stun_host = *stun;
 
-  if (json.find("\"auto_start_owned_hub\":true") != std::string::npos) {
-    auto_start_owned_hub = true;
-  } else {
+  if (json.find("\"auto_start_owned_hub\":false") != std::string::npos) {
     auto_start_owned_hub = false;
+  } else {
+    auto_start_owned_hub = true;
   }
 
   std::size_t pos = 0;

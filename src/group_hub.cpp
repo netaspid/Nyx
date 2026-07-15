@@ -5,6 +5,7 @@
 #include "nyx/file_index.hpp"
 #include "nyx/group.hpp"
 #include "nyx/group_proto.hpp"
+#include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/proto.hpp"
 #include "nyx/file_proto.hpp"
@@ -297,6 +298,7 @@ void GroupHub::broadcast_to_members(const ByteBuffer& payload, HubMember* skip) 
   for (auto& m : members_) {
     if (!m.joined) continue;
     if (skip && &m == skip) continue;
+    if (m.connection.state() != ConnectionState::Established) continue;
     m.connection.send_payload(kChatStream, payload);
   }
 }
@@ -311,6 +313,7 @@ void GroupHub::relay_message(const ChatMessage& msg, const UserId* exclude_autho
   for (auto& m : members_) {
     if (!m.joined) continue;
     if (m.user_id == msg.author_id) continue;
+    if (m.connection.state() != ConnectionState::Established) continue;
     m.connection.send_payload(kChatStream, wire);
   }
 }
@@ -463,6 +466,7 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
       for (auto& m : members_) {
         if (!m.joined) continue;
         if (m.user_id == member.user_id) continue;
+        if (m.connection.state() != ConnectionState::Established) continue;
         m.connection.send_payload(kChatStream, wire);
       }
       if (on_event_) on_event_("relay «" + msg->text + "» от " + msg->author);
@@ -485,12 +489,7 @@ bool GroupHub::send_message(const std::string& text) {
 }
 
 void GroupHub::poll() {
-  for (auto& m : members_) {
-    m.connection.drive_without_recv();
-    if (file_index_ && m.joined) {
-      file_service_for(m).pump();
-    }
-  }
+  drop_stale_members();
 
   std::string host;
   uint16_t port = 0;
@@ -519,6 +518,52 @@ void GroupHub::poll() {
   }
 }
 
+void GroupHub::drop_stale_members() {
+  bool removed = false;
+  for (auto it = members_.begin(); it != members_.end();) {
+    if (it->connection.state() == ConnectionState::Established &&
+        it->connection.drive_without_recv()) {
+      if (file_index_ && it->joined) {
+        file_service_for(*it).pump();
+      }
+      ++it;
+      continue;
+    }
+
+    if (it->connection.state() == ConnectionState::Handshaking) {
+      ++it;
+      continue;
+    }
+
+    const std::string nick = it->nickname.empty() ? std::string("участник") : it->nickname;
+    const UserId uid = it->user_id;
+    if (it->joined && on_event_) {
+      on_event_(nick + " отключился от поля");
+    }
+    it = members_.erase(it);
+    member_catalog_.erase(uid);
+    member_roots_.erase(uid);
+    removed = true;
+  }
+  if (removed) {
+    // Указатели HubMember* в map после erase невалидны.
+    file_services_.clear();
+    rebuild_hash_providers();
+  }
+}
+
+void GroupHub::notify_shutdown(const std::string& reason) {
+  ByeMessage bye;
+  bye.reason = reason;
+  const ByteBuffer wire = bye.encode();
+  for (auto& m : members_) {
+    if (!m.joined) continue;
+    if (m.connection.state() != ConnectionState::Established) continue;
+    m.connection.send_payload(kChatStream, wire);
+    m.connection.drive_without_recv();
+  }
+}
+
 bool GroupHub::remove_member(const UserId& user_id) {
   if (user_id == owner_.public_key) return false;
 
@@ -535,6 +580,7 @@ bool GroupHub::remove_member(const UserId& user_id) {
       it = members_.erase(it);
       member_catalog_.erase(user_id);
       member_roots_.erase(user_id);
+      file_services_.clear();
       rebuild_hash_providers();
     } else {
       ++it;

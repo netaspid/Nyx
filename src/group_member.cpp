@@ -69,6 +69,8 @@ bool GroupMemberService::join(int timeout_ms) {
         view_.members = std::move(ack->members);
         chat_id_ = group_chat_id(group_id_);
         group_name_ = view_.name;
+        // До JoinAck group_id мог быть пустым — история шла бы в чужой файл.
+        store_.rebind(MessageStore::path_for_group(group_id_));
         if (on_event_) {
           on_event_("в поле «" + view_.name + "» (" +
                     std::to_string(view_.members.size()) + " участников)");
@@ -97,6 +99,12 @@ bool GroupMemberService::join(int timeout_ms) {
 }
 
 void GroupMemberService::deliver_incoming(ChatMessage msg) {
+  if (store_.contains_id(msg.id)) {
+    AckMessage ack;
+    ack.message_id = msg.id;
+    connection_.send_payload(kChatStream, ack.encode());
+    return;
+  }
   store_.append(to_stored(msg, false));
   if (on_message_) on_message_(msg, false);
 
@@ -107,8 +115,15 @@ void GroupMemberService::deliver_incoming(ChatMessage msg) {
 
 bool GroupMemberService::send_message(const std::string& text, uint64_t* out_id) {
   if (!joined_) return false;
+  if (connection_.state() != ConnectionState::Established || !connection_.peer_alive()) {
+    joined_ = false;
+    return false;
+  }
   ChatMessage msg = make_message(text);
-  if (!connection_.send_payload(kChatStream, msg.encode())) return false;
+  if (!connection_.send_payload(kChatStream, msg.encode())) {
+    joined_ = false;
+    return false;
+  }
   store_.append(to_stored(msg, true));
   if (on_message_) on_message_(msg, true);
   if (out_id) *out_id = msg.id;
@@ -116,6 +131,14 @@ bool GroupMemberService::send_message(const std::string& text, uint64_t* out_id)
 }
 
 void GroupMemberService::handle_payload(const ByteBuffer& payload) {
+  if (auto bye = ByeMessage::decode(payload)) {
+    joined_ = false;
+    const std::string reason =
+        bye->reason.empty() ? "владелец остановил поле" : bye->reason;
+    if (on_event_) on_event_(reason);
+    return;
+  }
+
   if (is_group_frame(payload)) {
     if (auto notice = GroupMemberJoinedMessage::decode(payload)) {
       view_.members.push_back(notice->member);
@@ -141,6 +164,18 @@ void GroupMemberService::handle_payload(const ByteBuffer& payload) {
   }
 }
 
-void GroupMemberService::tick() { connection_.drive(); }
+void GroupMemberService::tick() {
+  if (!joined_) return;
+  if (!connection_.drive()) {
+    joined_ = false;
+    if (on_event_) {
+      if (!connection_.peer_alive()) {
+        on_event_("поле не отвечает (владелец офлайн)");
+      } else {
+        on_event_("соединение с полем закрыто");
+      }
+    }
+  }
+}
 
 }  // namespace nyx

@@ -71,6 +71,9 @@ class GroupHub {
   /** Отключает участника и обновляет roster. */
   bool remove_member(const UserId& user_id);
 
+  /** Bye всем участникам перед остановкой hub (мгновенный офлайн у клиентов). */
+  void notify_shutdown(const std::string& reason = "hub остановлен");
+
   /** Рассылает актуальную ACL всем участникам поля. */
   void broadcast_file_access_policy();
 
@@ -89,6 +92,8 @@ class GroupHub {
   void send_history_to(HubMember& member);
   void relay_message(const ChatMessage& msg, const UserId* exclude_author);
   void broadcast_to_members(const ByteBuffer& payload, HubMember* skip);
+  /** Удаляет участников с мёртвым keep-alive (roster в group_ не трогает). */
+  void drop_stale_members();
   StoredMessage to_stored(const ChatMessage& msg, bool outgoing) const;
   ChatMessage make_owner_message(const std::string& text) const;
   FileTransferService& file_service_for(HubMember& member);

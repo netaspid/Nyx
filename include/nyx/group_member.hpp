@@ -34,8 +34,10 @@ class GroupMemberService {
   /** После Hello: отправляет GroupJoin и ждёт JoinAck. */
   bool join(int timeout_ms = 10000);
 
+  /** Отправка в поле; false если hub мёртв / не joined. */
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
   void handle_payload(const ByteBuffer& payload);
+  /** Keep-alive; при таймауте peer сбрасывает joined. */
   void tick();
 
   void set_on_message(MessageCallback cb) { on_message_ = std::move(cb); }

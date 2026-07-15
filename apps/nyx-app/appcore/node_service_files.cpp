@@ -43,8 +43,9 @@ std::string NodeService::resolve_share_root_path(const std::string& root_path) c
 
 void NodeService::after_file_access_changed(const std::string& scope_group_id_hex) {
   const nyx::GroupId scope = group_from_hex(scope_group_id_hex);
-  if (group_hub_ && share_scope_group_ == scope) {
-    group_hub_->broadcast_file_access_policy();
+  auto session = active_session();
+  if (session && session->group_hub && session->share_scope == scope) {
+    session->group_hub->broadcast_file_access_policy();
   }
 }
 
@@ -221,21 +222,23 @@ std::vector<nyx::FileEntry> NodeService::local_files_at_root(
 }
 
 void NodeService::publish_field_index() {
-  if (std::all_of(share_scope_group_.begin(), share_scope_group_.end(),
+  auto session = active_session();
+  if (!session) return;
+  if (std::all_of(session->share_scope.begin(), session->share_scope.end(),
                   [](uint8_t b) { return b == 0; })) {
     return;
   }
-  if (group_hub_) return;
+  if (session->group_hub) return;
 
-  const auto entries = file_index_.entries_for_session(share_scope_group_);
+  const auto entries = file_index_.entries_for_session(session->share_scope);
   std::vector<std::string> root_paths;
-  for (const auto& r : file_index_.roots_for_session(share_scope_group_)) {
+  for (const auto& r : file_index_.roots_for_session(session->share_scope)) {
     root_paths.push_back(r.path);
   }
   if (entries.empty() && root_paths.empty()) return;
-  if (!files_) return;
+  if (!session->files) return;
 
-  if (!files_->push_field_index(entries, root_paths)) {
+  if (!session->files->push_field_index(entries, root_paths)) {
     emit_status("не удалось опубликовать индекс поля");
   }
 }

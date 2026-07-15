@@ -103,7 +103,7 @@ std::optional<Connection> Connection::accept_responder(
 }
 
 bool Connection::send_stream(uint32_t stream_id, const ByteBuffer& data, bool check_rekey) {
-  if (!session_) return false;
+  if (!session_ || state_ != ConnectionState::Established || !peer_alive_) return false;
   auto muxed = mux_.send(stream_id, data);
   auto encrypted = session_->encrypt(muxed);
   if (!encrypted) return false;

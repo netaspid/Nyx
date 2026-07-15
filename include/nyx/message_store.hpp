@@ -28,8 +28,15 @@ class MessageStore {
  public:
   explicit MessageStore(std::string path);
 
+  /** Переключает файл истории (после JoinAck, когда GroupId стал известен).
+   *  @param path новый путь .jsonl */
+  void rebind(std::string path);
+
   /** Добавляет сообщение и дописывает строку в файл. */
   bool append(const StoredMessage& message);
+
+  /** true если сообщение с таким id уже в истории (дедуп после JoinAck). */
+  bool contains_id(uint64_t id) const;
 
   /** Последние count сообщений из памяти/файла. */
   std::vector<StoredMessage> recent(std::size_t count) const;

@@ -33,8 +33,8 @@ struct NetworkConfig {
   uint16_t stun_port = 19302;
   /** Интервал повторной Register на rendezvous (сек). */
   uint32_t register_refresh_sec = 120;
-  /** Автозапуск hub для полей, где пользователь создатель. */
-  bool auto_start_owned_hub = false;
+  /** Автозапуск hub / reconnect сессий после старта (master switch). */
+  bool auto_start_owned_hub = true;
 
   static std::string config_path();
   bool load();

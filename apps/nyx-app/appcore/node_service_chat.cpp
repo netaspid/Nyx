@@ -19,14 +19,14 @@ nyx::GroupId NodeService::scope_from_hex(const std::string& scope_group_id_hex) 
   nyx::GroupId scope{};
   if (!scope_group_id_hex.empty()) {
     nyx::GroupStore::group_id_from_hex(scope_group_id_hex, scope);
-  } else if (!std::all_of(share_scope_group_.begin(), share_scope_group_.end(),
-                          [](uint8_t b) { return b == 0; })) {
-    scope = share_scope_group_;
+  } else if (auto active = active_session()) {
+    scope = active->share_scope;
   }
   return scope;
 }
 
-void NodeService::wire_file_transfer(nyx::FileTransferService& files) {
+void NodeService::wire_file_transfer(const std::shared_ptr<NetSession>& session,
+                                     nyx::FileTransferService& files) {
   files.set_on_event([this](const std::string& text) { emit_status(text); });
   files.set_on_progress([this](const nyx::FileHash& hash, uint64_t done, uint64_t total) {
     FileProgressCallback cb;
@@ -46,83 +46,111 @@ void NodeService::wire_file_transfer(nyx::FileTransferService& files) {
     }
     if (cb) cb(list);
   });
+  (void)session;
 }
 
-void NodeService::run_direct_chat(std::unique_ptr<nyx::Connection> connection,
+void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
+                                  std::unique_ptr<nyx::Connection> connection,
                                   const nyx::Profile& profile, bool incoming,
                                   ConnectionVia via) {
+  if (!session || !connection) return;
+  session->kind = SessionKind::Direct;
+  session->state.store(SessionState::Connecting);
+  session->share_scope = {};
+  session->connection = std::move(connection);
   set_mode(NodeMode::ChatDirect);
-  share_scope_group_ = {};
-  connection_ = std::move(connection);
 
-  const std::string peer_host = connection_->peer_host();
-  const std::string endpoint = peer_host + ':' + std::to_string(connection_->peer_port());
-  emit_status(incoming ? "входящее соединение " + endpoint
-                       : "соединение с " + endpoint);
+  const std::string peer_host = session->connection->peer_host();
+  const std::string endpoint =
+      peer_host + ':' + std::to_string(session->connection->peer_port());
+  emit_status(incoming ? "входящее соединение " + endpoint : "соединение с " + endpoint);
 
   nyx::HelloMessage peer_hello;
-  if (!nyx::exchange_hello(*connection_, profile, peer_hello, 10,
-                            [this]() { return running_.load(); })) {
+  if (!nyx::exchange_hello(*session->connection, profile, peer_hello, 10,
+                           [session]() { return session->running.load(); })) {
     emit_status("Hello timeout");
-    connection_.reset();
-    busy_.store(false);
-    set_mode(NodeMode::Idle);
+    finish_session(session, SessionState::Offline);
     return;
   }
 
   nyx::remember_contact(peer_hello);
+  const std::string peer_hex =
+      nyx::to_hex(peer_hello.public_key.data(), peer_hello.public_key.size());
+  const std::string final_id = make_dm_session_id(peer_hex);
+
+  {
+    std::lock_guard lock(sessions_mutex_);
+    if (session->id != final_id) {
+      sessions_.erase(session->id);
+      session->id = final_id;
+      sessions_[final_id] = session;
+    }
+    active_session_id_ = final_id;
+    session->ref_id_hex = peer_hex;
+  }
+
   emit_status(peer_hello.nickname + " в сети (id: " +
               nyx::short_user_id(peer_hello.public_key) + ")");
-  emit_chat_ready(peer_hello.nickname, via, peer_host, nyx::ConversationKind::Direct,
-                  nyx::to_hex(peer_hello.public_key.data(), peer_hello.public_key.size()));
+  emit_chat_ready(session, peer_hello.nickname, via, peer_host, nyx::ConversationKind::Direct,
+                  peer_hex);
+
+  std::string invite_for_intent;
+  if (peer_hello.has_dm_inbox_token) {
+    invite_for_intent =
+        nyx::to_hex(peer_hello.dm_inbox_token.data(), peer_hello.dm_inbox_token.size());
+  }
+  remember_intent_for_session(session, invite_for_intent);
 
   nyx::ChatService::PeerInfo peer;
   peer.user_id = peer_hello.public_key;
   peer.nickname = peer_hello.nickname;
 
-  chat_ = std::make_unique<nyx::ChatService>(*connection_, profile, peer);
-  files_ = std::make_unique<nyx::FileTransferService>(
-      *connection_, file_index_, nyx::default_downloads_dir());
-  files_->set_share_scope(share_scope_group_);
-  wire_file_transfer(*files_);
+  session->chat = std::make_unique<nyx::ChatService>(*session->connection, profile, peer);
+  session->files = std::make_unique<nyx::FileTransferService>(
+      *session->connection, file_index_, nyx::default_downloads_dir());
+  session->files->set_share_scope(session->share_scope);
+  wire_file_transfer(session, *session->files);
 
-  chat_->set_on_message(
-      [this](const nyx::ChatMessage& msg, bool outgoing) { emit_message(msg, outgoing); });
-  chat_->set_on_event([this](const std::string& text) { emit_status(text); });
+  session->chat->set_on_message([this, session](const nyx::ChatMessage& msg, bool outgoing) {
+    emit_message(session, msg, outgoing);
+  });
+  session->chat->set_on_event([this](const std::string& text) { emit_status(text); });
 
-  const auto recent = chat_->history(30);
+  const auto recent = session->chat->history(30);
   for (const auto& stored : recent) {
     nyx::ChatMessage msg;
     msg.id = stored.id;
     msg.timestamp_ms = stored.timestamp_ms;
     msg.author = stored.author;
     msg.text = stored.text;
-    emit_message(msg, stored.outgoing);
+    emit_message(session, msg, stored.outgoing);
   }
 
-  pump_direct_chat(*chat_, *files_, *connection_, [this]() { return running_.load(); },
-                   [this]() { chat_->send_bye("пользователь вышел"); },
-                   [this]() { drain_file_download_queue(); });
+  pump_direct_chat(
+      *session->chat, *session->files, *session->connection,
+      [session]() { return session->running.load(); },
+      [session]() {
+        if (session->chat) session->chat->send_bye("пользователь вышел");
+      },
+      [this, session]() { drain_file_download_queue(session); });
 
-  chat_.reset();
-  files_.reset();
-  connection_.reset();
-  busy_.store(false);
-  set_mode(NodeMode::Idle);
-  emit_session_ended();
+  finish_session(session, SessionState::Disconnected);
   emit_status("сессия завершена");
 }
 
 bool NodeService::send_message(const std::string& text) {
-  if (chat_) return chat_->send_message(text);
-  if (group_hub_) return group_hub_->send_message(text);
-  if (group_member_) return group_member_->send_message(text);
+  auto session = active_session();
+  if (!session) return false;
+  if (session->chat) return session->chat->send_message(text);
+  if (session->group_hub) return session->group_hub->send_message(text);
+  if (session->group_member) return session->group_member->send_message(text);
   return false;
 }
 
 bool NodeService::send_bye(const std::string& reason) {
-  if (chat_) return chat_->send_bye(reason);
-  return false;
+  auto session = active_session();
+  if (!session || !session->chat) return false;
+  return session->chat->send_bye(reason);
 }
 
 bool NodeService::index_folder(const std::string& path,
@@ -163,12 +191,14 @@ bool NodeService::index_folder(const std::string& path,
     return false;
   }
 
-  if (files_) files_->set_share_scope(share_scope_group_);
+  if (auto session = active_session()) {
+    if (session->files) session->files->set_share_scope(session->share_scope);
+  }
   const int file_count = file_index_.count_in_root(norm);
   const bool scoped = scope_ptr != nullptr;
   emit_status("индекс" + std::string(scoped ? " (поле)" : " (личка)") + ": " +
               std::to_string(file_count) + " файлов в папке");
-  if (scoped && (group_member_ || group_hub_)) publish_field_index();
+  if (scoped) publish_field_index();
   return true;
 }
 
@@ -185,20 +215,23 @@ bool NodeService::remove_share_root(const std::string& path,
     return false;
   }
   emit_status("папка убрана из индекса");
-  if (scope_ptr && (group_member_ || group_hub_)) publish_field_index();
+  if (scope_ptr) publish_field_index();
   return true;
 }
 
 bool NodeService::can_request_remote_files() const {
-  return files_ != nullptr || group_hub_ != nullptr;
+  auto session = active_session();
+  if (!session) return false;
+  return session->files != nullptr || session->group_hub != nullptr;
 }
 
 std::string NodeService::file_exchange_hint() const {
-  if (group_hub_) {
+  auto session = active_session();
+  if (session && session->group_hub) {
     return "Hub поля: каталог и скачивание своего индекса доступны. Файлы участников — через клиент участника.";
   }
-  if (files_) return {};
-  if (mode_.load() == NodeMode::Idle) {
+  if (session && session->files) return {};
+  if (live_session_count() == 0) {
     return "Подключитесь к чату или полю — файлы доступны в активной сессии.";
   }
   return "Обмен файлами недоступен в текущем режиме.";
@@ -240,7 +273,7 @@ bool NodeService::rescan_share_root(const std::string& path,
   }
   const int file_count = file_index_.count_in_root(norm);
   emit_status("переиндексировано: " + std::to_string(file_count) + " файлов");
-  if (scope_ptr && (group_member_ || group_hub_)) publish_field_index();
+  if (scope_ptr) publish_field_index();
   return true;
 }
 
@@ -250,18 +283,25 @@ std::vector<nyx::ShareRoot> NodeService::share_roots_for_scope(
 }
 
 std::vector<nyx::FileEntry> NodeService::remote_files() const {
-  if (files_) return files_->remote_list_snapshot();
-  if (group_hub_) {
+  auto session = active_session();
+  if (!session) return {};
+  if (session->files) return session->files->remote_list_snapshot();
+  if (session->group_hub) {
     const auto profile = load_profile();
-    return group_hub_->catalog_for(profile.user_id());
+    return session->group_hub->catalog_for(profile.user_id());
   }
   return {};
 }
 
 bool NodeService::request_remote_files() {
-  if (group_hub_) {
+  auto session = active_session();
+  if (!session) {
+    emit_status(file_exchange_hint());
+    return false;
+  }
+  if (session->group_hub) {
     const auto profile = load_profile();
-    const auto entries = group_hub_->catalog_for(profile.user_id());
+    const auto entries = session->group_hub->catalog_for(profile.user_id());
     RemoteFilesCallback cb;
     {
       std::lock_guard lock(cb_mutex_);
@@ -271,11 +311,11 @@ bool NodeService::request_remote_files() {
     emit_status("каталог поля: " + std::to_string(entries.size()) + " объектов");
     return true;
   }
-  if (!files_) {
+  if (!session->files) {
     emit_status(file_exchange_hint());
     return false;
   }
-  if (!files_->request_list()) {
+  if (!session->files->request_list()) {
     emit_status("не удалось запросить список файлов");
     return false;
   }
@@ -283,74 +323,82 @@ bool NodeService::request_remote_files() {
 }
 
 bool NodeService::request_file_access_policy() {
-  if (!files_) return false;
-  return files_->request_policy();
+  auto session = active_session();
+  if (!session || !session->files) return false;
+  return session->files->request_policy();
 }
 
 bool NodeService::download_file(const std::string& hash_hex, const std::string& dest_path) {
   if (hash_hex.empty() || dest_path.empty()) return false;
-  if (!files_ && !group_hub_) return false;
-  std::lock_guard lock(file_download_queue_mutex_);
-  for (const auto& item : file_download_queue_) {
+  auto session = active_session();
+  if (!session || (!session->files && !session->group_hub)) return false;
+  std::lock_guard lock(session->download_mutex);
+  for (const auto& item : session->download_queue) {
     if (item.hash_hex == hash_hex) return true;
   }
-  file_download_queue_.push_back(FileDownloadRequest{hash_hex, dest_path});
+  session->download_queue.push_back(FileDownloadRequest{hash_hex, dest_path});
   return true;
 }
 
-void NodeService::drain_file_download_queue() {
-  if (files_ && files_->busy()) return;
+void NodeService::drain_file_download_queue(const std::shared_ptr<NetSession>& session) {
+  if (!session) return;
+  if (session->files && session->files->busy()) return;
 
   FileDownloadRequest next;
   {
-    std::lock_guard lock(file_download_queue_mutex_);
-    if (file_download_queue_.empty()) return;
-    next = file_download_queue_.front();
+    std::lock_guard lock(session->download_mutex);
+    if (session->download_queue.empty()) return;
+    next = session->download_queue.front();
   }
 
-  if (group_hub_ && !files_) {
+  if (session->group_hub && !session->files) {
     nyx::FileHash hash{};
     if (!nyx::hash_from_hex(next.hash_hex, hash)) {
-      std::lock_guard lock(file_download_queue_mutex_);
-      if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
-        file_download_queue_.pop_front();
+      std::lock_guard lock(session->download_mutex);
+      if (!session->download_queue.empty() &&
+          session->download_queue.front().hash_hex == next.hash_hex) {
+        session->download_queue.pop_front();
       }
       emit_status("неверный hash файла");
       return;
     }
     std::string saved;
-    if (group_hub_->download_local_file(hash, next.dest_path, &saved)) {
-      std::lock_guard lock(file_download_queue_mutex_);
-      if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
-        file_download_queue_.pop_front();
+    if (session->group_hub->download_local_file(hash, next.dest_path, &saved)) {
+      std::lock_guard lock(session->download_mutex);
+      if (!session->download_queue.empty() &&
+          session->download_queue.front().hash_hex == next.hash_hex) {
+        session->download_queue.pop_front();
       }
       emit_status("файл сохранён: " + saved);
       return;
     }
     emit_status("не удалось скачать файл (режим hub: только локальный индекс hub)");
-    std::lock_guard lock(file_download_queue_mutex_);
-    if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
-      file_download_queue_.pop_front();
+    std::lock_guard lock(session->download_mutex);
+    if (!session->download_queue.empty() &&
+        session->download_queue.front().hash_hex == next.hash_hex) {
+      session->download_queue.pop_front();
     }
     return;
   }
 
-  if (!files_) return;
+  if (!session->files) return;
 
-  if (!files_->request_file(next.hash_hex, next.dest_path)) {
-    if (files_->busy()) return;
-    std::lock_guard lock(file_download_queue_mutex_);
-    if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
-      file_download_queue_.pop_front();
+  if (!session->files->request_file(next.hash_hex, next.dest_path)) {
+    if (session->files->busy()) return;
+    std::lock_guard lock(session->download_mutex);
+    if (!session->download_queue.empty() &&
+        session->download_queue.front().hash_hex == next.hash_hex) {
+      session->download_queue.pop_front();
     }
     emit_status("не удалось запросить файл");
     return;
   }
 
   {
-    std::lock_guard lock(file_download_queue_mutex_);
-    if (!file_download_queue_.empty() && file_download_queue_.front().hash_hex == next.hash_hex) {
-      file_download_queue_.pop_front();
+    std::lock_guard lock(session->download_mutex);
+    if (!session->download_queue.empty() &&
+        session->download_queue.front().hash_hex == next.hash_hex) {
+      session->download_queue.pop_front();
     }
   }
   const std::string short_hash =
@@ -359,13 +407,16 @@ void NodeService::drain_file_download_queue() {
 }
 
 void NodeService::try_pump_download_queue() {
-  drain_file_download_queue();
+  if (auto session = active_session()) drain_file_download_queue(session);
 }
 
 std::size_t NodeService::enqueue_folder_downloads(const std::string& root_path,
                                                   const std::string& folder_rel,
                                                   const std::string& dest_dir) {
   if (dest_dir.empty()) return 0;
+  auto session = active_session();
+  if (!session || (!session->files && !session->group_hub)) return 0;
+
   const std::string root_norm = nyx::normalize_grant_root(root_path);
   std::string folder = folder_rel;
   for (char& c : folder) {
@@ -398,17 +449,16 @@ std::size_t NodeService::enqueue_folder_downloads(const std::string& root_path,
     items.push_back(QueuedFile{nyx::hash_hex(e.hash), std::move(dest)});
   }
   if (items.empty()) return 0;
-  if (!files_ && !group_hub_) return 0;
 
   const std::size_t total = items.size();
   {
-    std::lock_guard lock(file_download_queue_mutex_);
+    std::lock_guard lock(session->download_mutex);
     for (auto& item : items) {
       const bool exists = std::any_of(
-          file_download_queue_.begin(), file_download_queue_.end(),
+          session->download_queue.begin(), session->download_queue.end(),
           [&](const FileDownloadRequest& q) { return q.hash_hex == item.hash_hex; });
       if (exists) continue;
-      file_download_queue_.push_back(
+      session->download_queue.push_back(
           FileDownloadRequest{std::move(item.hash_hex), std::move(item.dest_path)});
     }
   }
@@ -416,19 +466,19 @@ std::size_t NodeService::enqueue_folder_downloads(const std::string& root_path,
 }
 
 bool NodeService::send_file(const std::string& path_or_hash) {
-  if (!files_) {
+  auto session = active_session();
+  if (!session || !session->files) {
     emit_status(file_exchange_hint());
     return false;
   }
-  if (!files_->send_file(path_or_hash)) {
-    return false;
-  }
-  return true;
+  return session->files->send_file(path_or_hash);
 }
 
 std::vector<nyx::StoredMessage> NodeService::chat_history(std::size_t count) const {
-  if (chat_) return chat_->history(count);
-  if (group_hub_) return group_hub_->store().recent(count);
+  auto session = active_session();
+  if (!session) return {};
+  if (session->chat) return session->chat->history(count);
+  if (session->group_hub) return session->group_hub->store().recent(count);
   return {};
 }
 
