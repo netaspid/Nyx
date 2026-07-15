@@ -28,10 +28,25 @@ apps/nyx-app/
 
 | Колонка | Ширина | Содержимое |
 |---------|--------|------------|
-| Слева | ~320px | Список чатов, поиск, профиль, кнопка «Подключение» |
+| Слева | ~320px | Список чатов, поиск, профиль, вкладки Поля / Файлы |
 | Справа | flex | Шапка чата (имя поля — клик → `FieldInfoPopup`), сообщения, ввод, progress bar |
-| Drawer | справа | Listen / Connect / Поле / LAN |
+| StatusBar | внизу | «N активных сессий» + короткий статус; кнопки «Сеть» / «Откл.» |
+| Drawer | справа (Ctrl+K / «Сеть») | Пригласить / Личный чат / Поле + LAN + блок подсказок |
+| Модалки | Settings, Поля, … | Закрытие через X в шапке (`DialogChrome`), без кнопки «Закрыть» |
 | Панель файлов | вместо чата | `FilesPanel` при `mainViewMode = 1` |
+
+## Экран входа (`AccountGate.qml`)
+
+| Свойство / метод | Назначение |
+|------------------|------------|
+| `sessionUnlocked`, `accountList`, `accountGateError` | Состояние входа |
+| `pendingRecoveryPhrase`, `needsRecoveryConfirm` | Показ 12 слов после создания |
+| `lastAccountId` | Пресэлектро выбора аккаунта |
+| `createAccount(nick, pass, confirm, rememberMe)` | Создать и показать recovery |
+| `confirmRecoveryPhraseSaved()`, `copyRecoveryPhrase()` | Подтверждение сохранения фразы |
+| `unlockAccount(id, pass, rememberMe)`, `tryUnlockRemembered(id)` | Вход по паролю или token |
+| `resetPasswordWithRecovery(id, phrase, newPass, confirm)` | Сброс пароля |
+| `signOut()` | Выход (чистит remember) |
 
 ## QML API (`app` — контекстное свойство NodeController)
 
@@ -60,14 +75,19 @@ apps/nyx-app/
 | `fileProgress*` | Progress bar передачи файлов |
 | `rendezvousList`, `discoveryMode`, `networkStatus` | Интернет / rendezvous |
 | `saveNetworkSettings()`, `testRendezvousServer()` | Сохранить и проверить bootstrap |
+| `openConversation` | Выбор чата + auto `ensureSession` (hub/join/DM) |
+| `disconnectChat(key)`, `sessionStateForKey`, `sessionSummary` | Multi-session UX |
+| `dmInboxToken`, `copyDmInboxToken()` | Стабильный inbox token для лички |
+| `autoStartOwnedHub` | Master-switch автоподключения сессий после старта и периодический reconnect полей/DM |
 
 ## Горячие клавиши
 
 | Комбинация | Действие |
 |------------|----------|
 | Ctrl+Enter | Отправить сообщение |
-| Ctrl+K | Панель подключения |
-| Esc | Файлы → чат; закрыть drawer; отключиться |
+| Ctrl+K | Advanced-панель сети |
+| Esc | Файлы → чат; закрыть drawer |
+| ПКМ по чату | Отключиться / копировать invite |
 
 ## Сборка
 

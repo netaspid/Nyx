@@ -12,6 +12,7 @@
 | [GUI.md](GUI.md) | UI/UX, агент | Qt, Telegram-like, design tokens |
 | [protocol.md](protocol.md) | Разработчик протокола | Бинарный формат пакетов (техническая спецификация) |
 | [GLOSSARY.md](GLOSSARY.md) | Все | Термины и сокращения |
+| [CODEBASE.md](CODEBASE.md) | Новый разработчик | Карта репозитория: main GUI, каталоги, маршруты чтения кода |
 
 ## Текущая стадия
 

@@ -8,7 +8,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  nyx-app (Qt/QML): чаты, файлы, группы — Telegram-like    │
 ├─────────────────────────────────────────────────────────────┤
-│  AppCore: NodeService, модели для UI, без протокола в QML  │
+│  AppCore: NodeService (multi-session), модели UI, без протокола в QML │
 ├─────────────────────────────────────────────────────────────┤
 │  CLI nyx-node (отладка) · прикладной слой messaging/files  │
 ├─────────────────────────────────────────────────────────────┤
@@ -49,12 +49,13 @@
                       участники поля
 ```
 
-| Компонент | Личка (сейчас) | Поле (фаза 5) |
-|-----------|----------------|---------------|
-| Подключение | `listen` / `connect --token` | `group create` / `group join --token` |
+| Компонент | Личка | Поле |
+|-----------|-------|------|
+| Подключение | стабильный DM inbox + connect по token peer | hub / join по group invite |
 | История | `chats/<peer_id>.jsonl` | `groups/<group_id>.jsonl` |
-| Файлы | между двумя peer (фаза 4) | политика привязана к `GroupId` |
-| Топология P2P | один Connection | star через создателя (MVP) |
+| Файлы | между двумя peer в активной DM-сессии | политика привязана к `GroupId` |
+| Топология P2P | один Connection на DM | star через создателя (MVP) |
+| Параллельность | несколько DM + несколько полей одновременно (AppCore session map) | |
 
 Модули: `include/nyx/groups/` (план), `GroupId`, roster, group invite; messaging маршрутизирует по `ChatId`.
 
@@ -87,6 +88,8 @@ game.ru/
 ## NodeService и потоки
 
 Сессии поля и чата работают в фоновом `worker_`. UI вызывает `list_groups()` и ACL из главного потока Qt. Roster активного поля UI получает из **`live_group_snapshot_`** (mutex): worker обновляет снимок после join, hub poll и chat-сообщений о составе. Прямой доступ к `GroupHub` / `GroupMemberService` из UI запрещён — иначе гонка при открытии вкладки «Файлы».
+
+Участник поля (`GroupMemberService`) сбрасывает `joined` при Bye от hub или keep-alive timeout; `run_group_join` тогда переводит сессию в Offline и UI блокирует отправку. Hub перед остановкой шлёт Bye; мёртвых участников `drop_stale_members` убирает из live-connections (roster в `groups.json` сохраняется). NodeController периодически (~8 с) вызывает `auto_reconnect_all` для enabled intents.
 
 ## Модули библиотеки
 
@@ -198,6 +201,17 @@ UDP → reliable_.recv_wire → poll_recv → decrypt → mux_.push/recv
 | Метаданные rendezvous | Видны оператору bootstrap |
 | Forward secrecy между сессиями | Да (новые ephemeral ключи) |
 | Rekey по объёму/времени | ✓ `ControlKind::Rekey`, 1 GB / 24 h |
+
+## Локальная авторизация
+
+| Модуль | Роль |
+|--------|------|
+| `identity` | Ed25519 Profile, plaintext JSON (legacy) |
+| `profile_crypto` | `profile.nyx` / `recovery.nyx`: PBKDF2-HMAC-SHA256 + stream XOR + HMAC |
+| `recovery_phrase` | BIP39 English, 12 слов |
+| `account_store` | Реестр, unlock/lock, remember-токен (DPAPI на Windows), сброс пароля |
+
+Сессия процесса держит derived key в RAM; remember-me кладёт OS-bound токен на диск с TTL 30 дней.
 
 ## Точки расширения (заложены в дизайн)
 
