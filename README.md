@@ -1,67 +1,32 @@
 # Nyx
 
-P2P-мессенджер на C++: личные и групповые чаты, файлы, поиск в LAN, связь через интернет с rendezvous-сервером. Трафик шифруется Noise (XX, ChaChaPoly).
+P2P-мессенджер: личные чаты, поля (группы), обмен файлами. Связь напрямую между узлами, шифрование Noise. Через интернет нужен небольшой UDP-сервер rendezvous для нахождения адресов.
 
-Основной клиент — `nyx-app` (Qt 6, QML). `nyx-node` — CLI для отладки. `nyx-rendezvous` — bootstrap для связи через NAT.
+## Стек
 
-Стек: C++17, CMake, [noise-c](https://github.com/rweather/noise-c).
+C++17, CMake, Qt 6 (QML) для GUI, [noise-c](https://github.com/rweather/noise-c).
 
-## Сборка (Windows, всё сразу)
+| Бинарник | Назначение |
+|----------|------------|
+| `nyx-app` | Клиент |
+| `nyx-rendezvous` | Bootstrap (UDP) |
+| `nyx-node` | CLI для отладки |
 
-Нужны CMake 3.16+ и Qt 6.5+ (Quick, Qml) в `C:/Qt/6.x/mingw_64`. CMake сам найдёт Qt и MinGW из Qt Tools.
+## Установка на Windows
+
+Нужны CMake 3.16+ и Qt 6.5+ (MinGW) в `C:\Qt\...`.
 
 ```powershell
 cmake -B build -G "MinGW Makefiles"
 cmake --build build -j
 ```
 
-Результат в `build/`:
+Для пользователей раздавайте `build\NyxSetup.exe` — внутри клиент и зависимости Qt.
 
-| Файл | Назначение |
-|------|------------|
-| `nyx-app.exe` | GUI-клиент |
-| `nyx-node.exe` | CLI |
-| `nyx-rendezvous.exe` | Bootstrap-сервер |
-| **`NyxSetup.exe`** | **Установщик для пользователей (~130 MB)** |
+Данные приложения: `%APPDATA%\Nyx\`.
 
-Раздавайте пользователям **`build\NyxSetup.exe`**. Qt и все DLL уже внутри.
+Администрирование (rendezvous, сеть, типовые сбои): [docs/ADMIN.md](docs/ADMIN.md).
 
-Промежуточные файлы установщика лежат в `build\_installer\` — это служебная папка, её не трогают.
+## Лицензия
 
-Явные пути (если несколько версий Qt):
-
-```powershell
-cmake -B build -G "MinGW Makefiles" `
-  -DCMAKE_PREFIX_PATH="C:/Qt/6.11.1/mingw_64" `
-  -DCMAKE_C_COMPILER="C:/Qt/Tools/mingw1310_64/bin/gcc.exe" `
-  -DCMAKE_CXX_COMPILER="C:/Qt/Tools/mingw1310_64/bin/g++.exe"
-cmake --build build -j
-```
-
-## Linux (без GUI)
-
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DNYX_BUILD_GUI=OFF
-cmake --build build -j
-```
-
-## Тесты
-
-```powershell
-.\build\nyx-tests.exe
-.\build\nyx-appcore-tests.exe
-```
-
-## Запуск
-
-Два инстанса в одной LAN — rendezvous не нужен. Через интернет — поднять `nyx-rendezvous`, token на слушающей стороне, Connect на второй.
-
-Профиль и ключи: `%APPDATA%\nyx\` (Windows) или `~/.config/nyx/` (Linux).
-
-## Документация
-
-- [docs/APPLICATION.md](docs/APPLICATION.md) — CLI, GUI, сценарии
-- [docs/BUILD_GUI_WINDOWS.md](docs/BUILD_GUI_WINDOWS.md) — Qt/MinGW, установщик
-- [docs/GUI.md](docs/GUI.md) — QML и NodeController
-- [docs/DEPLOY_RENDEZVOUS.md](docs/DEPLOY_RENDEZVOUS.md) — rendezvous на VDS
-- [docs/ROADMAP.md](docs/ROADMAP.md) — план разработки
+Copyright © владельцы проекта. Все права защищены, если иное не оговорено отдельным файлом LICENSE.
