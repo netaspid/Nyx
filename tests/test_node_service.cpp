@@ -68,12 +68,14 @@ static void test_session_intent_store() {
     assert(store.is_enabled("group:abcd"));
     store.disable("group:abcd");
     assert(!store.is_enabled("group:abcd"));
+    assert(!store.is_enabled("group:unknown"));
     assert(store.save());
   }
   {
     nyx::SessionIntentStore store(path);
     assert(store.load());
     assert(!store.is_enabled("group:abcd"));
+    assert(!store.is_enabled("dm:missing"));
   }
   std::remove(path.c_str());
   std::cout << "session intent store ok\n";

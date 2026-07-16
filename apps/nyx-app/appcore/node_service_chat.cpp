@@ -85,7 +85,12 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
       session->id = final_id;
       sessions_[final_id] = session;
     }
-    active_session_id_ = final_id;
+    // Не перехватывать active у другого открытого чата.
+    if (active_session_id_.empty() || active_session_id_ == final_id ||
+        active_session_id_.rfind("dm:pending:", 0) == 0 ||
+        active_session_id_.rfind("dm:incoming:", 0) == 0) {
+      active_session_id_ = final_id;
+    }
     session->ref_id_hex = peer_hex;
   }
 
@@ -138,9 +143,9 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
   emit_status("сессия завершена");
 }
 
-bool NodeService::send_message(const std::string& text) {
-  auto session = active_session();
-  if (!session) return false;
+bool NodeService::send_message(const std::string& text, const std::string& session_id) {
+  auto session = session_id.empty() ? active_session() : find_session(session_id);
+  if (!session || session->state.load() != SessionState::Live) return false;
   if (session->chat) return session->chat->send_message(text);
   if (session->group_hub) return session->group_hub->send_message(text);
   if (session->group_member) return session->group_member->send_message(text);
@@ -220,9 +225,24 @@ bool NodeService::remove_share_root(const std::string& path,
 }
 
 bool NodeService::can_request_remote_files() const {
+  return !file_exchange_session_id({}).empty();
+}
+
+std::string NodeService::file_exchange_session_id(const std::string& scope_group_id_hex) const {
+  if (!scope_group_id_hex.empty()) {
+    const std::string key = make_group_session_id(scope_group_id_hex);
+    auto s = find_session(key);
+    if (s && s->state.load() == SessionState::Live &&
+        (s->files || s->group_hub)) {
+      return key;
+    }
+  }
   auto session = active_session();
-  if (!session) return false;
-  return session->files != nullptr || session->group_hub != nullptr;
+  if (session && session->state.load() == SessionState::Live &&
+      (session->files || session->group_hub)) {
+    return session->id;
+  }
+  return {};
 }
 
 std::string NodeService::file_exchange_hint() const {
@@ -234,7 +254,102 @@ std::string NodeService::file_exchange_hint() const {
   if (live_session_count() == 0) {
     return "Подключитесь к чату или полю — файлы доступны в активной сессии.";
   }
-  return "Обмен файлами недоступен в текущем режиме.";
+  return "Обмен файлами недоступен в текущем режиме. Выберите поле в списке чатов (в поле).";
+}
+
+std::vector<nyx::FileEntry> NodeService::remote_files() const {
+  const std::string sid = file_exchange_session_id({});
+  auto session = sid.empty() ? active_session() : find_session(sid);
+  if (!session) return {};
+  if (session->files) return session->files->remote_list_snapshot();
+  if (session->group_hub) {
+    if (!hub_remote_catalog_.empty()) return hub_remote_catalog_;
+    const auto profile = load_profile();
+    return session->group_hub->catalog_for(profile.user_id());
+  }
+  return {};
+}
+
+bool NodeService::request_remote_files() {
+  return request_remote_files_at({}, {});
+}
+
+bool NodeService::request_remote_files_at(const std::string& root_path,
+                                          const std::string& parent_rel) {
+  return request_remote_files_at({}, root_path, parent_rel);
+}
+
+bool NodeService::request_remote_files_at(const std::string& scope_group_id_hex,
+                                          const std::string& root_path,
+                                          const std::string& parent_rel) {
+  std::string scope_hex = scope_group_id_hex;
+  if (scope_hex.empty()) {
+    if (auto active = active_session()) {
+      if (active->kind == SessionKind::GroupHub || active->kind == SessionKind::GroupMember) {
+        scope_hex = active->ref_id_hex;
+      }
+    }
+  }
+  if (scope_hex.empty()) {
+    std::lock_guard lock(sessions_mutex_);
+    if (active_session_id_.rfind("group:", 0) == 0 && active_session_id_.size() > 6) {
+      scope_hex = active_session_id_.substr(6);
+    }
+  }
+
+  const std::string sid = file_exchange_session_id(scope_hex);
+  auto session = sid.empty() ? active_session() : find_session(sid);
+  if (!session) {
+    emit_status(file_exchange_hint());
+    return false;
+  }
+  set_active_session(session->id);
+
+  if (session->group_hub) {
+    const auto profile = load_profile();
+    std::vector<nyx::FileEntry> entries;
+    if (root_path.empty()) {
+      entries = session->group_hub->catalog_for(profile.user_id());
+      hub_remote_catalog_ = entries;
+    } else {
+      entries =
+          session->group_hub->catalog_level_for(profile.user_id(), root_path, parent_rel);
+      for (auto& e : entries) {
+        const std::string hx = nyx::hash_hex(e.hash);
+        bool found = false;
+        for (auto& existing : hub_remote_catalog_) {
+          if (nyx::hash_hex(existing.hash) == hx) {
+            existing = e;
+            found = true;
+            break;
+          }
+        }
+        if (!found) hub_remote_catalog_.push_back(e);
+      }
+    }
+    RemoteFilesCallback cb;
+    {
+      std::lock_guard lock(cb_mutex_);
+      cb = on_remote_files_;
+    }
+    if (cb) cb(hub_remote_catalog_);
+    emit_status("каталог поля: " + std::to_string(hub_remote_catalog_.size()) + " объектов");
+    return true;
+  }
+  if (!session->files) {
+    emit_status(file_exchange_hint());
+    return false;
+  }
+  if (root_path.empty()) {
+    if (!session->files->request_list()) {
+      emit_status("не удалось запросить список файлов");
+      return false;
+    }
+  } else if (!session->files->request_list(root_path, parent_rel)) {
+    emit_status("не удалось запросить уровень каталога");
+    return false;
+  }
+  return true;
 }
 
 std::vector<nyx::FileEntry> NodeService::local_files_for_scope(
@@ -280,46 +395,6 @@ bool NodeService::rescan_share_root(const std::string& path,
 std::vector<nyx::ShareRoot> NodeService::share_roots_for_scope(
     const std::string& scope_group_id_hex) const {
   return file_index_.roots_for_session(scope_from_hex(scope_group_id_hex));
-}
-
-std::vector<nyx::FileEntry> NodeService::remote_files() const {
-  auto session = active_session();
-  if (!session) return {};
-  if (session->files) return session->files->remote_list_snapshot();
-  if (session->group_hub) {
-    const auto profile = load_profile();
-    return session->group_hub->catalog_for(profile.user_id());
-  }
-  return {};
-}
-
-bool NodeService::request_remote_files() {
-  auto session = active_session();
-  if (!session) {
-    emit_status(file_exchange_hint());
-    return false;
-  }
-  if (session->group_hub) {
-    const auto profile = load_profile();
-    const auto entries = session->group_hub->catalog_for(profile.user_id());
-    RemoteFilesCallback cb;
-    {
-      std::lock_guard lock(cb_mutex_);
-      cb = on_remote_files_;
-    }
-    if (cb) cb(entries);
-    emit_status("каталог поля: " + std::to_string(entries.size()) + " объектов");
-    return true;
-  }
-  if (!session->files) {
-    emit_status(file_exchange_hint());
-    return false;
-  }
-  if (!session->files->request_list()) {
-    emit_status("не удалось запросить список файлов");
-    return false;
-  }
-  return true;
 }
 
 bool NodeService::request_file_access_policy() {

@@ -125,7 +125,7 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
       std::lock_guard lock(sessions_mutex_);
       const std::string pending = "dm:incoming:" + peer_host + ":" + std::to_string(peer_port);
       dm = create_session(pending, SessionKind::Direct);
-      active_session_id_ = pending;
+      if (active_session_id_.empty()) active_session_id_ = pending;
     }
     auto connection = std::make_unique<nyx::Connection>(std::move(*conn));
     dm->worker = std::thread([this, dm, profile, connection = std::move(connection)]() mutable {

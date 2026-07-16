@@ -116,6 +116,8 @@ class NodeService {
   std::vector<SessionInfo> list_sessions() const;
   SessionState session_state(const std::string& session_id) const;
   bool is_session_live(const std::string& session_id) const;
+  /** Live или Connecting — reconnect не должен перезапускать такую сессию. */
+  bool is_session_up(const std::string& session_id) const;
   std::string active_session_id() const;
   void set_active_session(const std::string& session_id);
 
@@ -145,7 +147,13 @@ class NodeService {
   void auto_reconnect_all();
   /** ensureSession: hub/join/DM по ключу чата. */
   bool ensure_session(const std::string& chat_key);
+  /** При входе: включить intent и поднять hub всех своих полей. */
+  void ensure_owned_hubs_running();
+  /** Включает auto-reconnect для чата (после попытки join / до появления hub). */
+  void enable_session_intent(nyx::SessionIntent intent);
+  /** Выключает intent («Отключиться») — фоновый reconnect не поднимает чат. */
   void mark_session_disconnected(const std::string& chat_key);
+  bool is_session_intent_enabled(const std::string& chat_key) const;
 
   void reload_account_data();
   void clear_account_data();
@@ -155,13 +163,18 @@ class NodeService {
   std::string load_files_selected_root() const;
   void save_files_selected_root(const std::string& root_path) const;
 
-  bool send_message(const std::string& text);
+  /** Отправка в указанную сессию (или в active, если session_id пуст). */
+  bool send_message(const std::string& text, const std::string& session_id = {});
   bool send_bye(const std::string& reason);
   bool index_folder(const std::string& path, const std::string& scope_group_id_hex = {});
   bool remove_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   bool rescan_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   int file_count_in_root(const std::string& root_path) const;
   bool request_remote_files();
+  /** Запрос каталога: scope — group hex; root/parent пустые = только share-корни. */
+  bool request_remote_files_at(const std::string& root_path, const std::string& parent_rel);
+  bool request_remote_files_at(const std::string& scope_group_id_hex, const std::string& root_path,
+                               const std::string& parent_rel);
   bool request_file_access_policy();
   bool download_file(const std::string& hash_hex, const std::string& dest_path = {});
   std::size_t enqueue_folder_downloads(const std::string& root_path,
@@ -169,6 +182,8 @@ class NodeService {
                                        const std::string& dest_dir = {});
   bool send_file(const std::string& path_or_hash);
   bool can_request_remote_files() const;
+  /** Сессия для обмена файлами в области (group:<hex> или active). */
+  std::string file_exchange_session_id(const std::string& scope_group_id_hex) const;
   std::string file_exchange_hint() const;
   std::vector<nyx::FileEntry> local_files_for_scope(const std::string& scope_group_id_hex) const;
   std::vector<nyx::ShareRoot> share_roots_for_scope(const std::string& scope_group_id_hex) const;
@@ -274,6 +289,8 @@ class NodeService {
   std::shared_ptr<NetSession> create_session(const std::string& id, SessionKind kind);
   void finish_session(const std::shared_ptr<NetSession>& session, SessionState final_state);
   void stop_session_locked(const std::shared_ptr<NetSession>& session);
+  /** Останавливает worker без блокирующего join (безопасно из UI-потока). */
+  void abandon_session_worker(const std::shared_ptr<NetSession>& session);
 
   void run_listen(std::shared_ptr<NetSession> session, bool lan_advertise);
   void run_dm_inbox(std::shared_ptr<NetSession> session);
@@ -333,6 +350,8 @@ class NodeService {
   std::atomic<bool> discovery_busy_{false};
 
   nyx::FileIndex file_index_;
+  /** Кэш каталога «Ресурсы» для локального hub (корни + подгруженные уровни). */
+  std::vector<nyx::FileEntry> hub_remote_catalog_;
   mutable nyx::FileAccessStore file_access_;
   nyx::SessionIntentStore intent_store_;
 };

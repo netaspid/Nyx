@@ -370,11 +370,8 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
   session->mdns.reset();
   session->running.store(false);
   session->state.store(final_state);
-  // Поток сессии не должен оставаться joinable после выхода из run_*.
-  if (session->worker.joinable() &&
-      session->worker.get_id() == std::this_thread::get_id()) {
-    session->worker.detach();
-  }
+  // Не detach здесь: параллельный join() из UI даёт data race / краш.
+  // Поток остаётся joinable до join() снаружи или ~NetSession.
   {
     std::lock_guard lock(sessions_mutex_);
     if (active_session_id_ == session->id) {
@@ -397,6 +394,16 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
 void NodeService::stop_session_locked(const std::shared_ptr<NetSession>& session) {
   if (!session) return;
   session->running.store(false);
+}
+
+void NodeService::abandon_session_worker(const std::shared_ptr<NetSession>& session) {
+  if (!session) return;
+  session->running.store(false);
+  // Не join() из UI: lookup/reconnect может держать поток секунды → подвисание и краш.
+  if (session->worker.joinable() &&
+      session->worker.get_id() != std::this_thread::get_id()) {
+    session->worker.detach();
+  }
 }
 
 NodeMode NodeService::mode() const {
@@ -476,6 +483,11 @@ bool NodeService::is_session_live(const std::string& session_id) const {
   return session_state(session_id) == SessionState::Live;
 }
 
+bool NodeService::is_session_up(const std::string& session_id) const {
+  const auto st = session_state(session_id);
+  return st == SessionState::Live || st == SessionState::Connecting;
+}
+
 std::string NodeService::active_session_id() const {
   std::lock_guard lock(sessions_mutex_);
   return active_session_id_;
@@ -517,24 +529,43 @@ void NodeService::stop() {
 
 bool NodeService::stop_session(const std::string& session_id) {
   std::shared_ptr<NetSession> session;
+  std::string id;
   {
     std::lock_guard lock(sessions_mutex_);
-    const std::string id = session_id.empty() ? active_session_id_ : session_id;
+    id = session_id.empty() ? active_session_id_ : session_id;
     session = find_session_locked(id);
     if (!session) return false;
-    session->running.store(false);
+    id = session->id;
   }
-  if (session->worker.joinable() && session->worker.get_id() != std::this_thread::get_id()) {
-    session->worker.join();
+  // Сначала выключить intent — иначе session_ended / timer успеют снова поднять сессию.
+  mark_session_disconnected(id);
+  if (!session->ref_id_hex.empty() && id.rfind("group:", 0) == 0) {
+    mark_session_disconnected(make_group_session_id(session->ref_id_hex));
   }
-  mark_session_disconnected(session->id);
+  if (!session->ref_id_hex.empty() && id.rfind("dm:", 0) == 0) {
+    mark_session_disconnected(make_dm_session_id(session->ref_id_hex));
+  }
+  abandon_session_worker(session);
   emit_sessions_changed();
   return true;
 }
 
 void NodeService::mark_session_disconnected(const std::string& chat_key) {
+  if (chat_key.empty()) return;
   intent_store_.load();
   intent_store_.disable(chat_key);
+  intent_store_.save();
+}
+
+bool NodeService::is_session_intent_enabled(const std::string& chat_key) const {
+  nyx::SessionIntentStore store;
+  store.load();
+  return store.is_enabled(chat_key);
+}
+
+void NodeService::enable_session_intent(nyx::SessionIntent intent) {
+  intent_store_.load();
+  intent_store_.enable(std::move(intent));
   intent_store_.save();
 }
 
@@ -542,16 +573,22 @@ void NodeService::remember_intent_for_session(const std::shared_ptr<NetSession>&
                                              const std::string& invite_hex) {
   if (!session || session->kind == SessionKind::DmInbox) return;
   nyx::SessionIntent intent;
-  intent.key = session->id;
   intent.ref_id_hex = session->ref_id_hex;
   intent.invite_hex = invite_hex;
   intent.enabled = true;
-  if (session->kind == SessionKind::GroupHub)
+  if (session->kind == SessionKind::GroupHub) {
     intent.kind = nyx::SessionIntentKind::GroupHub;
-  else if (session->kind == SessionKind::GroupMember)
+    intent.key = session->ref_id_hex.empty() ? session->id
+                                             : make_group_session_id(session->ref_id_hex);
+  } else if (session->kind == SessionKind::GroupMember) {
     intent.kind = nyx::SessionIntentKind::GroupJoin;
-  else
+    intent.key = session->ref_id_hex.empty() ? session->id
+                                             : make_group_session_id(session->ref_id_hex);
+  } else {
     intent.kind = nyx::SessionIntentKind::Direct;
+    intent.key = session->ref_id_hex.empty() ? session->id
+                                             : make_dm_session_id(session->ref_id_hex);
+  }
   intent_store_.load();
   intent_store_.enable(std::move(intent));
   intent_store_.save();
@@ -589,13 +626,11 @@ bool NodeService::start_dm_inbox() {
                      existing->state.load() == SessionState::Connecting)) {
       return true;
     }
-    if (existing) {
-      existing->running.store(false);
-    }
   }
-  if (existing && existing->worker.joinable() &&
-      existing->worker.get_id() != std::this_thread::get_id()) {
-    existing->worker.join();
+  if (existing) {
+    abandon_session_worker(existing);
+    std::lock_guard lock(sessions_mutex_);
+    sessions_.erase(kDmInboxSessionId);
   }
 
   std::shared_ptr<NetSession> session;
@@ -615,11 +650,11 @@ bool NodeService::start_connect_token(const std::string& token_hex) {
   {
     auto existing = find_session(pending_id);
     if (existing) {
-      existing->running.store(false);
-      if (existing->worker.joinable() &&
-          existing->worker.get_id() != std::this_thread::get_id()) {
-        existing->worker.join();
-      }
+      const auto st = existing->state.load();
+      if (st == SessionState::Live || st == SessionState::Connecting) return true;
+      abandon_session_worker(existing);
+      std::lock_guard lock(sessions_mutex_);
+      sessions_.erase(pending_id);
     }
   }
   std::shared_ptr<NetSession> session;
@@ -627,7 +662,8 @@ bool NodeService::start_connect_token(const std::string& token_hex) {
     std::lock_guard lock(sessions_mutex_);
     sessions_.erase(pending_id);
     session = create_session(pending_id, SessionKind::Direct);
-    active_session_id_ = pending_id;
+    if (active_session_id_.empty() || active_session_id_ == pending_id)
+      active_session_id_ = pending_id;
   }
   session->worker =
       std::thread([this, session, token_hex]() { run_connect_token(session, token_hex); });
@@ -640,11 +676,11 @@ bool NodeService::start_connect_peer(const std::string& host, uint16_t port) {
   {
     auto existing = find_session(pending_id);
     if (existing) {
-      existing->running.store(false);
-      if (existing->worker.joinable() &&
-          existing->worker.get_id() != std::this_thread::get_id()) {
-        existing->worker.join();
-      }
+      const auto st = existing->state.load();
+      if (st == SessionState::Live || st == SessionState::Connecting) return true;
+      abandon_session_worker(existing);
+      std::lock_guard lock(sessions_mutex_);
+      sessions_.erase(pending_id);
     }
   }
   std::shared_ptr<NetSession> session;
@@ -652,7 +688,8 @@ bool NodeService::start_connect_peer(const std::string& host, uint16_t port) {
     std::lock_guard lock(sessions_mutex_);
     sessions_.erase(pending_id);
     session = create_session(pending_id, SessionKind::Direct);
-    active_session_id_ = pending_id;
+    if (active_session_id_.empty() || active_session_id_ == pending_id)
+      active_session_id_ = pending_id;
   }
   session->worker =
       std::thread([this, session, host, port]() { run_connect_peer(session, host, port); });
@@ -746,17 +783,15 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
   const std::string sid = make_group_session_id(group_id_hex);
   {
     auto existing = find_session(sid);
-    if (existing && existing->state.load() == SessionState::Live &&
-        existing->kind == SessionKind::GroupHub) {
-      set_active_session(sid);
-      return true;
+    if (existing && existing->kind == SessionKind::GroupHub) {
+      const auto st = existing->state.load();
+      // Не убивать Connecting: register/rendezvous может занять секунды.
+      if (st == SessionState::Live || st == SessionState::Connecting) return true;
     }
     if (existing) {
-      existing->running.store(false);
-      if (existing->worker.joinable() &&
-          existing->worker.get_id() != std::this_thread::get_id()) {
-        existing->worker.join();
-      }
+      abandon_session_worker(existing);
+      std::lock_guard lock(sessions_mutex_);
+      sessions_.erase(sid);
     }
   }
 
@@ -766,7 +801,8 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
     sessions_.erase(sid);
     session = create_session(sid, SessionKind::GroupHub);
     session->ref_id_hex = group_id_hex;
-    active_session_id_ = sid;
+    // Не перехватывать active у открытого чата (фоновый reconnect).
+    if (active_session_id_.empty() || active_session_id_ == sid) active_session_id_ = sid;
   }
   session->worker =
       std::thread([this, session, group_id_hex]() { run_group_hub(session, group_id_hex); });
@@ -776,39 +812,41 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
 
 bool NodeService::start_group_join(const std::string& invite_hex) {
   nyx::InviteToken token{};
+  std::string sid = "group:join:" + invite_hex.substr(0, 12);
+  std::string ref_hex;
   if (nyx::GroupStore::invite_from_hex(invite_hex, token)) {
     nyx::GroupStore store;
     store.load();
     for (const auto& g : store.all()) {
       if (g.invite_token != token) continue;
-      const std::string sid = make_group_session_id(nyx::GroupStore::group_id_hex(g.id));
-      auto existing = find_session(sid);
-      if (existing && existing->state.load() == SessionState::Live &&
-          existing->kind == SessionKind::GroupMember) {
-        set_active_session(sid);
-        return true;
-      }
-      if (existing) {
-        existing->running.store(false);
-        if (existing->worker.joinable() &&
-            existing->worker.get_id() != std::this_thread::get_id()) {
-          existing->worker.join();
-        }
-        std::lock_guard lock(sessions_mutex_);
-        sessions_.erase(sid);
-      }
+      ref_hex = nyx::GroupStore::group_id_hex(g.id);
+      sid = make_group_session_id(ref_hex);
       break;
     }
   }
 
-  const std::string pending = "group:join:" + invite_hex.substr(0, 12);
   {
-    auto existing = find_session(pending);
+    auto existing = find_session(sid);
+    if (existing && existing->kind == SessionKind::GroupMember) {
+      const auto st = existing->state.load();
+      if (st == SessionState::Live || st == SessionState::Connecting) return true;
+    }
     if (existing) {
-      existing->running.store(false);
-      if (existing->worker.joinable() &&
-          existing->worker.get_id() != std::this_thread::get_id()) {
-        existing->worker.join();
+      abandon_session_worker(existing);
+      std::lock_guard lock(sessions_mutex_);
+      sessions_.erase(sid);
+    }
+  }
+
+  // Старый pending-ключ после прошлых версий.
+  if (!ref_hex.empty()) {
+    const std::string legacy = "group:join:" + invite_hex.substr(0, 12);
+    if (legacy != sid) {
+      auto legacy_session = find_session(legacy);
+      if (legacy_session) {
+        abandon_session_worker(legacy_session);
+        std::lock_guard lock(sessions_mutex_);
+        sessions_.erase(legacy);
       }
     }
   }
@@ -816,9 +854,10 @@ bool NodeService::start_group_join(const std::string& invite_hex) {
   std::shared_ptr<NetSession> session;
   {
     std::lock_guard lock(sessions_mutex_);
-    sessions_.erase(pending);
-    session = create_session(pending, SessionKind::GroupMember);
-    active_session_id_ = pending;
+    sessions_.erase(sid);
+    session = create_session(sid, SessionKind::GroupMember);
+    session->ref_id_hex = ref_hex;
+    if (active_session_id_.empty() || active_session_id_ == sid) active_session_id_ = sid;
   }
   session->worker =
       std::thread([this, session, invite_hex]() { run_group_join(session, invite_hex); });
@@ -828,7 +867,7 @@ bool NodeService::start_group_join(const std::string& invite_hex) {
 
 bool NodeService::ensure_session(const std::string& chat_key) {
   if (chat_key.empty()) return false;
-  if (is_session_live(chat_key)) {
+  if (is_session_up(chat_key)) {
     set_active_session(chat_key);
     return true;
   }
@@ -867,9 +906,31 @@ bool NodeService::ensure_session(const std::string& chat_key) {
   return false;
 }
 
-void NodeService::auto_reconnect_all() {
-  if (!network_config_.auto_start_owned_hub) return;
+void NodeService::ensure_owned_hubs_running() {
+  nyx::Profile profile;
+  if (!nyx::active_profile(profile)) return;
 
+  nyx::GroupStore store;
+  store.load();
+  intent_store_.load();
+  for (const auto& g : store.all()) {
+    if (g.owner_id != profile.user_id()) continue;
+    const std::string gid = nyx::GroupStore::group_id_hex(g.id);
+    const std::string key = make_group_session_id(gid);
+    nyx::SessionIntent intent;
+    intent.key = key;
+    intent.kind = nyx::SessionIntentKind::GroupHub;
+    intent.ref_id_hex = gid;
+    intent.invite_hex = nyx::GroupStore::invite_hex(g.invite_token);
+    intent.enabled = true;
+    intent_store_.enable(std::move(intent));
+    if (!is_session_up(key)) start_group_hub(gid);
+  }
+  intent_store_.save();
+  start_dm_inbox();
+}
+
+void NodeService::auto_reconnect_all() {
   start_dm_inbox();
 
   nyx::Profile profile;
@@ -877,24 +938,40 @@ void NodeService::auto_reconnect_all() {
 
   nyx::GroupStore store;
   store.load();
+  intent_store_.load();
+
+  // Свои поля: поднимаем hub всегда, пока intent не выключен вручную («Отключиться»).
   for (const auto& g : store.all()) {
+    if (g.owner_id != profile.user_id()) continue;
     const std::string gid = nyx::GroupStore::group_id_hex(g.id);
     const std::string key = make_group_session_id(gid);
-    intent_store_.load();
     if (!intent_store_.is_enabled(key)) continue;
-    if (is_session_live(key)) continue;
-    if (g.owner_id == profile.user_id()) {
-      start_group_hub(gid);
-    } else {
-      start_group_join(nyx::GroupStore::invite_hex(g.invite_token));
-    }
+    if (is_session_up(key)) continue;
+    start_group_hub(gid);
+  }
+
+  if (!network_config_.auto_start_owned_hub) return;
+
+  // Чужие поля / join — только если intent явно включён (не после «Отключиться»).
+  for (const auto& g : store.all()) {
+    if (g.owner_id == profile.user_id()) continue;
+    const std::string gid = nyx::GroupStore::group_id_hex(g.id);
+    const std::string key = make_group_session_id(gid);
+    if (!intent_store_.is_enabled(key)) continue;
+    if (is_session_up(key)) continue;
+    const auto* intent = intent_store_.find(key);
+    const std::string invite =
+        (intent && intent->invite_hex.size() == 64)
+            ? intent->invite_hex
+            : nyx::GroupStore::invite_hex(g.invite_token);
+    start_group_join(invite);
   }
 
   intent_store_.load();
   for (const auto& intent : intent_store_.all()) {
     if (!intent.enabled) continue;
     if (intent.kind != nyx::SessionIntentKind::Direct) continue;
-    if (is_session_live(intent.key)) continue;
+    if (is_session_up(intent.key)) continue;
     if (intent.invite_hex.size() == 64) start_connect_token(intent.invite_hex);
   }
 }

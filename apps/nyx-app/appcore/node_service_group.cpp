@@ -74,17 +74,18 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
   session->ref_id_hex = nyx::GroupStore::group_id_hex(group->id);
   session->share_scope = group_id;
   remember_intent_for_session(session, nyx::GroupStore::invite_hex(group->invite_token));
-  emit_chat_ready(session, group->name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
-                  session->ref_id_hex);
 
+  // GroupHub до chat_ready: иначе Live без send_message → «Не удалось отправить».
   session->group_hub = std::make_unique<nyx::GroupHub>(rv.socket(), profile, *group);
   session->group_hub->attach_files(file_index_, group_id, &file_access_);
   session->group_hub->set_on_message([this, session](const nyx::ChatMessage& msg, bool outgoing) {
     emit_message(session, msg, outgoing);
   });
   session->group_hub->set_on_event([this](const std::string& text) { emit_status(text); });
-
   sync_live_group_from_session(session);
+
+  emit_chat_ready(session, group->name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
+                  session->ref_id_hex);
 
   const nyx::InviteToken hub_invite = group->invite_token;
   const auto rv_servers = network_config_.rendezvous_servers;
@@ -127,9 +128,22 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   auto group = store.find_by_invite(token);
   std::string group_name = group ? group->name : "поле";
 
+  auto bind_group_session_key = [&]() {
+    if (!group || !session) return;
+    const std::string final_id =
+        make_group_session_id(nyx::GroupStore::group_id_hex(group->id));
+    std::lock_guard lock(sessions_mutex_);
+    if (session->id == final_id) return;
+    sessions_.erase(session->id);
+    session->id = final_id;
+    session->ref_id_hex = nyx::GroupStore::group_id_hex(group->id);
+    sessions_[final_id] = session;
+  };
+
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
     emit_status("bind failed");
+    bind_group_session_key();
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -138,6 +152,7 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   uint16_t rendezvous_port = 0;
   if (!parse_rendezvous(rendezvous_host, rendezvous_port)) {
     emit_status("неверный rendezvous");
+    bind_group_session_key();
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -177,6 +192,7 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
 
   if (!connected || !session->connection) {
     emit_status("lookup failed — hub запущен и тот же rendezvous?");
+    bind_group_session_key();
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -187,6 +203,7 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   if (!nyx::exchange_hello(*session->connection, profile, peer_hello, 10,
                            [session]() { return session->running.load(); })) {
     emit_status("Hello timeout");
+    bind_group_session_key();
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -205,6 +222,7 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
 
   if (!session->group_member->join()) {
     emit_status("join failed");
+    bind_group_session_key();
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -232,12 +250,16 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
     const std::string final_id = make_group_session_id(nyx::GroupStore::group_id_hex(view.id));
     {
       std::lock_guard lock(sessions_mutex_);
+      const std::string old_id = session->id;
       if (session->id != final_id) {
         sessions_.erase(session->id);
         session->id = final_id;
         sessions_[final_id] = session;
       }
-      active_session_id_ = final_id;
+      if (active_session_id_.empty() || active_session_id_ == old_id ||
+          active_session_id_ == final_id) {
+        active_session_id_ = final_id;
+      }
       session->ref_id_hex = nyx::GroupStore::group_id_hex(view.id);
     }
   }
