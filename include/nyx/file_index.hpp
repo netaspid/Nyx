@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -56,17 +57,19 @@ class FileIndex {
   /** Сбрасывает индекс в памяти (без записи на диск). */
   void clear();
 
-  /** Добавляет корень. group_id=nullptr или zero → личка; иначе только это поле. */
+  /** Добавляет корень и сканирует файлы (потокобезопасно). group_id=nullptr/zero → личка. */
   bool add_root(const std::string& root_path, const GroupId* group_id = nullptr,
                 ScanProgressFn progress = nullptr);
 
-  /** Удаляет корень и его файлы из индекса. */
+  /** Удаляет корень и его файлы; повторный add_root того же пути допустим. */
   bool remove_root(const std::string& root_path, const GroupId* group_id = nullptr);
 
   /** Корни, видимые в области (личка или поле). */
   std::vector<ShareRoot> roots_for_session(const GroupId& session_group) const;
-  const std::vector<ShareRoot>& share_roots() const { return share_roots_; }
-  const std::vector<FileEntry>& entries() const { return entries_; }
+  /** Копия корней (потокобезопасно относительно сканирования). */
+  std::vector<ShareRoot> share_roots() const;
+  /** Копия записей индекса. */
+  std::vector<FileEntry> entries() const;
 
   /** Файлы, видимые в текущей сессии (личка или конкретное поле). */
   std::vector<FileEntry> entries_for_session(const GroupId& session_group) const;
@@ -119,6 +122,7 @@ class FileIndex {
  private:
   bool scan_directory(const ShareRoot& root, ScanProgressFn progress = nullptr);
 
+  mutable std::recursive_mutex mutex_;
   std::vector<ShareRoot> share_roots_;
   std::vector<FileEntry> entries_;
 };

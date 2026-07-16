@@ -222,22 +222,39 @@ std::vector<nyx::FileEntry> NodeService::local_files_at_root(
 }
 
 void NodeService::publish_field_index() {
-  auto session = active_session();
-  if (!session) return;
+  std::shared_ptr<NetSession> session;
+  if (auto active = active_session()) {
+    if (active->kind == SessionKind::GroupMember && active->files &&
+        active->state.load() == SessionState::Live) {
+      session = active;
+    }
+  }
+  if (!session) {
+    std::lock_guard lock(sessions_mutex_);
+    for (const auto& [id, s] : sessions_) {
+      (void)id;
+      if (!s || s->kind != SessionKind::GroupMember || !s->files) continue;
+      if (s->state.load() != SessionState::Live) continue;
+      if (std::all_of(s->share_scope.begin(), s->share_scope.end(),
+                      [](uint8_t b) { return b == 0; })) {
+        continue;
+      }
+      session = s;
+      break;
+    }
+  }
+  if (!session || !session->files || session->group_hub) return;
   if (std::all_of(session->share_scope.begin(), session->share_scope.end(),
                   [](uint8_t b) { return b == 0; })) {
     return;
   }
-  if (session->group_hub) return;
 
   const auto entries = file_index_.entries_for_session(session->share_scope);
   std::vector<std::string> root_paths;
   for (const auto& r : file_index_.roots_for_session(session->share_scope)) {
     root_paths.push_back(r.path);
   }
-  if (entries.empty() && root_paths.empty()) return;
-  if (!session->files) return;
-
+  // Пустой индекс тоже пушим — иначе hub оставляет устаревший каталог участника.
   if (!session->files->push_field_index(entries, root_paths)) {
     emit_status("не удалось опубликовать индекс поля");
   }

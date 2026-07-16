@@ -98,8 +98,19 @@ std::vector<std::string> split_objects(const std::string& arr) {
 }  // namespace
 
 void FileIndex::clear() {
+  std::lock_guard lock(mutex_);
   entries_.clear();
   share_roots_.clear();
+}
+
+std::vector<ShareRoot> FileIndex::share_roots() const {
+  std::lock_guard lock(mutex_);
+  return share_roots_;
+}
+
+std::vector<FileEntry> FileIndex::entries() const {
+  std::lock_guard lock(mutex_);
+  return entries_;
 }
 
 std::string FileEntry::absolute_path() const {
@@ -118,19 +129,56 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
                                                 const std::string& parent_rel) {
   const std::string root_norm = normalize_utf8_path(share_root_path);
   const std::string parent = path_to_posix(parent_rel);
+  const std::string root_leaf = path_to_posix(path_to_utf8(path_from_utf8(root_norm).filename()));
 
   std::map<std::string, int> subdirs;
+  std::map<std::string, FileEntry> dir_markers;
   std::vector<FileEntry> files;
   GroupId share_group{};
   bool share_group_set = false;
 
-  for (const auto& e : source) {
-    if (e.is_directory()) continue;
-    if (normalize_utf8_path(e.root_path) != root_norm) continue;
-    if (!share_group_set &&
-        !std::all_of(e.share_group.begin(), e.share_group.end(), [](uint8_t b) { return b == 0; })) {
+  auto take_share_group = [&](const FileEntry& e) {
+    if (share_group_set) return;
+    if (!std::all_of(e.share_group.begin(), e.share_group.end(), [](uint8_t b) { return b == 0; })) {
       share_group = e.share_group;
       share_group_set = true;
+    }
+  };
+
+  /** Прямой потомок parent в relative_path; пусто если не подходит. */
+  auto immediate_child = [&](const std::string& rel) -> std::string {
+    std::string rest;
+    if (parent.empty()) {
+      rest = rel;
+    } else {
+      if (rel.size() <= parent.size() + 1) return {};
+      if (rel.compare(0, parent.size(), parent) != 0) return {};
+      if (rel[parent.size()] != '/') return {};
+      rest = rel.substr(parent.size() + 1);
+    }
+    if (rest.empty()) return {};
+    const auto slash = rest.find('/');
+    if (slash != std::string::npos) return {};
+    return rest;
+  };
+
+  for (const auto& e : source) {
+    if (normalize_utf8_path(e.root_path) != root_norm) continue;
+    take_share_group(e);
+
+    if (e.is_directory()) {
+      const std::string rel = path_to_posix(e.relative_path);
+      // Маркер share-корня (имя папки / «участник: …») — не подпапка внутри корня.
+      if (parent.empty()) {
+        if (rel == root_leaf) continue;
+        if (rel.rfind("участник:", 0) == 0) continue;
+      }
+      const std::string child = immediate_child(rel);
+      if (child.empty()) continue;
+      dir_markers[child] = e;
+      const int count = static_cast<int>(e.size);
+      if (subdirs[child] < count) subdirs[child] = count;
+      continue;
     }
 
     const std::string rel = path_to_posix(e.relative_path);
@@ -151,13 +199,25 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
       file.relative_path = rest;
       files.push_back(std::move(file));
     } else {
-      subdirs[rest.substr(0, slash)]++;
+      const std::string child = rest.substr(0, slash);
+      subdirs[child]++;
     }
   }
 
   std::vector<FileEntry> out;
   out.reserve(subdirs.size() + files.size());
   for (const auto& [sub, count] : subdirs) {
+    const auto mit = dir_markers.find(sub);
+    if (mit != dir_markers.end()) {
+      FileEntry marker = mit->second;
+      marker.relative_path = parent.empty() ? sub : parent + "/" + sub;
+      marker.root_path = root_norm;
+      if (marker.size < static_cast<uint64_t>(count)) {
+        marker.size = static_cast<uint64_t>(count);
+      }
+      out.push_back(std::move(marker));
+      continue;
+    }
     FileEntry marker;
     marker.root_path = root_norm;
     marker.share_group = share_group;
@@ -181,6 +241,7 @@ std::vector<FileEntry> FileIndex::listing_level_for_root(const GroupId& session_
 std::vector<FileEntry> FileIndex::listing_at_root(const std::string& share_root_path,
                                                   const std::string& parent_rel) const {
   const std::string norm = normalize_utf8_path(share_root_path);
+  std::lock_guard lock(mutex_);
   std::vector<FileEntry> in_root;
   in_root.reserve(entries_.size());
   for (const auto& e : entries_) {
@@ -216,6 +277,7 @@ std::string FileIndex::guess_mime(const std::string& path) {
 }
 
 bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
+  // Вызывающий уже держит mutex_. Progress не должен снова входить в FileIndex.
   std::error_code ec;
   const std::string norm = normalize_utf8_path(root.path);
   const std::filesystem::path root_fs = path_from_utf8(norm);
@@ -225,32 +287,44 @@ bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
 
   std::set<std::string> seen_hashes;
   int scanned = 0;
-  for (const auto& dir_entry : std::filesystem::recursive_directory_iterator(root_fs, ec)) {
-    if (ec) break;
-    if (!dir_entry.is_regular_file(ec)) continue;
+  const auto options = std::filesystem::directory_options::skip_permission_denied;
+  try {
+    std::filesystem::recursive_directory_iterator it(root_fs, options, ec);
+    const std::filesystem::recursive_directory_iterator end;
+    for (; !ec && it != end; it.increment(ec)) {
+      if (ec) {
+        ec.clear();
+        continue;
+      }
+      std::error_code file_ec;
+      if (!it->is_regular_file(file_ec) || file_ec) continue;
 
-    const std::string abs = path_to_utf8(dir_entry.path().lexically_normal());
-    FileEntry entry;
-    entry.root_path = norm;
-    entry.share_group = root.group_id;
-    const auto rel = std::filesystem::relative(dir_entry.path(), root_fs, ec);
-    if (ec) continue;
-    entry.relative_path = path_to_utf8(rel.lexically_normal());
+      const std::string abs = path_to_utf8(it->path().lexically_normal());
+      FileEntry entry;
+      entry.root_path = norm;
+      entry.share_group = root.group_id;
+      const auto rel = std::filesystem::relative(it->path(), root_fs, file_ec);
+      if (file_ec) continue;
+      entry.relative_path = path_to_posix(path_to_utf8(rel.lexically_normal()));
+      if (entry.relative_path.empty()) continue;
 
-    if (!hash_file(abs, entry.hash)) continue;
-    const std::string hex = hash_hex(entry.hash);
-    if (seen_hashes.count(hex)) continue;
-    seen_hashes.insert(hex);
+      if (!hash_file(abs, entry.hash)) continue;
+      const std::string hex = hash_hex(entry.hash);
+      if (seen_hashes.count(hex)) continue;
+      seen_hashes.insert(hex);
 
-    entry.size = static_cast<uint64_t>(dir_entry.file_size(ec));
-    const auto ftime = dir_entry.last_write_time(ec);
-    entry.mtime_ms = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(ftime.time_since_epoch())
-            .count());
-    entry.mime = guess_mime(abs);
-    entries_.push_back(std::move(entry));
-    ++scanned;
-    if (progress) progress(entry.relative_path, scanned, false);
+      entry.size = static_cast<uint64_t>(it->file_size(file_ec));
+      if (file_ec) entry.size = 0;
+      // file_time_type::time_since_epoch() на Windows может бросать — не используем.
+      entry.mtime_ms = 0;
+      entry.mime = guess_mime(abs);
+      const std::string rel_for_progress = entry.relative_path;
+      entries_.push_back(std::move(entry));
+      ++scanned;
+      if (progress) progress(rel_for_progress, scanned, false);
+    }
+  } catch (const std::exception&) {
+    // Повреждённый путь / symlink loop — отдаём то, что успели просканировать.
   }
   if (progress) progress({}, scanned, true);
   return true;
@@ -266,9 +340,10 @@ bool FileIndex::add_root(const std::string& root_path, const GroupId* group_id,
   sr.path = norm;
   if (group_id) sr.group_id = *group_id;
 
+  std::lock_guard lock(mutex_);
   bool found = false;
   for (auto& existing : share_roots_) {
-    if (existing.path == norm && existing.group_id == sr.group_id) {
+    if (normalize_utf8_path(existing.path) == norm && existing.group_id == sr.group_id) {
       found = true;
       break;
     }
@@ -276,7 +351,9 @@ bool FileIndex::add_root(const std::string& root_path, const GroupId* group_id,
   if (!found) share_roots_.push_back(sr);
 
   entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
-                                [&](const FileEntry& e) { return e.root_path == norm; }),
+                                [&](const FileEntry& e) {
+                                  return normalize_utf8_path(e.root_path) == norm;
+                                }),
                   entries_.end());
   return scan_directory(sr, std::move(progress)) && save();
 }
@@ -286,19 +363,24 @@ bool FileIndex::remove_root(const std::string& root_path, const GroupId* group_i
   GroupId gid{};
   if (group_id) gid = *group_id;
 
+  std::lock_guard lock(mutex_);
   const auto root_it = std::remove_if(share_roots_.begin(), share_roots_.end(),
                                       [&](const ShareRoot& r) {
-                                        return r.path == norm && r.group_id == gid;
+                                        return normalize_utf8_path(r.path) == norm &&
+                                               r.group_id == gid;
                                       });
   if (root_it == share_roots_.end()) return false;
   share_roots_.erase(root_it, share_roots_.end());
   entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
-                                [&](const FileEntry& e) { return e.root_path == norm; }),
+                                [&](const FileEntry& e) {
+                                  return normalize_utf8_path(e.root_path) == norm;
+                                }),
                   entries_.end());
   return save();
 }
 
 std::vector<ShareRoot> FileIndex::roots_for_session(const GroupId& session_group) const {
+  std::lock_guard lock(mutex_);
   std::vector<ShareRoot> out;
   for (const auto& r : share_roots_) {
     FileEntry fake;
@@ -309,6 +391,7 @@ std::vector<ShareRoot> FileIndex::roots_for_session(const GroupId& session_group
 }
 
 std::vector<FileEntry> FileIndex::entries_for_session(const GroupId& session_group) const {
+  std::lock_guard lock(mutex_);
   std::vector<FileEntry> out;
   out.reserve(entries_.size());
   for (const auto& e : entries_) {
@@ -319,6 +402,7 @@ std::vector<FileEntry> FileIndex::entries_for_session(const GroupId& session_gro
 
 int FileIndex::count_in_root(const std::string& root_path) const {
   const std::string norm = normalize_utf8_path(root_path);
+  std::lock_guard lock(mutex_);
   int count = 0;
   for (const auto& e : entries_) {
     if (e.is_directory()) continue;
@@ -342,6 +426,7 @@ FileEntry FileIndex::make_directory_marker(const ShareRoot& root, int file_count
 }
 
 std::vector<FileEntry> FileIndex::listing_for_session(const GroupId& session_group) const {
+  std::lock_guard lock(mutex_);
   std::vector<FileEntry> out = entries_for_session(session_group);
   for (const auto& root : roots_for_session(session_group)) {
     out.insert(out.begin(), make_directory_marker(root, count_in_root(root.path)));
@@ -355,9 +440,10 @@ bool FileIndex::rescan_root(const std::string& root_path, const GroupId* group_i
   GroupId gid{};
   if (group_id) gid = *group_id;
 
+  std::lock_guard lock(mutex_);
   ShareRoot* found = nullptr;
   for (auto& existing : share_roots_) {
-    if (existing.path == norm && existing.group_id == gid) {
+    if (normalize_utf8_path(existing.path) == norm && existing.group_id == gid) {
       found = &existing;
       break;
     }
@@ -365,7 +451,9 @@ bool FileIndex::rescan_root(const std::string& root_path, const GroupId* group_i
   if (!found) return false;
 
   entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
-                                [&](const FileEntry& e) { return e.root_path == norm; }),
+                                [&](const FileEntry& e) {
+                                  return normalize_utf8_path(e.root_path) == norm;
+                                }),
                   entries_.end());
   return scan_directory(*found, std::move(progress)) && save();
 }
@@ -379,6 +467,7 @@ std::optional<FileEntry> FileIndex::find_for_session(const FileHash& hash,
 }
 
 bool FileIndex::load() {
+  std::lock_guard lock(mutex_);
   entries_.clear();
   share_roots_.clear();
   std::ifstream file(path_from_utf8(index_path()), std::ios::binary);
@@ -446,6 +535,7 @@ bool FileIndex::load() {
 }
 
 bool FileIndex::save() const {
+  std::lock_guard lock(mutex_);
   ensure_data_dir();
   std::ofstream file(path_from_utf8(index_path()), std::ios::binary | std::ios::trunc);
   if (!file) return false;
@@ -470,6 +560,7 @@ bool FileIndex::save() const {
 }
 
 std::optional<FileEntry> FileIndex::find_by_hash(const FileHash& hash) const {
+  std::lock_guard lock(mutex_);
   for (const auto& e : entries_) {
     if (e.hash == hash) return e;
   }

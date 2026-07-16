@@ -172,6 +172,29 @@ ColumnLayout {
         }
     }
 
+    ColumnLayout {
+        Layout.fillWidth: true
+        Layout.leftMargin: theme.spacing
+        Layout.rightMargin: theme.spacing
+        Layout.topMargin: 8
+        spacing: 4
+        visible: node.fileIndexProgressVisible
+
+        Label {
+            Layout.fillWidth: true
+            text: node.fileIndexProgressLabel
+            color: theme.textMuted
+            font.pixelSize: 11
+            elide: Text.ElideMiddle
+        }
+        ProgressBar {
+            Layout.fillWidth: true
+            from: 0
+            to: 100
+            value: node.fileIndexProgressPercent
+        }
+    }
+
     // --- содержимое: только одна страница через Loader ---
     Item {
         Layout.fillWidth: true
@@ -431,7 +454,10 @@ ColumnLayout {
                             theme: root.theme
                             glyph: "\uE74B"
                             enabled: node.fileBrowsePath.length > 0
-                            ToolTip.text: qsTr("На уровень выше")
+                                     || node.fileSelectedShareRoot.length > 0
+                            ToolTip.text: node.fileBrowsePath.length > 0
+                                          ? qsTr("На уровень выше")
+                                          : qsTr("К списку папок")
                             onClicked: node.browseUp()
                         }
 
@@ -517,22 +543,6 @@ ColumnLayout {
                         font.pixelSize: 11
                     }
 
-                    ProgressBar {
-                        Layout.fillWidth: true
-                        visible: node.fileIndexProgressVisible
-                        from: 0
-                        to: 100
-                        value: node.fileIndexProgressPercent
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        visible: node.fileIndexProgressVisible
-                        text: node.fileIndexProgressLabel
-                        color: theme.textMuted
-                        font.pixelSize: 11
-                        elide: Text.ElideMiddle
-                    }
-
                     Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -565,10 +575,17 @@ ColumnLayout {
                                     fileFullRelPath: modelData.fullRelPath || modelData.navPath || ""
                                     onAccessContextMenuRequested: root.openPathAccess(
                                         fileRow.fileRootPath, fileRow.fileFullRelPath, fileRow.fileName)
-                                NyxButtonSecondary {
-                                    visible: node.fileExchangeReady && node.canFileUpload && !fileRow.fileIsDirectory
+                                    NyxButtonSecondary {
+                                    // Только личка 1:1: передать файл собеседнику по каналу обмена.
+                                    // В поле каталог уже общий через «Ресурсы» — кнопка путает.
+                                    visible: node.fileScopeGroupId.length === 0
+                                             && node.fileExchangeReady
+                                             && node.canFileUpload
+                                             && !fileRow.fileIsDirectory
                                     theme: root.theme
-                                    text: qsTr("Отправить")
+                                    text: qsTr("Передать")
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: qsTr("Отправить этот файл собеседнику в текущем чате (не в поле)")
                                     onClicked: node.sendFileByHash(fileRow.fileHash)
                                 }
                                 IconButton {
@@ -645,8 +662,10 @@ ColumnLayout {
                     theme: root.theme
                     glyph: "\uE74B"
                     enabled: node.fileResourcesRoot.length > 0
-                             || node.fileRemoteBrowseCrumbs.length > 1
-                    ToolTip.text: qsTr("На уровень выше")
+                             || node.fileRemoteBrowsePath.length > 0
+                    ToolTip.text: node.fileRemoteBrowsePath.length > 0
+                                  ? qsTr("На уровень выше")
+                                  : qsTr("К списку папок поля")
                     onClicked: node.browseUp()
                 }
                 Flow {

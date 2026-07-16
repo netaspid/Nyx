@@ -286,6 +286,9 @@ bool GroupHub::try_accept(const std::string& host, uint16_t port,
   auto conn = Connection::accept_responder(socket_, host, port, &first_packet);
   if (!conn) return false;
 
+  // push_back может переаллоцировать vector — указатели HubMember* в map становятся висячими.
+  file_services_.clear();
+  active_relay_.reset();
   HubMember member{std::move(*conn), {}, "", false};
   members_.push_back(std::move(member));
   if (on_event_) on_event_("входящее соединение " + host + ':' + std::to_string(port));

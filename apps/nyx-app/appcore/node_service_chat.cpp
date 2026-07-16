@@ -220,7 +220,10 @@ bool NodeService::remove_share_root(const std::string& path,
     return false;
   }
   emit_status("папка убрана из индекса");
+  // Всегда публикуем при scoped-удалении (в т.ч. пустой индекс — сброс на hub).
   if (scope_ptr) publish_field_index();
+  // Сброс локального кэша «Ресурсы» у владельца hub, чтобы UI не держал призраки.
+  hub_remote_catalog_.clear();
   return true;
 }
 

@@ -655,6 +655,32 @@ static void test_file_index_three() {
   }
   assert(has_sub);
 
+  // Кэш уровня с peer: маркеры папок + leaf-имена файлов (как после ListResp).
+  // Повторный listing_level не должен выкидывать папки.
+  {
+    std::vector<nyx::FileEntry> wire_level;
+    for (const auto& e : level) wire_level.push_back(e);
+    const auto again = nyx::FileIndex::listing_level(wire_level, dir, "");
+    bool has_sub_again = false;
+    int files_again = 0;
+    for (const auto& e : again) {
+      if (e.is_directory() && e.relative_path == "sub") has_sub_again = true;
+      if (!e.is_directory()) ++files_again;
+    }
+    assert(has_sub_again);
+    assert(files_again >= 3);
+  }
+
+  assert(index.remove_root(dir));
+  assert(index.entries().empty());
+  assert(index.share_roots().empty());
+  assert(index.listing_for_session({}).empty());
+
+  // Повторное добавление после удаления не должно ломаться.
+  assert(index.add_root(dir));
+  assert(index.entries().size() == 4);
+  assert(index.remove_root(dir));
+
   std::filesystem::remove_all(dir);
   std::remove(nyx::FileIndex::index_path().c_str());
   std::cout << "file index three ok\n";

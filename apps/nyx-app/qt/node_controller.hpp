@@ -14,6 +14,10 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include <atomic>
+#include <thread>
+#include <vector>
+
 class QMenu;
 class QSystemTrayIcon;
 
@@ -388,7 +392,12 @@ class NodeController : public QObject {
   void updateFileAccessTargetLabel();
   void refreshFileShareRoots();
   void refreshLocalFileModel();
-  void refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries = {});
+  /** Без аргумента — из кэша NodeService; с вектором — как есть (в т.ч. пустой список). */
+  void refreshRemoteFileModel();
+  void refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries);
+  /** Сбрасывает browse, если текущий remote-корень пропал из каталога. */
+  void reconcileRemoteBrowsePath(const std::vector<nyx::FileEntry>& catalog);
+  void runIndexJob(const QString& path, const QString& scopeGroupId, bool rescan);
   void refreshFileAccessLists();
   uint32_t currentFilePermissions() const;
   uint32_t filePermissionsAt(const QString& rootPath, const QString& relativePath) const;
@@ -457,6 +466,7 @@ class NodeController : public QObject {
   int file_index_progress_percent_ = 0;
   QString file_index_progress_label_;
   int file_index_files_scanned_ = 0;
+  std::atomic<bool> file_index_busy_{false};
   QVariantList file_role_list_;
   QVariantList file_permission_preset_list_;
   QVariantList file_member_access_;

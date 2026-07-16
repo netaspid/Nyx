@@ -174,16 +174,25 @@ std::optional<std::pair<std::string, std::string>> decode_list_request(const Byt
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
   ByteBuffer out;
   out.push_back(static_cast<uint8_t>(FileKind::ListResp));
-  write_u16_le(out, static_cast<uint16_t>(entries.size()));
-  for (const auto& e : entries) {
+  const uint16_t count =
+      static_cast<uint16_t>(std::min(entries.size(), static_cast<std::size_t>(65535)));
+  write_u16_le(out, count);
+  for (uint16_t i = 0; i < count; ++i) {
+    const auto& e = entries[i];
     out.insert(out.end(), e.hash.begin(), e.hash.end());
     write_u64_le(out, e.size);
-    write_u16_le(out, static_cast<uint16_t>(e.relative_path.size()));
-    out.insert(out.end(), e.relative_path.begin(), e.relative_path.end());
-    write_u16_le(out, static_cast<uint16_t>(e.mime.size()));
-    out.insert(out.end(), e.mime.begin(), e.mime.end());
-    write_u16_le(out, static_cast<uint16_t>(e.root_path.size()));
-    out.insert(out.end(), e.root_path.begin(), e.root_path.end());
+    const auto rel_len =
+        static_cast<uint16_t>(std::min(e.relative_path.size(), kMaxPathLen));
+    write_u16_le(out, rel_len);
+    out.insert(out.end(), e.relative_path.begin(), e.relative_path.begin() + rel_len);
+    const auto mime_len =
+        static_cast<uint16_t>(std::min(e.mime.size(), kMaxMimeLen));
+    write_u16_le(out, mime_len);
+    out.insert(out.end(), e.mime.begin(), e.mime.begin() + mime_len);
+    const auto root_len =
+        static_cast<uint16_t>(std::min(e.root_path.size(), kMaxPathLen));
+    write_u16_le(out, root_len);
+    out.insert(out.end(), e.root_path.begin(), e.root_path.begin() + root_len);
   }
   return out;
 }

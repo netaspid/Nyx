@@ -41,6 +41,7 @@ QString normalizeSessionKey(const QString& key) {
 
 }  // namespace
 
+#include <cmath>
 #include <cstring>
 #include <map>
 
@@ -930,7 +931,7 @@ void NodeController::updateFileRole(const QString& roleId, const QString& name, 
     return;
   }
   refreshFileAccessLists();
-  if (files_section_ == 1) refreshRemoteFileModel({});
+  if (files_section_ == 1) refreshRemoteFileModel();
   emit filesChanged();
 }
 
@@ -1254,6 +1255,13 @@ void NodeController::syncFileBrowseCrumbs() {
 
 void NodeController::syncRemoteBrowseCrumbs() {
   file_remote_browse_crumbs_.clear();
+
+  QVariantMap top;
+  top.insert(QStringLiteral("label"), QStringLiteral("Ресурсы"));
+  top.insert(QStringLiteral("path"), QString());
+  top.insert(QStringLiteral("isRoots"), true);
+  file_remote_browse_crumbs_.append(top);
+
   if (file_resources_root_.isEmpty()) return;
 
   const QFileInfo rootInfo(file_resources_root_);
@@ -1261,6 +1269,7 @@ void NodeController::syncRemoteBrowseCrumbs() {
   rootCrumb.insert(QStringLiteral("label"), rootInfo.fileName().isEmpty() ? file_resources_root_
                                                                          : rootInfo.fileName());
   rootCrumb.insert(QStringLiteral("path"), QString());
+  rootCrumb.insert(QStringLiteral("isRoots"), false);
   file_remote_browse_crumbs_.append(rootCrumb);
 
   QString rel = file_remote_browse_path_;
@@ -1276,6 +1285,7 @@ void NodeController::syncRemoteBrowseCrumbs() {
       QVariantMap crumb;
       crumb.insert(QStringLiteral("label"), segment);
       crumb.insert(QStringLiteral("path"), built);
+      crumb.insert(QStringLiteral("isRoots"), false);
       file_remote_browse_crumbs_.append(crumb);
     }
     if (slash < 0) break;
@@ -1339,7 +1349,7 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
     service_.request_remote_files_at(file_scope_group_id_.toStdString(),
                                      file_resources_root_.toStdString(),
                                      file_remote_browse_path_.toStdString());
-    refreshRemoteFileModel({});
+    refreshRemoteFileModel();
     emit filesChanged();
     return;
   }
@@ -1360,33 +1370,71 @@ void NodeController::browseUp() {
       rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
       const int slash = rel.lastIndexOf(QLatin1Char('/'));
       file_remote_browse_path_ = slash < 0 ? QString() : rel.left(slash);
+      syncRemoteBrowseCrumbs();
+      service_.request_remote_files_at(file_scope_group_id_.toStdString(),
+                                       file_resources_root_.toStdString(),
+                                       file_remote_browse_path_.toStdString());
+      refreshRemoteFileModel();
     } else if (!file_resources_root_.isEmpty()) {
       file_resources_root_.clear();
+      syncRemoteBrowseCrumbs();
+      if (fileExchangeReady()) {
+        service_.request_remote_files_at(file_scope_group_id_.toStdString(), {}, {});
+      }
+      refreshRemoteFileModel();
     }
-    syncRemoteBrowseCrumbs();
-    refreshRemoteFileModel({});
     emit filesChanged();
     return;
   }
 
-  if (file_browse_path_.isEmpty()) return;
-  QString rel = file_browse_path_;
-  rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
-  const int slash = rel.lastIndexOf(QLatin1Char('/'));
-  file_browse_path_ = slash < 0 ? QString() : rel.left(slash);
-  syncFileBrowseCrumbs();
-  refreshLocalFileModel();
-  emit filesChanged();
+  if (!file_browse_path_.isEmpty()) {
+    QString rel = file_browse_path_;
+    rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    const int slash = rel.lastIndexOf(QLatin1Char('/'));
+    file_browse_path_ = slash < 0 ? QString() : rel.left(slash);
+    syncFileBrowseCrumbs();
+    refreshLocalFileModel();
+    emit filesChanged();
+    return;
+  }
+
+  // Над share-корнем: снять выбор папки (список «Мои папки» остаётся слева).
+  if (!file_selected_share_root_.isEmpty()) {
+    file_selected_share_root_.clear();
+    resetFileBrowse();
+    service_.save_files_selected_root({});
+    refreshLocalFileModel();
+    emit filesChanged();
+  }
 }
 
 void NodeController::browseToCrumb(int index) {
   if (files_section_ == 1) {
     if (index < 0 || index >= file_remote_browse_crumbs_.size()) return;
-    file_remote_browse_path_ =
-        file_remote_browse_crumbs_.at(index).toMap().value(QStringLiteral("path")).toString();
-    if (index == 0) file_remote_browse_path_.clear();
+    const QVariantMap crumb = file_remote_browse_crumbs_.at(index).toMap();
+    if (crumb.value(QStringLiteral("isRoots")).toBool() || index == 0) {
+      file_resources_root_.clear();
+      file_remote_browse_path_.clear();
+      syncRemoteBrowseCrumbs();
+      if (fileExchangeReady()) {
+        service_.request_remote_files_at(file_scope_group_id_.toStdString(), {}, {});
+      }
+      refreshRemoteFileModel();
+      emit filesChanged();
+      return;
+    }
+    if (index == 1) {
+      file_remote_browse_path_.clear();
+    } else {
+      file_remote_browse_path_ = crumb.value(QStringLiteral("path")).toString();
+    }
     syncRemoteBrowseCrumbs();
-    refreshRemoteFileModel({});
+    if (!file_resources_root_.isEmpty() && fileExchangeReady()) {
+      service_.request_remote_files_at(file_scope_group_id_.toStdString(),
+                                       file_resources_root_.toStdString(),
+                                       file_remote_browse_path_.toStdString());
+    }
+    refreshRemoteFileModel();
     emit filesChanged();
     return;
   }
@@ -1404,24 +1452,31 @@ void NodeController::addDroppedUrls(const QVariantList& urls) {
     showToast(QStringLiteral("Нет права добавлять папки в эту область"));
     return;
   }
-  int added = 0;
+  if (file_index_busy_.load()) {
+    showToast(QStringLiteral("Индексация уже выполняется"));
+    return;
+  }
+  QStringList dirs;
   for (const QVariant& u : urls) {
     QString p = u.toString().trimmed();
     if (p.startsWith(QStringLiteral("file:///"))) p = QUrl(p).toLocalFile();
     if (p.isEmpty()) continue;
     QFileInfo info(p);
-    if (info.isDir()) {
-      if (service_.index_folder(p.toStdString(), file_scope_group_id_.toStdString())) ++added;
-    } else if (info.isFile()) {
-      const QString dir = info.absolutePath();
-      if (service_.index_folder(dir.toStdString(), file_scope_group_id_.toStdString())) ++added;
-    }
+    if (info.isDir()) dirs.push_back(info.absoluteFilePath());
+    else if (info.isFile()) dirs.push_back(info.absolutePath());
   }
-  refreshFileLists();
-  if (added > 0) {
-    showToast(QStringLiteral("Добавлено папок: %1").arg(added));
-  } else {
+  if (dirs.isEmpty()) {
     showToast(QStringLiteral("Не удалось добавить из перетаскивания"));
+    return;
+  }
+  runIndexJob(dirs.front(), file_scope_group_id_, false);
+  for (int i = 1; i < dirs.size(); ++i) {
+    // Последовательно: следующие папки после завершения первой через очередь не делаем —
+    // пользователь может добавить ещё раз. Одна крупная папка за раз достаточно.
+    Q_UNUSED(i);
+  }
+  if (dirs.size() > 1) {
+    showToast(QStringLiteral("Индексируется первая папка; остальные добавьте по очереди"));
   }
 }
 
@@ -1498,20 +1553,49 @@ void NodeController::refreshLocalFileModel() {
   local_file_list_ = entriesToVariant(entries, false);
 }
 
+void NodeController::reconcileRemoteBrowsePath(const std::vector<nyx::FileEntry>& catalog) {
+  if (file_resources_root_.isEmpty()) return;
+  bool found = false;
+  for (const auto& e : catalog) {
+    if (e.root_path.empty()) continue;
+    if (shareRootPathsEqual(file_resources_root_, QString::fromStdString(e.root_path))) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    for (const auto& e : remoteRootsCatalog(catalog)) {
+      if (shareRootPathsEqual(file_resources_root_, QString::fromStdString(e.root_path))) {
+        found = true;
+        break;
+      }
+    }
+  }
+  if (!found) {
+    file_resources_root_.clear();
+    file_remote_browse_path_.clear();
+  }
+}
+
+void NodeController::refreshRemoteFileModel() {
+  refreshRemoteFileModel(service_.remote_files());
+}
+
 void NodeController::refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries) {
-  const auto& all = entries.empty() ? service_.remote_files() : entries;
+  reconcileRemoteBrowsePath(entries);
   std::vector<nyx::FileEntry> level;
   if (file_resources_root_.isEmpty()) {
-    level = remoteRootsCatalog(all);
+    level = remoteRootsCatalog(entries);
   } else {
     std::string root_path = file_resources_root_.toStdString();
-    for (const auto& e : all) {
+    for (const auto& e : entries) {
       if (shareRootPathsEqual(file_resources_root_, QString::fromStdString(e.root_path))) {
         root_path = e.root_path;
         break;
       }
     }
-    level = nyx::FileIndex::listing_level(all, root_path, file_remote_browse_path_.toStdString());
+    level =
+        nyx::FileIndex::listing_level(entries, root_path, file_remote_browse_path_.toStdString());
   }
   remote_file_list_ = entriesToVariant(level, true);
   syncRemoteBrowseCrumbs();
@@ -1520,7 +1604,7 @@ void NodeController::refreshRemoteFileModel(const std::vector<nyx::FileEntry>& e
 void NodeController::refreshFileLists() {
   refreshFileShareRoots();
   refreshLocalFileModel();
-  refreshRemoteFileModel({});
+  refreshRemoteFileModel();
   emit filesChanged();
 }
 
@@ -1551,6 +1635,65 @@ QString NodeController::pickSaveFolder() {
                                            start);
 }
 
+void NodeController::runIndexJob(const QString& path, const QString& scopeGroupId, bool rescan) {
+  const QString p = path.trimmed();
+  if (p.isEmpty()) return;
+  bool expected = false;
+  if (!file_index_busy_.compare_exchange_strong(expected, true)) {
+    showToast(QStringLiteral("Индексация уже выполняется"));
+    return;
+  }
+
+  file_index_progress_visible_ = true;
+  file_index_progress_percent_ = 5;
+  file_index_progress_label_ = QStringLiteral("Подготовка сканирования…");
+  file_index_files_scanned_ = 0;
+  emit fileIndexProgressChanged();
+
+  const QString scope = scopeGroupId;
+  std::thread([this, p, scope, rescan]() {
+    const bool ok = rescan ? service_.rescan_share_root(p.toStdString(), scope.toStdString())
+                           : service_.index_folder(p.toStdString(), scope.toStdString());
+    const int count = ok ? service_.file_count_in_root(p.toStdString()) : 0;
+    QMetaObject::invokeMethod(
+        this,
+        [this, ok, count, p, rescan]() {
+          file_index_busy_.store(false);
+          file_index_progress_visible_ = true;
+          file_index_progress_percent_ = 100;
+          if (!ok) {
+            file_index_progress_label_ = QStringLiteral("Ошибка индексации");
+            showToast(status_text_.isEmpty()
+                          ? (rescan ? QStringLiteral("Не удалось переиндексировать")
+                                    : QStringLiteral("Не удалось проиндексировать папку"))
+                          : status_text_);
+          } else {
+            file_index_progress_label_ = QStringLiteral("Готово: %1 файлов").arg(count);
+            refreshFileLists();
+            if (!rescan) {
+              setFileSelectedShareRoot(p);
+              if (count == 0) {
+                showToast(QStringLiteral(
+                    "Папка добавлена (0 файлов). Положите файлы и нажмите «Переиндексировать»."));
+              } else {
+                showToast(QStringLiteral("Папка проиндексирована: %1 файлов").arg(count));
+              }
+            } else {
+              showToast(QStringLiteral("Переиндексировано: %1 файлов").arg(count));
+            }
+          }
+          emit fileIndexProgressChanged();
+          QTimer::singleShot(1400, this, [this]() {
+            if (!file_index_busy_.load()) {
+              file_index_progress_visible_ = false;
+              emit fileIndexProgressChanged();
+            }
+          });
+        },
+        Qt::QueuedConnection);
+  }).detach();
+}
+
 void NodeController::addIndexedFolder(const QString& path) {
   if (!canAddShareFolder()) {
     showToast(QStringLiteral("Нет права добавлять папки в эту область"));
@@ -1562,18 +1705,7 @@ void NodeController::addIndexedFolder(const QString& path) {
     if (p.isEmpty()) return;
   }
   if (p.startsWith(QStringLiteral("file:///"))) p = QUrl(p).toLocalFile();
-  if (!service_.index_folder(p.toStdString(), file_scope_group_id_.toStdString())) {
-    showToast(status_text_.isEmpty() ? QStringLiteral("Не удалось проиндексировать папку")
-                                      : status_text_);
-    return;
-  }
-  refreshFileLists();
-  const int count = service_.file_count_in_root(p.toStdString());
-  if (count == 0) {
-    showToast(QStringLiteral("Папка добавлена (0 файлов). Положите файлы в папку и нажмите «Переиндексировать»."));
-  } else {
-    showToast(QStringLiteral("Папка проиндексирована: %1 файлов").arg(count));
-  }
+  runIndexJob(p, file_scope_group_id_, false);
 }
 
 void NodeController::removeIndexedFolder(const QString& path) {
@@ -1595,28 +1727,47 @@ void NodeController::removeIndexedFolder(const QString& path) {
     showToast(status_text_.isEmpty() ? QStringLiteral("Не удалось убрать папку") : status_text_);
     return;
   }
+  if (shareRootPathsEqual(file_selected_share_root_, path)) {
+    file_selected_share_root_.clear();
+    resetFileBrowse();
+    service_.save_files_selected_root({});
+  }
+  if (shareRootPathsEqual(file_resources_root_, path)) {
+    file_resources_root_.clear();
+    file_remote_browse_path_.clear();
+  }
   refreshFileLists();
+  if (files_section_ == 1 && fileExchangeReady()) refreshRemoteFileList();
   showToast(QStringLiteral("Папка убрана из индекса"));
 }
 
 void NodeController::rescanIndexedFolder(const QString& path) {
   if (path.trimmed().isEmpty()) return;
-  if (!service_.rescan_share_root(path.toStdString(), file_scope_group_id_.toStdString())) {
-    showToast(status_text_.isEmpty() ? QStringLiteral("Не удалось переиндексировать")
-                                      : status_text_);
-    return;
+  QString scope = file_scope_group_id_;
+  for (const auto& r : service_.all_share_roots()) {
+    if (!shareRootPathsEqual(path, QString::fromStdString(r.path))) continue;
+    scope = r.is_personal()
+                ? QString()
+                : QString::fromStdString(nyx::FileIndex::group_id_hex(r.group_id)).trimmed().toLower();
+    break;
   }
-  refreshFileLists();
-  showToast(status_text_.isEmpty() ? QStringLiteral("Переиндексировано") : status_text_);
+  runIndexJob(path.trimmed(), scope, true);
 }
 
 void NodeController::refreshRemoteFileList() {
+  // Полный сброс browse при обновлении корней — иначе остаёмся внутри удалённой папки.
+  file_resources_root_.clear();
+  file_remote_browse_path_.clear();
+  syncRemoteBrowseCrumbs();
   if (!service_.request_remote_files_at(file_scope_group_id_.toStdString(), {}, {})) {
+    refreshRemoteFileModel();
+    emit filesChanged();
     showToast(fileExchangeHint().isEmpty()
                   ? QStringLiteral("Не удалось запросить файлы")
                   : fileExchangeHint());
     return;
   }
+  emit filesChanged();
 }
 
 void NodeController::downloadFile(const QString& hashHex, const QString& fileName,
@@ -1941,24 +2092,17 @@ void NodeController::wireCallbacks() {
             this,
             [this, path, files_scanned, finished]() {
               file_index_files_scanned_ = files_scanned;
-              file_index_progress_visible_ = !finished;
-              if (finished) {
-                file_index_progress_percent_ = 100;
-                file_index_progress_label_ =
-                    QStringLiteral("Готово: %1 файлов").arg(files_scanned);
-                refreshFileLists();
-                QTimer::singleShot(1200, this, [this]() {
-                  file_index_progress_visible_ = false;
-                  emit fileIndexProgressChanged();
-                });
-              } else {
-                file_index_progress_percent_ =
-                    qMin(95, qMax(5, files_scanned % 100));
-                const QString name = QString::fromStdString(path);
-                file_index_progress_label_ = name.isEmpty()
-                                                 ? QStringLiteral("Сканирование…")
-                                                 : name;
-              }
+              if (finished) return;  // финал рисует runIndexJob
+              file_index_progress_visible_ = true;
+              // Плавный индикатор без известного total (не «зависание»).
+              const int paced = 5 + static_cast<int>(
+                  (95.0 * (1.0 - std::exp(-static_cast<double>(files_scanned) / 80.0))));
+              file_index_progress_percent_ = qBound(5, paced, 95);
+              const QString name = QString::fromStdString(path);
+              file_index_progress_label_ =
+                  name.isEmpty()
+                      ? QStringLiteral("Сканирование… %1 файлов").arg(files_scanned)
+                      : QStringLiteral("%1 · %2").arg(name).arg(files_scanned);
               emit fileIndexProgressChanged();
             },
             Qt::QueuedConnection);
@@ -1970,7 +2114,13 @@ void NodeController::wireCallbacks() {
         [this, entries]() {
           refreshRemoteFileModel(entries);
           emit filesChanged();
-          showToast(QStringLiteral("Ресурсы поля обновлены: %1").arg(remote_file_list_.size()));
+          const int n = static_cast<int>(remote_file_list_.size());
+          if (file_resources_root_.isEmpty()) {
+            showToast(n == 0 ? QStringLiteral("Ресурсы поля: папок нет")
+                             : QStringLiteral("Ресурсы поля: %1 папок").arg(n));
+          } else {
+            showToast(QStringLiteral("Уровень каталога: %1").arg(n));
+          }
         },
         Qt::QueuedConnection);
   });
@@ -1980,7 +2130,7 @@ void NodeController::wireCallbacks() {
         this,
         [this]() {
           refreshFileAccessLists();
-          refreshRemoteFileModel({});
+          refreshRemoteFileModel();
           emit filesChanged();
         },
         Qt::QueuedConnection);
@@ -2439,7 +2589,7 @@ void NodeController::endLiveSession() {
   emit busyChanged();
   refreshChatList();
   refreshGroupList();
-  refreshRemoteFileModel({});
+  refreshRemoteFileModel();
   emit filesChanged();
   emit sessionsChanged();
 }
