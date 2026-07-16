@@ -200,6 +200,12 @@ std::optional<ByteBuffer> Session::encrypt(const ByteBuffer& plain, std::string*
     if (err) *err = "no send cipher";
     return std::nullopt;
   }
+  // Noise cipherstate: max plaintext 65535 - 16 (MAC). Больший буфер → порча кучи в noise-c.
+  constexpr std::size_t kNoiseMaxPlain = 65535 - 16;
+  if (plain.size() > kNoiseMaxPlain) {
+    if (err) *err = "plaintext too large for Noise";
+    return std::nullopt;
+  }
   ByteBuffer out(plain.size() + 16);
   NoiseBuffer buf;
   noise_buffer_set_inout(buf, out.data(), plain.size(), out.size());
@@ -217,6 +223,11 @@ std::optional<ByteBuffer> Session::decrypt(const ByteBuffer& cipher, std::string
   auto* cs = static_cast<NoiseCS*>(recv_);
   if (!cs) {
     if (err) *err = "no recv cipher";
+    return std::nullopt;
+  }
+  constexpr std::size_t kNoiseMaxCipher = 65535;
+  if (cipher.size() > kNoiseMaxCipher) {
+    if (err) *err = "ciphertext too large for Noise";
     return std::nullopt;
   }
   ByteBuffer out(cipher.size());

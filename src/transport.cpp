@@ -41,9 +41,13 @@ ReliableSession::ReliableSession(std::size_t window, std::size_t mtu)
 std::vector<ByteBuffer> ReliableSession::fragment(uint32_t msg_id,
                                                    const ByteBuffer& data) {
   constexpr std::size_t kFragHdr = 8;
+  if (mtu_ <= kFragHdr) return {};
   const std::size_t chunk = mtu_ - kFragHdr;
-  const uint16_t total =
-      static_cast<uint16_t>(std::max<std::size_t>(1, (data.size() + chunk - 1) / chunk));
+  const std::size_t need =
+      std::max<std::size_t>(1, (data.size() + chunk - 1) / chunk);
+  // total в заголовке — uint16_t; переполнение ломает сборку (UB/порча кучи).
+  if (need > 65535) return {};
+  const uint16_t total = static_cast<uint16_t>(need);
   std::vector<ByteBuffer> out;
   for (std::size_t idx = 0, off = 0; off < data.size() || (idx == 0 && data.empty());
        ++idx, off += chunk) {
@@ -65,6 +69,7 @@ std::optional<ReliableSession::AssembledMessage> ReliableSession::assemble(
   const uint32_t msg_id = read_u32_le(chunk.data());
   const uint16_t idx = read_u16_le(chunk.data() + 4);
   const uint16_t total = read_u16_le(chunk.data() + 6);
+  if (total == 0) return std::nullopt;
   if (total <= 1) {
     return AssembledMessage{msg_id, ByteBuffer(chunk.begin() + 8, chunk.end())};
   }
@@ -72,6 +77,10 @@ std::optional<ReliableSession::AssembledMessage> ReliableSession::assemble(
   if (p.total == 0) {
     p.total = total;
     p.parts.assign(total, std::nullopt);
+  } else if (p.total != total) {
+    // Конфликт заголовков — сброс.
+    partials_.erase(msg_id);
+    return std::nullopt;
   }
   if (idx < p.parts.size() && !p.parts[idx]) {
     p.parts[idx] = ByteBuffer(chunk.begin() + 8, chunk.end());
@@ -80,6 +89,10 @@ std::optional<ReliableSession::AssembledMessage> ReliableSession::assemble(
   if (p.got < p.total) return std::nullopt;
   ByteBuffer out;
   for (const auto& part : p.parts) {
+    if (!part) {
+      partials_.erase(msg_id);
+      return std::nullopt;
+    }
     out.insert(out.end(), part->begin(), part->end());
   }
   partials_.erase(msg_id);

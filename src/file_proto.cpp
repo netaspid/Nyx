@@ -172,28 +172,51 @@ std::optional<std::pair<std::string, std::string>> decode_list_request(const Byt
 }
 
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
+  // Connection шифрует весь bulk-кадр до фрагментации; Noise ≤ 65519 байт plaintext.
+  // mux добавляет 4 байта stream_id — держим запас.
+  constexpr std::size_t kMaxListBytes = 48000;
+
+  std::vector<const FileEntry*> ordered;
+  ordered.reserve(entries.size());
+  for (const auto& e : entries) {
+    if (e.is_directory()) ordered.push_back(&e);
+  }
+  for (const auto& e : entries) {
+    if (!e.is_directory()) ordered.push_back(&e);
+  }
+
   ByteBuffer out;
+  out.reserve(std::min(kMaxListBytes, ordered.size() * 128 + 8));
   out.push_back(static_cast<uint8_t>(FileKind::ListResp));
-  const uint16_t count =
-      static_cast<uint16_t>(std::min(entries.size(), static_cast<std::size_t>(65535)));
-  write_u16_le(out, count);
-  for (uint16_t i = 0; i < count; ++i) {
-    const auto& e = entries[i];
-    out.insert(out.end(), e.hash.begin(), e.hash.end());
-    write_u64_le(out, e.size);
+  write_u16_le(out, 0);  // count — заполним в конце
+
+  uint16_t count = 0;
+  for (const FileEntry* pe : ordered) {
+    if (!pe || count == 65535) break;
+    const auto& e = *pe;
     const auto rel_len =
         static_cast<uint16_t>(std::min(e.relative_path.size(), kMaxPathLen));
-    write_u16_le(out, rel_len);
-    out.insert(out.end(), e.relative_path.begin(), e.relative_path.begin() + rel_len);
     const auto mime_len =
         static_cast<uint16_t>(std::min(e.mime.size(), kMaxMimeLen));
-    write_u16_le(out, mime_len);
-    out.insert(out.end(), e.mime.begin(), e.mime.begin() + mime_len);
     const auto root_len =
         static_cast<uint16_t>(std::min(e.root_path.size(), kMaxPathLen));
+    const std::size_t add =
+        32 + 8 + 2 + rel_len + 2 + mime_len + 2 + root_len;
+    if (out.size() + add > kMaxListBytes && count > 0) break;
+
+    out.insert(out.end(), e.hash.begin(), e.hash.end());
+    write_u64_le(out, e.size);
+    write_u16_le(out, rel_len);
+    out.insert(out.end(), e.relative_path.begin(), e.relative_path.begin() + rel_len);
+    write_u16_le(out, mime_len);
+    out.insert(out.end(), e.mime.begin(), e.mime.begin() + mime_len);
     write_u16_le(out, root_len);
     out.insert(out.end(), e.root_path.begin(), e.root_path.begin() + root_len);
+    ++count;
   }
+
+  out[1] = static_cast<uint8_t>(count & 0xff);
+  out[2] = static_cast<uint8_t>((count >> 8) & 0xff);
   return out;
 }
 

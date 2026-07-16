@@ -81,6 +81,7 @@ ByteBuffer encode_list_request();
 ByteBuffer encode_list_request(const std::string& root_path, const std::string& parent_rel);
 std::optional<std::pair<std::string, std::string>> decode_list_request(const ByteBuffer& data);
 
+/** ListResp / IndexPush: записи каталога (папки первыми; обрезается под лимит Noise). */
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries);
 
 /** Участник отправляет hub свой список файлов поля. */

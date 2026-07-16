@@ -686,6 +686,40 @@ static void test_file_index_three() {
   std::cout << "file index three ok\n";
 }
 
+static void test_list_response_size_cap() {
+  std::vector<nyx::FileEntry> entries;
+  entries.reserve(2000);
+  for (int i = 0; i < 2000; ++i) {
+    nyx::FileEntry e;
+    e.root_path = "C:/very/long/share/root/path/for/noise/limit/testing/thrust";
+    e.relative_path = "pkg_" + std::to_string(i) + "/nested/name.js";
+    e.mime = "application/javascript";
+    e.size = static_cast<uint64_t>(i);
+    e.hash = nyx::hash_bytes(reinterpret_cast<const uint8_t*>(e.relative_path.data()),
+                             e.relative_path.size());
+    if (i % 5 == 0) e.mime = "application/x-nyx-directory";
+    entries.push_back(std::move(e));
+  }
+  const auto wire = nyx::encode_list_response(entries);
+  assert(wire.size() <= 48000);
+  assert(wire.size() > 3);
+  auto decoded = nyx::decode_list_response(wire);
+  assert(decoded);
+  assert(!decoded->empty());
+  assert(decoded->size() < entries.size());
+  // Папки кодируются раньше файлов — в урезанном ответе должны быть directory-маркеры.
+  bool has_dir = false;
+  for (const auto& e : *decoded) {
+    if (e.is_directory()) {
+      has_dir = true;
+      break;
+    }
+  }
+  assert(has_dir);
+  std::cout << "list response size cap ok (" << decoded->size() << " entries, "
+            << wire.size() << " bytes)\n";
+}
+
 #ifdef _WIN32
 static void test_file_index_unicode() {
   const std::wstring wdir = L"test_index_unicode";
@@ -1446,6 +1480,7 @@ int main() {
   test_chat_msg_exchange();
   test_ten_messages_roundtrip();
   test_file_index_three();
+  test_list_response_size_cap();
 #ifdef _WIN32
   test_file_index_unicode();
 #endif

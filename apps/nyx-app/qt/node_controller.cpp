@@ -43,6 +43,7 @@ QString normalizeSessionKey(const QString& key) {
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <map>
 
 namespace {
@@ -63,7 +64,9 @@ QString formatFileSizeLabel(quint64 bytes, bool is_directory) {
 
 QString utf8q(const std::string& s) {
   if (s.empty()) return {};
-  return QString::fromUtf8(s.data(), static_cast<int>(s.size()));
+  const auto n = static_cast<qsizetype>(
+      std::min(s.size(), static_cast<std::size_t>(std::numeric_limits<int>::max())));
+  return QString::fromUtf8(s.data(), n);
 }
 
 QIcon makeTrayIcon() {
