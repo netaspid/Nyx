@@ -164,8 +164,7 @@ Rectangle {
                 theme: root.theme
                 node: root.node
                 avatarColorFn: root.avatarColorFn
-                selected: model.selected
-                sessionState: model.sessionState || "idle"
+                // sessionState / selected / key / … — required roles из модели
                 visible: chatFilter.text.length === 0
                          || title.toLowerCase().indexOf(chatFilter.text.toLowerCase()) >= 0
                          || preview.toLowerCase().indexOf(chatFilter.text.toLowerCase()) >= 0

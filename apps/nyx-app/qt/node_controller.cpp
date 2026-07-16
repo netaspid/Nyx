@@ -29,6 +29,18 @@
 #include <QUrl>
 #include <QVariantMap>
 
+namespace {
+
+QString normalizeSessionKey(const QString& key) {
+  if (key.startsWith(QLatin1String("group:")) || key.startsWith(QLatin1String("dm:"))) {
+    return key.section(QLatin1Char(':'), 0, 0) + QLatin1Char(':') +
+           key.section(QLatin1Char(':'), 1).toLower();
+  }
+  return key;
+}
+
+}  // namespace
+
 #include <cstring>
 #include <map>
 
@@ -134,9 +146,14 @@ void NodeController::beginMainSession() {
   connect(&lan_discovery_timer_, &QTimer::timeout, this, &NodeController::tickLanDiscovery);
   lan_discovery_timer_.start();
   QTimer::singleShot(800, this, &NodeController::tickLanDiscovery);
+  QTimer::singleShot(400, this, [this]() {
+    service_.ensure_owned_hubs_running();
+    refreshChatList();
+    emit sessionsChanged();
+  });
   QTimer::singleShot(1500, this, &NodeController::maybeAutoReconnectSessions);
 
-  session_reconnect_timer_.setInterval(8000);
+  session_reconnect_timer_.setInterval(5000);
   connect(&session_reconnect_timer_, &QTimer::timeout, this,
           &NodeController::maybeAutoReconnectSessions);
   session_reconnect_timer_.start();
@@ -193,7 +210,8 @@ bool NodeController::activeFieldIsOwner() const {
 }
 
 void NodeController::maybeAutoReconnectSessions() {
-  if (!auto_start_owned_hub_) return;
+  // Свои hub — если intent включён (после входа ensure_owned_hubs_running его включает).
+  // Чужие join/DM — по master-switch внутри auto_reconnect_all.
   service_.auto_reconnect_all();
   invite_token_ = QString::fromStdString(service_.dm_inbox_token_hex());
   emit inviteTokenChanged();
@@ -227,7 +245,7 @@ QString NodeController::sessionStateForKey(const QString& key) const {
 
 bool NodeController::isChatSelectable(const QString& key) const {
   Q_UNUSED(key);
-  // Историю можно открыть всегда; отправка зависит от canSendMessage / live.
+  // Историю можно открыть всегда; у офлайн-клиента сеть не поднимаем (см. openConversation).
   return true;
 }
 
@@ -327,6 +345,10 @@ void NodeController::setMainViewMode(int mode) {
     if (in_chat_ && active_chat_kind_ == static_cast<int>(nyx::ConversationKind::Group) &&
         !active_chat_ref_id_.isEmpty()) {
       setFileScopeGroupId(active_chat_ref_id_);
+    }
+    if (!active_chat_key_.isEmpty() &&
+        active_chat_key_.startsWith(QStringLiteral("group:"))) {
+      service_.set_active_session(active_chat_key_.toStdString());
     }
     refreshGroupList();
     refreshFileLists();
@@ -974,8 +996,13 @@ void NodeController::setFileScopeGroupId(const QString& groupIdHex) {
   syncFileScopeLabel();
   service_.save_files_scope_group_id(gid.toStdString());
   service_.save_files_selected_root({});
+  if (!gid.isEmpty()) {
+    service_.set_active_session(
+        QStringLiteral("group:%1").arg(gid).toStdString());
+  }
   refreshFileLists();
   refreshFileAccessLists();
+  if (fileExchangeReady()) refreshRemoteFileList();
   emit filesChanged();
   emit fileAccessChanged();
 }
@@ -985,7 +1012,12 @@ void NodeController::openGroupsDialog() {
   setGroupsDialogOpen(true);
 }
 
-bool NodeController::fileExchangeReady() const { return service_.can_request_remote_files(); }
+bool NodeController::fileExchangeReady() const {
+  if (!file_scope_group_id_.isEmpty()) {
+    return !service_.file_exchange_session_id(file_scope_group_id_.toStdString()).empty();
+  }
+  return service_.can_request_remote_files();
+}
 
 QString NodeController::fileExchangeHint() const {
   return QString::fromStdString(service_.file_exchange_hint());
@@ -1149,24 +1181,41 @@ void NodeController::setFilesSection(int section) {
 
 std::vector<nyx::FileEntry> NodeController::remoteRootsCatalog(
     const std::vector<nyx::FileEntry>& all) const {
-  std::map<std::string, int> root_counts;
   nyx::GroupId scope{};
   if (!file_scope_group_id_.isEmpty()) {
     nyx::FileIndex::group_id_from_hex(file_scope_group_id_.toStdString(), scope);
   }
+
+  std::map<std::string, int> file_counts;
   for (const auto& e : all) {
     if (e.is_directory()) continue;
-    const std::string norm = nyx::normalize_utf8_path(e.root_path);
-    root_counts[norm]++;
+    file_counts[nyx::normalize_utf8_path(e.root_path)]++;
   }
-  std::vector<nyx::FileEntry> out;
-  out.reserve(root_counts.size());
-  for (const auto& [path, count] : root_counts) {
+
+  // Сначала маркеры папок с hub (в т.ч. пустые share-корни с 0 файлов).
+  std::map<std::string, nyx::FileEntry> by_root;
+  for (const auto& e : all) {
+    if (!e.is_directory()) continue;
+    const std::string norm = nyx::normalize_utf8_path(e.root_path);
+    nyx::FileEntry marker = e;
+    marker.root_path = norm;
+    const auto it = file_counts.find(norm);
+    if (it != file_counts.end()) marker.size = static_cast<uint64_t>(it->second);
+    by_root[norm] = std::move(marker);
+  }
+
+  // Корни только из файлов (на случай ответа без маркеров).
+  for (const auto& [path, count] : file_counts) {
+    if (by_root.count(path)) continue;
     nyx::ShareRoot sr;
     sr.path = path;
     sr.group_id = scope;
-    out.push_back(nyx::FileIndex::make_directory_marker(sr, count));
+    by_root[path] = nyx::FileIndex::make_directory_marker(sr, count);
   }
+
+  std::vector<nyx::FileEntry> out;
+  out.reserve(by_root.size());
+  for (auto& [_, entry] : by_root) out.push_back(std::move(entry));
   return out;
 }
 
@@ -1286,6 +1335,10 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
       file_remote_browse_path_ = rel;
     }
     syncRemoteBrowseCrumbs();
+    // Подгрузить текущий уровень с hub (не весь node_modules разом).
+    service_.request_remote_files_at(file_scope_group_id_.toStdString(),
+                                     file_resources_root_.toStdString(),
+                                     file_remote_browse_path_.toStdString());
     refreshRemoteFileModel({});
     emit filesChanged();
     return;
@@ -1558,7 +1611,7 @@ void NodeController::rescanIndexedFolder(const QString& path) {
 }
 
 void NodeController::refreshRemoteFileList() {
-  if (!service_.request_remote_files()) {
+  if (!service_.request_remote_files_at(file_scope_group_id_.toStdString(), {}, {})) {
     showToast(fileExchangeHint().isEmpty()
                   ? QStringLiteral("Не удалось запросить файлы")
                   : fileExchangeHint());
@@ -1639,28 +1692,29 @@ void NodeController::wireCallbacks() {
             refreshGroupList();
             if (main_view_mode_ == 1) refreshFileAccessLists();
           }
-          if (lower.contains(QStringLiteral("failed")) ||
-              lower.contains(QStringLiteral("не удалось")) ||
-              lower.contains(QStringLiteral("неверн")) ||
-              lower.contains(QStringLiteral("отказ")) ||
-              lower.contains(QStringLiteral("файл сохранён")) ||
-              lower.contains(QStringLiteral("приём")) ||
-              lower.contains(QStringLiteral("запрос файла")) ||
+          // Lookup/rendezvous/register — только в статус-бар, не в тосты (reconnect спамит).
+          const bool progress_noise =
               lower.contains(QStringLiteral("lookup")) ||
-              lower.contains(QStringLiteral("register")) ||
-              lower.contains(QStringLiteral("timeout")) ||
-              lower.contains(QStringLiteral("handshake")) ||
-              lower.contains(QStringLiteral("поле")) ||
-              lower.contains(QStringLiteral("hub")) ||
-              lower.contains(QStringLiteral("invite")) ||
               lower.contains(QStringLiteral("rendezvous")) ||
-              lower.contains(QStringLiteral("bind"))) {
-            showToast(q, lower.contains(QStringLiteral("отказ")));
-            if (!in_chat_ &&
-                active_chat_kind_ == static_cast<int>(nyx::ConversationKind::Group)) {
-              peer_status_text_ = QStringLiteral("поле");
-              emit chatChanged();
-            }
+              lower.contains(QStringLiteral("register")) ||
+              lower.contains(QStringLiteral("handshake")) ||
+              lower.contains(QStringLiteral("bind ")) ||
+              lower.startsWith(QStringLiteral("hub «")) ||
+              lower.contains(QStringLiteral("invite:")) ||
+              lower.contains(QStringLiteral("подключение к hub"));
+          if (!progress_noise &&
+              (lower.contains(QStringLiteral("failed")) ||
+               lower.contains(QStringLiteral("не удалось")) ||
+               lower.contains(QStringLiteral("неверн")) ||
+               lower.contains(QStringLiteral("отказ")) ||
+               lower.contains(QStringLiteral("файл сохранён")) ||
+               lower.contains(QStringLiteral("приём")) ||
+               lower.contains(QStringLiteral("запрос файла")) ||
+               lower.contains(QStringLiteral("timeout")) ||
+               lower.contains(QStringLiteral("поле недоступно")))) {
+            showToast(q, lower.contains(QStringLiteral("отказ")) ||
+                             lower.contains(QStringLiteral("failed")) ||
+                             lower.contains(QStringLiteral("не удалось")));
           }
         },
         Qt::QueuedConnection);
@@ -1713,20 +1767,44 @@ void NodeController::wireCallbacks() {
     QMetaObject::invokeMethod(
         this,
         [this, session_id, peer_title, conn_label, kind, ref_id]() {
-          service_.set_active_session(session_id);
-          active_chat_kind_ = static_cast<int>(kind);
-          active_chat_ref_id_ = QString::fromStdString(ref_id);
-          enterChat(QString::fromStdString(peer_title), QString::fromStdString(conn_label),
-                    static_cast<int>(kind), QString::fromStdString(ref_id));
-          if (kind == nyx::ConversationKind::Group) {
-            loadStoredHistory(static_cast<int>(kind), QString::fromStdString(ref_id),
-                              active_chat_key_);
-            showToast(QStringLiteral("В поле «") + QString::fromStdString(peer_title) +
-                      QStringLiteral("»"));
+          const QString sid = QString::fromStdString(session_id);
+          const QString ref = QString::fromStdString(ref_id);
+          const QString list_key =
+              kind == nyx::ConversationKind::Group
+                  ? (QStringLiteral("group:") + ref)
+                  : (ref.isEmpty() ? sid : QStringLiteral("dm:") + ref);
+
+          chat_list_.setSessionState(list_key, QStringLiteral("live"));
+          if (sid != list_key)
+            chat_list_.setSessionState(sid, QStringLiteral("live"));
+
+          const bool user_waiting = pending_field_join_notify_;
+          const bool was_selected = !active_chat_key_.isEmpty() && active_chat_key_ == list_key;
+          pending_field_join_notify_ = false;
+
+          // Не красть active_session / UI у другого открытого чата.
+          if (user_waiting || was_selected) {
+            service_.set_active_session(session_id);
+            active_chat_kind_ = static_cast<int>(kind);
+            active_chat_ref_id_ = ref;
+            enterChat(QString::fromStdString(peer_title), QString::fromStdString(conn_label),
+                      static_cast<int>(kind), ref);
+            if (kind == nyx::ConversationKind::Group) {
+              loadStoredHistory(static_cast<int>(kind), ref, list_key);
+              showToast(QStringLiteral("В поле «") + QString::fromStdString(peer_title) +
+                        QStringLiteral("»"));
+            }
+          } else if (kind == nyx::ConversationKind::Group) {
+            showToast(QStringLiteral("Поле «") + QString::fromStdString(peer_title) +
+                      QStringLiteral("» снова в сети"));
+          } else {
+            showToast(QStringLiteral("Собеседник снова в сети"));
           }
+
           refreshChatList();
           refreshGroupList();
           emit sessionsChanged();
+          emit chatChanged();
         },
         Qt::QueuedConnection);
   });
@@ -1755,16 +1833,25 @@ void NodeController::wireCallbacks() {
           refreshChatList();
           emit sessionsChanged();
           emit chatChanged();
-          // Быстрый повтор join/hub, если intent ещё включён (владелец мог уйти ненадолго).
-          if (sid.startsWith(QStringLiteral("group:"))) {
-            const QString key = sid.startsWith(QStringLiteral("group:join:"))
-                                    ? active_chat_key_
-                                    : sid;
-            if (!key.isEmpty()) {
-              QTimer::singleShot(2000, this, [this, key]() {
+          if (pending_field_join_notify_) {
+            pending_field_join_notify_ = false;
+            const auto st = service_.session_state(session_id);
+            if (st == nyx_app::SessionState::Offline) {
+              showToast(QStringLiteral("Владелец поля не в сети"), false);
+            }
+          }
+          // Auto-retry только при неожиданном Offline и включённом intent.
+          // Disconnected = пользователь нажал «Отключиться» — не переподключать.
+          if (sid.startsWith(QStringLiteral("group:")) &&
+              !sid.startsWith(QStringLiteral("group:join:"))) {
+            const auto st = service_.session_state(session_id);
+            if (st == nyx_app::SessionState::Offline &&
+                service_.is_session_intent_enabled(sid.toStdString())) {
+              QTimer::singleShot(3000, this, [this, sid]() {
                 if (!auto_start_owned_hub_) return;
-                if (service_.is_session_live(key.toStdString())) return;
-                service_.ensure_session(key.toStdString());
+                if (!service_.is_session_intent_enabled(sid.toStdString())) return;
+                if (service_.is_session_up(sid.toStdString())) return;
+                service_.ensure_session(sid.toStdString());
                 refreshChatList();
                 emit sessionsChanged();
                 emit chatChanged();
@@ -2079,9 +2166,51 @@ void NodeController::completeOnboarding(const QString& nickname) {
 
 void NodeController::refreshChatList() {
   chat_list_.refreshFromDisk(profile_id_short_);
+
+  auto rank = [](const QString& state) -> int {
+    if (state == QLatin1String("live")) return 3;
+    if (state == QLatin1String("connecting")) return 2;
+    if (state == QLatin1String("offline") || state == QLatin1String("disconnected")) return 1;
+    return 0;
+  };
+  auto put_state = [&](QHash<QString, QString>& map, const QString& key, const QString& state) {
+    if (key.isEmpty()) return;
+    const QString norm = normalizeSessionKey(key);
+    const auto it = map.constFind(norm);
+    if (it == map.cend() || rank(state) >= rank(it.value())) map.insert(norm, state);
+  };
+
+  QHash<QString, QString> live_states;
   for (const auto& info : service_.list_sessions()) {
-    chat_list_.setSessionState(QString::fromStdString(info.id),
-                               QString::fromUtf8(nyx_app::session_state_name(info.state)));
+    if (info.kind == nyx_app::SessionKind::DmInbox) continue;
+    const QString sid = QString::fromStdString(info.id);
+    const QString state = QString::fromUtf8(nyx_app::session_state_name(info.state));
+    put_state(live_states, sid, state);
+    const QString ref = QString::fromStdString(info.ref_id_hex).trimmed().toLower();
+    if (ref.isEmpty()) continue;
+    if (info.kind == nyx_app::SessionKind::GroupHub ||
+        info.kind == nyx_app::SessionKind::GroupMember ||
+        sid.startsWith(QStringLiteral("group:"))) {
+      put_state(live_states, QStringLiteral("group:") + ref, state);
+    }
+    if (info.kind == nyx_app::SessionKind::Direct || sid.startsWith(QStringLiteral("dm:"))) {
+      if (!sid.startsWith(QStringLiteral("dm:pending:")) &&
+          !sid.startsWith(QStringLiteral("dm:incoming:"))) {
+        put_state(live_states, QStringLiteral("dm:") + ref, state);
+      }
+    }
+  }
+
+  for (int i = 0; i < chat_list_.rowCount(); ++i) {
+    const QModelIndex idx = chat_list_.index(i, 0);
+    const QString key = chat_list_.data(idx, ChatListModel::KeyRole).toString();
+    if (key.isEmpty()) continue;
+    const QString norm = normalizeSessionKey(key);
+    if (live_states.contains(norm)) {
+      chat_list_.setSessionState(key, live_states.value(norm));
+    } else {
+      chat_list_.setSessionState(key, QStringLiteral("offline"));
+    }
   }
 }
 
@@ -2167,25 +2296,45 @@ void NodeController::loadStoredHistory(int kind, const QString& refId,
 
 void NodeController::openConversation(const QString& key, int kind, const QString& refId,
                                       const QString& title, const QString& lastSeen) {
-  active_chat_key_ = key;
+  const bool live = service_.is_session_live(key.toStdString());
+  const bool is_group = kind == static_cast<int>(nyx::ConversationKind::Group);
+
+  // Нужен active_chat_ref_id_ для activeFieldIsOwner() до проверки owner.
   active_chat_kind_ = kind;
   active_chat_ref_id_ = refId;
+  const bool owner_field = is_group && activeFieldIsOwner();
+
+  if (!live && !owner_field) {
+    chat_list_.setSessionState(key, QStringLiteral("offline"));
+    chat_list_.setSelectedKey({});
+    active_chat_key_.clear();
+    peer_title_.clear();
+    peer_connection_label_.clear();
+    peer_status_text_.clear();
+    in_chat_ = false;
+    messages_.clear();
+    if (is_group) {
+      showToast(QStringLiteral("Владелец поля не в сети"), false);
+    } else {
+      Q_UNUSED(lastSeen);
+      showToast(QStringLiteral("Собеседник не в сети"), false);
+    }
+    emit chatChanged();
+    emit filesChanged();
+    return;
+  }
+
+  active_chat_key_ = key;
   peer_title_ = title;
   peer_connection_label_.clear();
   service_.set_active_session(key.toStdString());
   chat_list_.setSelectedKey(key);
 
-  const bool live = service_.is_session_live(key.toStdString());
   in_chat_ = live;
   if (live) {
-    peer_status_text_ = kind == static_cast<int>(nyx::ConversationKind::Group)
-                            ? QStringLiteral("в поле")
-                            : QStringLiteral("в сети");
-  } else if (kind == static_cast<int>(nyx::ConversationKind::Group)) {
-    peer_status_text_ = QStringLiteral("не в сети");
+    peer_status_text_ = is_group ? QStringLiteral("в поле") : QStringLiteral("в сети");
   } else {
-    peer_status_text_ =
-        lastSeen.isEmpty() ? QStringLiteral("не в сети") : lastSeen;
+    peer_status_text_ = QStringLiteral("hub не запущен");
   }
 
   loadStoredHistory(kind, refId, key);
@@ -2193,27 +2342,23 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   emit chatChanged();
   emit filesChanged();
 
-  if (!live) {
-    QTimer::singleShot(0, this, [this, key]() {
-      if (!service_.ensure_session(key.toStdString())) {
-        const bool owner_field =
-            active_chat_kind_ == static_cast<int>(nyx::ConversationKind::Group) &&
-            activeFieldIsOwner();
-        if (active_chat_kind_ == static_cast<int>(nyx::ConversationKind::Group)) {
-          peer_status_text_ = owner_field ? QStringLiteral("hub не запущен")
-                                          : QStringLiteral("поле не в сети");
-        } else {
-          peer_status_text_ = QStringLiteral("не в сети");
-        }
-        in_chat_ = false;
-        chat_list_.setSessionState(key, QStringLiteral("offline"));
-        emit chatChanged();
-        refreshChatList();
-      }
-      emit busyChanged();
-      emit sessionsChanged();
-    });
-  }
+  if (live) return;
+
+  // Владелец поля: поднять hub и сразу дать писать после Live.
+  chat_list_.setSessionState(key, QStringLiteral("connecting"));
+  showToast(QStringLiteral("Запуск hub поля…"));
+  QTimer::singleShot(0, this, [this, key]() {
+    if (!service_.ensure_session(key.toStdString())) {
+      peer_status_text_ = QStringLiteral("hub не запущен");
+      in_chat_ = false;
+      chat_list_.setSessionState(key, QStringLiteral("offline"));
+      showToast(QStringLiteral("Не удалось запустить hub поля"), true);
+      emit chatChanged();
+      refreshChatList();
+    }
+    emit busyChanged();
+    emit sessionsChanged();
+  });
 }
 
 void NodeController::searchMessages(const QString& query) {
@@ -2236,7 +2381,8 @@ void NodeController::setStatus(const QString& text) {
 void NodeController::showToast(const QString& text, bool isError) {
   if (text.isEmpty()) return;
   toast_is_error_ = isError;
-  toast_ = text.length() > 120 ? text.left(117) + QStringLiteral("…") : text;
+  // Полный текст — перенос в ToastHost; без обрезки до короткого «кусочка».
+  toast_ = text;
   emit toastChanged();
 }
 
@@ -2402,7 +2548,7 @@ void NodeController::sendMessage(const QString& text) {
     showToast(QStringLiteral("Нет связи с собеседником — сообщение не отправлено"), true);
     return;
   }
-  if (!service_.send_message(text.toStdString())) {
+  if (!service_.send_message(text.toStdString(), active_chat_key_.toStdString())) {
     showToast(QStringLiteral("Не удалось отправить сообщение"), true);
   }
 }
@@ -2483,12 +2629,35 @@ void NodeController::joinField(const QString& inviteHex) {
     return;
   }
   setGroupsDialogOpen(false);
-  peer_status_text_ = QStringLiteral("подключение…");
-  emit chatChanged();
+  pending_field_join_notify_ = true;
+
+  // Intent сразу: иначе после появления владельца список так и останется offline.
+  nyx::InviteToken token{};
+  if (nyx::GroupStore::invite_from_hex(normalized.toStdString(), token)) {
+    nyx::GroupStore store;
+    store.load();
+    for (const auto& gr : store.all()) {
+      if (gr.invite_token != token) continue;
+      const std::string key =
+          nyx_app::make_group_session_id(nyx::GroupStore::group_id_hex(gr.id));
+      nyx::SessionIntent intent;
+      intent.key = key;
+      intent.kind = nyx::SessionIntentKind::GroupJoin;
+      intent.ref_id_hex = nyx::GroupStore::group_id_hex(gr.id);
+      intent.invite_hex = normalized.toStdString();
+      intent.enabled = true;
+      service_.enable_session_intent(std::move(intent));
+      chat_list_.setSessionState(QString::fromStdString(key), QStringLiteral("connecting"));
+      break;
+    }
+  }
+
   showToast(QStringLiteral("Подключение к полю…"));
   service_.start_group_join(normalized.toStdString());
   emit listeningChanged();
   emit busyChanged();
+  emit sessionsChanged();
+  refreshChatList();
 }
 
 void NodeController::connectActiveField() {

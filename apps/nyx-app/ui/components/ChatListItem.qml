@@ -16,13 +16,19 @@ Rectangle {
     required property string key
     required property string refId
     required property string lastSeen
-    property string sessionState: "idle"
-    property bool selected: false
+    // Обязательны для ListView: иначе Qt 6 не обновляет роль при dataChanged.
+    required property string sessionState
+    required property bool selected
 
-    readonly property bool offline: sessionState === "offline" || sessionState === "disconnected"
+    // Offline / disconnected — серые. Connecting и live — активные.
     readonly property bool live: sessionState === "live"
     readonly property bool connecting: sessionState === "connecting"
-    // Offline: можно открыть историю, но не считать «в сети».
+    readonly property bool offline: !live && !connecting &&
+                                    (sessionState === "offline"
+                                     || sessionState === "disconnected"
+                                     || sessionState === "idle"
+                                     || sessionState.length === 0)
+    // Историю открываем всегда; сеть для офлайн-клиента — только toast.
     readonly property bool selectable: true
 
     readonly property string fieldMemberHint: {
@@ -36,8 +42,22 @@ Rectangle {
     }
 
     height: 64
-    opacity: offline ? 0.45 : 1
-    color: selected ? theme.btnSecondary : (mouseArea.containsMouse && selectable ? theme.btnSecondaryHover : "transparent")
+    opacity: 1
+    color: {
+        if (selected) return theme.btnSecondary
+        if (mouseArea.containsMouse) return theme.btnSecondaryHover
+        if (offline && !connecting) return theme.offlineRow
+        return "transparent"
+    }
+
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 3
+        visible: offline && !connecting && !live
+        color: theme.offlineBadge
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -55,6 +75,7 @@ Rectangle {
                 label: title
                 baseColor: avatarColorFn(title)
                 textColor: theme.textPrimary
+                opacity: (offline && !connecting) ? 0.55 : 1
             }
 
             Rectangle {
@@ -79,7 +100,7 @@ Rectangle {
                 Label {
                     Layout.fillWidth: true
                     text: title
-                    color: offline ? theme.textMuted : theme.textPrimary
+                    color: (offline && !connecting) ? theme.textMuted : theme.textPrimary
                     font.pixelSize: Math.round(14 * theme.fontScale)
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
@@ -95,16 +116,20 @@ Rectangle {
                 Layout.fillWidth: true
                 Label {
                     Layout.fillWidth: true
-                    text: offline ? qsTr("не в сети")
-                          : (preview || (kind === 1 && fieldMemberHint.length
-                                         ? fieldMemberHint
-                                         : qsTr("Нет сообщений")))
-                    color: theme.textSecondary
+                    text: {
+                        if (connecting) return qsTr("подключение…")
+                        if (live) return kind === 1 ? qsTr("в поле") : qsTr("в сети")
+                        if (offline) return qsTr("не в сети")
+                        if (preview.length) return preview
+                        if (kind === 1 && fieldMemberHint.length) return fieldMemberHint
+                        return qsTr("Нет сообщений")
+                    }
+                    color: offline ? theme.offlineBadge : theme.textSecondary
                     font.pixelSize: 12
                     elide: Text.ElideRight
                 }
                 Rectangle {
-                    visible: unread > 0 && !offline
+                    visible: unread > 0 && live
                     Layout.preferredWidth: Math.max(18, unreadLabel.implicitWidth + 8)
                     Layout.preferredHeight: 18
                     radius: 9
@@ -127,13 +152,12 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        cursorShape: selectable ? Qt.PointingHandCursor : Qt.ForbiddenCursor
+        cursorShape: Qt.PointingHandCursor
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
                 contextMenu.popup()
                 return
             }
-            if (!selectable) return
             root.clicked()
         }
     }

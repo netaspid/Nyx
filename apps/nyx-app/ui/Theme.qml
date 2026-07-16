@@ -34,8 +34,11 @@ QtObject {
     readonly property color inputBg: darkMode ? "#242f3d" : "#ffffff"
     readonly property color border: darkMode ? "#2b3847" : "#dadce0"
     readonly property color online: darkMode ? "#4caf50" : "#4caf50"
-    readonly property color toastBg: darkMode ? "#323232" : "#323232"
-    readonly property color toastErrorBg: darkMode ? "#4a2c2c" : "#ffebee"
+    /** Подсветка неактивного чата/поля в списке. */
+    readonly property color offlineRow: darkMode ? "#1a222c" : "#eceff1"
+    readonly property color offlineBadge: darkMode ? "#6b4e4e" : "#e57373"
+    readonly property color toastBg: darkMode ? "#243040" : "#ffffff"
+    readonly property color toastErrorBg: darkMode ? "#3a2428" : "#fff5f5"
     readonly property color focusRing: darkMode ? "#6ab2f2" : "#3390ec"
     readonly property real fontScale: 1.0
     readonly property int radiusBubble: 16

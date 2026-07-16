@@ -311,6 +311,15 @@ ColumnLayout {
                             font.capitalization: Font.AllUppercase
                         }
 
+                        Label {
+                            Layout.fillWidth: true
+                            visible: node.fileScopeGroupId.length > 0
+                            wrapMode: Text.WordWrap
+                            text: qsTr("Только ваши share-папки в этом поле. Каталог других участников — вкладка «Ресурсы».")
+                            color: theme.textMuted
+                            font.pixelSize: 10
+                        }
+
                         ListView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true

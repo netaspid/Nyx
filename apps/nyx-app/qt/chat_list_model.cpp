@@ -138,11 +138,17 @@ void ChatListModel::clearUnread(const QString& key) {
 }
 
 void ChatListModel::setSessionState(const QString& key, const QString& state) {
+  if (session_states_.value(key) == state) {
+    const int idx = indexForKey(key);
+    if (idx >= 0 && rows_[idx].sessionState == state) return;
+  }
   session_states_[key] = state;
   const int idx = indexForKey(key);
   if (idx >= 0) {
     rows_[idx].sessionState = state;
-    emit dataChanged(index(idx), index(idx), {SessionStateRole});
+    // Шире, чем одна роль: иначе часть делегатов Qt 6 не перерисовывает подпись статуса.
+    emit dataChanged(index(idx), index(idx),
+                     {SessionStateRole, PreviewRole, TitleRole, SelectedRole});
   }
 }
 

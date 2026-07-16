@@ -138,10 +138,12 @@ ApplicationWindow {
 
     ToastHost {
         id: toastHost
+        parent: Overlay.overlay
+        z: 1000
         anchors.right: parent.right
-        anchors.bottom: app.sessionUnlocked ? statusBar.top : parent.bottom
-        anchors.rightMargin: appTheme.spacing
-        anchors.bottomMargin: appTheme.spacing
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 20
+        anchors.bottomMargin: 20
         theme: appTheme
         message: app.toast
         isError: app.toastIsError

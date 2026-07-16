@@ -424,6 +424,7 @@ class NodeController : public QObject {
   QString toast_;
   bool toast_is_error_ = false;
   bool in_chat_ = false;
+  bool pending_field_join_notify_ = false;
   bool needs_onboarding_ = false;
   bool session_unlocked_ = false;
   bool legacy_profile_pending_ = false;
