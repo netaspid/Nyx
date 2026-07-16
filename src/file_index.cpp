@@ -145,16 +145,19 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
     }
   };
 
-  /** Прямой потомок parent в relative_path; пусто если не подходит. */
+  /** Прямой потомок parent в relative_path; пусто если не подходит.
+   *  Допускает leaf-имя без префикса parent (как в уже урезанном ListResp). */
   auto immediate_child = [&](const std::string& rel) -> std::string {
     std::string rest;
     if (parent.empty()) {
       rest = rel;
-    } else {
-      if (rel.size() <= parent.size() + 1) return {};
-      if (rel.compare(0, parent.size(), parent) != 0) return {};
-      if (rel[parent.size()] != '/') return {};
+    } else if (rel.size() > parent.size() + 1 && rel.compare(0, parent.size(), parent) == 0 &&
+               rel[parent.size()] == '/') {
       rest = rel.substr(parent.size() + 1);
+    } else if (rel.find('/') == std::string::npos) {
+      rest = rel;
+    } else {
+      return {};
     }
     if (rest.empty()) return {};
     const auto slash = rest.find('/');
@@ -185,18 +188,23 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
     std::string rest;
     if (parent.empty()) {
       rest = rel;
-    } else {
-      if (rel.size() <= parent.size() + 1) continue;
-      if (rel.compare(0, parent.size(), parent) != 0) continue;
-      if (rel[parent.size()] != '/') continue;
+    } else if (rel.size() > parent.size() + 1 && rel.compare(0, parent.size(), parent) == 0 &&
+               rel[parent.size()] == '/') {
       rest = rel.substr(parent.size() + 1);
+    } else if (rel.find('/') == std::string::npos) {
+      // Ответ уровня уже с leaf-путём — файл лежит в текущем parent.
+      rest = rel;
+    } else {
+      continue;
     }
     if (rest.empty()) continue;
 
     const auto slash = rest.find('/');
     if (slash == std::string::npos) {
       FileEntry file = e;
-      file.relative_path = rest;
+      // Полный путь от share-корня (не leaf): иначе повторный listing_level на клиенте
+      // с parent="node_modules" отбрасывает ".modules.yaml".
+      file.relative_path = parent.empty() ? rest : parent + "/" + rest;
       files.push_back(std::move(file));
     } else {
       const std::string child = rest.substr(0, slash);

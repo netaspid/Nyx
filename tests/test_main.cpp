@@ -655,11 +655,18 @@ static void test_file_index_three() {
   }
   assert(has_sub);
 
-  // Кэш уровня с peer: маркеры папок + leaf-имена файлов (как после ListResp).
-  // Повторный listing_level не должен выкидывать папки.
+  // Кэш уровня с peer: маркеры папок + leaf-имена файлов (как после старого ListResp).
+  // Повторный listing_level не должен выкидывать ни папки, ни файлы.
   {
     std::vector<nyx::FileEntry> wire_level;
-    for (const auto& e : level) wire_level.push_back(e);
+    for (const auto& e : level) {
+      nyx::FileEntry w = e;
+      if (!w.is_directory()) {
+        // Имитация старого бага на проводе: только leaf.
+        w.relative_path = w.leaf_name();
+      }
+      wire_level.push_back(std::move(w));
+    }
     const auto again = nyx::FileIndex::listing_level(wire_level, dir, "");
     bool has_sub_again = false;
     int files_again = 0;
@@ -669,6 +676,28 @@ static void test_file_index_three() {
     }
     assert(has_sub_again);
     assert(files_again >= 3);
+
+    // Уровень внутри sub: leaf-файл nested.txt не должен пропасть.
+    std::vector<nyx::FileEntry> nested_wire;
+    for (const auto& e : index.entries_for_session({})) {
+      if (e.relative_path.find("sub/") == 0) {
+        nyx::FileEntry w = e;
+        w.relative_path = w.leaf_name();
+        nested_wire.push_back(std::move(w));
+      }
+    }
+    nyx::FileEntry sub_marker;
+    sub_marker.root_path = nyx::normalize_utf8_path(dir);
+    sub_marker.relative_path = "sub";
+    sub_marker.mime = "application/x-nyx-directory";
+    nested_wire.push_back(sub_marker);
+    const auto nested_level =
+        nyx::FileIndex::listing_level(nested_wire, dir, "sub");
+    bool has_nested_file = false;
+    for (const auto& e : nested_level) {
+      if (!e.is_directory() && e.leaf_name() == "nested.txt") has_nested_file = true;
+    }
+    assert(has_nested_file);
   }
 
   assert(index.remove_root(dir));
