@@ -38,8 +38,9 @@ class FileTransferService {
   /** Отправляет следующий чанк, если идёт исходящая передача. */
   void pump();
 
-  /** Запрос списка файлов у peer. */
+  /** Запрос списка: без аргументов — share-корни; с путём — один уровень (merge в cache). */
   bool request_list();
+  bool request_list(const std::string& root_path, const std::string& parent_rel);
 
   /** Запрос актуальной политики ACL у hub. */
   bool request_policy();
@@ -52,6 +53,7 @@ class FileTransferService {
 
   /** Ответ на ListReq (вызывается из handle_bulk автоматически). */
   void respond_list();
+  void respond_list(const std::string& root_path, const std::string& parent_rel);
 
   /** Публикует на peer свой индекс поля (IndexPush). */
   bool push_field_index(const std::vector<FileEntry>& entries,
@@ -118,6 +120,7 @@ class FileTransferService {
   /** hash_hex → полный путь, выбранный до запроса. */
   std::unordered_map<std::string, std::string> pending_dest_paths_;
   std::vector<FileEntry> remote_list_;
+  bool merge_next_list_ = false;
   std::vector<std::function<void()>> deferred_callbacks_;
 
   EventCallback on_event_;

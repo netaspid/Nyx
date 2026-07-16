@@ -77,6 +77,10 @@ struct FileDeny {
 };
 
 ByteBuffer encode_list_request();
+/** ListReq с путём: корень + relative parent (пустые = только share-корни). */
+ByteBuffer encode_list_request(const std::string& root_path, const std::string& parent_rel);
+std::optional<std::pair<std::string, std::string>> decode_list_request(const ByteBuffer& data);
+
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries);
 
 /** Участник отправляет hub свой список файлов поля. */

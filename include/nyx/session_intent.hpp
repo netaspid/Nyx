@@ -47,7 +47,7 @@ class SessionIntentStore {
   void disable(const std::string& key);
   /** Включает существующий или создаёт enabled intent. */
   void enable(SessionIntent intent);
-  /** @return false только если key явно disabled; неизвестный key считается enabled. */
+  /** @return true только если key есть и enabled; неизвестный key = false. */
   bool is_enabled(const std::string& key) const;
   const SessionIntent* find(const std::string& key) const;
 

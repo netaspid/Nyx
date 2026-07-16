@@ -77,8 +77,11 @@ class GroupHub {
   /** Рассылает актуальную ACL всем участникам поля. */
   void broadcast_file_access_policy();
 
-  /** Каталог поля с учётом ACL для requester. */
+  /** Каталог share-корней поля с учётом ACL (без рекурсивного дампа файлов). */
   std::vector<FileEntry> catalog_for(const UserId& requester) const;
+  /** Один уровень внутри share-корня (подпапки-маркеры + файлы). */
+  std::vector<FileEntry> catalog_level_for(const UserId& requester, const std::string& root_path,
+                                          const std::string& parent_rel) const;
 
   /** Копирует файл из локального индекса hub в dest_path; проверяет hash. */
   bool download_local_file(const FileHash& hash, const std::string& dest_path,

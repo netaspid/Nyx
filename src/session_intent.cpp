@@ -172,7 +172,8 @@ bool SessionIntentStore::is_enabled(const std::string& key) const {
   for (const auto& it : intents_) {
     if (it.key == key) return it.enabled;
   }
-  return true;
+  // Нет записи — не поднимать сессию сами (только после явного join / enable).
+  return false;
 }
 
 const SessionIntent* SessionIntentStore::find(const std::string& key) const {

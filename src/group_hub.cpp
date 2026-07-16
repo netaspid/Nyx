@@ -99,8 +99,10 @@ std::vector<FileEntry> GroupHub::merged_field_entries_for(const UserId& requeste
   std::vector<FileEntry> filtered;
   filtered.reserve(out.size());
   for (const auto& e : out) {
+    // Маркер корня: ACL по share-root (relative_path у маркера — только подпись для UI).
+    const std::string rel_for_acl = e.is_directory() ? std::string{} : e.relative_path;
     const uint32_t perms =
-        file_access_->permissions_for(file_scope_, requester, e.root_path, e.relative_path);
+        file_access_->permissions_for(file_scope_, requester, e.root_path, rel_for_acl);
     if (!FileAccessStore::has_permission(perms, FilePermission::List)) continue;
     filtered.push_back(e);
   }
@@ -108,7 +110,17 @@ std::vector<FileEntry> GroupHub::merged_field_entries_for(const UserId& requeste
 }
 
 std::vector<FileEntry> GroupHub::catalog_for(const UserId& requester) const {
-  return merged_field_entries_for(requester);
+  std::vector<FileEntry> roots;
+  for (const auto& e : merged_field_entries_for(requester)) {
+    if (e.is_directory()) roots.push_back(e);
+  }
+  return roots;
+}
+
+std::vector<FileEntry> GroupHub::catalog_level_for(const UserId& requester,
+                                                   const std::string& root_path,
+                                                   const std::string& parent_rel) const {
+  return FileIndex::listing_level(merged_field_entries_for(requester), root_path, parent_rel);
 }
 
 bool GroupHub::download_local_file(const FileHash& hash, const std::string& dest_path,
@@ -159,8 +171,17 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
   const auto kind = static_cast<FileKind>(payload[0]);
 
   if (kind == FileKind::ListReq) {
-    member.connection.send_payload(kBulkStream,
-                                  encode_list_response(merged_field_entries_for(member.user_id)));
+    std::vector<FileEntry> entries;
+    if (auto path = decode_list_request(payload)) {
+      if (path->first.empty()) {
+        entries = catalog_for(member.user_id);
+      } else {
+        entries = catalog_level_for(member.user_id, path->first, path->second);
+      }
+    } else {
+      entries = catalog_for(member.user_id);
+    }
+    member.connection.send_payload(kBulkStream, encode_list_response(entries));
     return;
   }
 

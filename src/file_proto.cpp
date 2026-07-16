@@ -3,7 +3,9 @@
 #include "nyx/file_access.hpp"
 #include "nyx/util.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace nyx {
 
@@ -135,6 +137,38 @@ ByteBuffer encode_list_request() {
   ByteBuffer out;
   out.push_back(static_cast<uint8_t>(FileKind::ListReq));
   return out;
+}
+
+ByteBuffer encode_list_request(const std::string& root_path, const std::string& parent_rel) {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::ListReq));
+  write_u16_le(out, static_cast<uint16_t>(std::min<std::size_t>(root_path.size(), 65535)));
+  out.insert(out.end(), root_path.begin(),
+             root_path.begin() + static_cast<std::ptrdiff_t>(
+                                     std::min<std::size_t>(root_path.size(), 65535)));
+  write_u16_le(out, static_cast<uint16_t>(std::min<std::size_t>(parent_rel.size(), 65535)));
+  out.insert(out.end(), parent_rel.begin(),
+             parent_rel.begin() + static_cast<std::ptrdiff_t>(
+                                      std::min<std::size_t>(parent_rel.size(), 65535)));
+  return out;
+}
+
+std::optional<std::pair<std::string, std::string>> decode_list_request(const ByteBuffer& data) {
+  if (data.empty() || data[0] != static_cast<uint8_t>(FileKind::ListReq)) return std::nullopt;
+  if (data.size() == 1) return std::make_pair(std::string{}, std::string{});
+  if (data.size() < 5) return std::nullopt;
+  std::size_t off = 1;
+  const uint16_t root_len = read_u16_le(data.data() + off);
+  off += 2;
+  std::string root;
+  if (!read_string(data, off, root_len, kMaxPathLen, root)) return std::nullopt;
+  off += root_len;
+  if (off + 2 > data.size()) return std::nullopt;
+  const uint16_t parent_len = read_u16_le(data.data() + off);
+  off += 2;
+  std::string parent;
+  if (!read_string(data, off, parent_len, kMaxPathLen, parent)) return std::nullopt;
+  return std::make_pair(std::move(root), std::move(parent));
 }
 
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {

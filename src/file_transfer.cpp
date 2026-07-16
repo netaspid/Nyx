@@ -500,9 +500,20 @@ void FileTransferService::handle_request(const FileRequest& req) {
 
 
 void FileTransferService::respond_list() {
+  respond_list({}, {});
+}
 
-  send_bulk(encode_list_response(index_.listing_for_session(share_scope_)));
-
+void FileTransferService::respond_list(const std::string& root_path,
+                                       const std::string& parent_rel) {
+  std::vector<FileEntry> entries;
+  if (root_path.empty()) {
+    for (const auto& e : index_.listing_for_session(share_scope_)) {
+      if (e.is_directory()) entries.push_back(e);
+    }
+  } else {
+    entries = index_.listing_at_root(root_path, parent_rel);
+  }
+  send_bulk(encode_list_response(entries));
 }
 
 
@@ -522,33 +533,40 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
 
 
     if (kind == FileKind::ListReq) {
-
-      respond_list();
-
+      if (auto path = decode_list_request(payload)) {
+        respond_list(path->first, path->second);
+      } else {
+        respond_list();
+      }
       return;
-
     }
 
     if (kind == FileKind::ListResp) {
-
       if (auto list = decode_list_response(payload)) {
-
-        remote_list_ = std::move(*list);
-
+        if (merge_next_list_) {
+          for (auto& e : *list) {
+            const std::string hx = hash_hex(e.hash);
+            bool found = false;
+            for (auto& existing : remote_list_) {
+              if (hash_hex(existing.hash) == hx) {
+                existing = std::move(e);
+                found = true;
+                break;
+              }
+            }
+            if (!found) remote_list_.push_back(std::move(e));
+          }
+          merge_next_list_ = false;
+        } else {
+          remote_list_ = std::move(*list);
+        }
         const std::size_t count = remote_list_.size();
-
         deferred_callbacks_.push_back([this, count] {
-
           if (on_remote_list_) on_remote_list_(remote_list_);
-
           emit_event("получен список файлов: " + std::to_string(count) + " шт.");
-
         });
-
       }
-
       return;
-
     }
 
     if (auto req = FileRequest::decode(payload)) {
@@ -620,9 +638,20 @@ void FileTransferService::pump() {
 
 
 bool FileTransferService::request_list() {
-
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    merge_next_list_ = false;
+  }
   return send_bulk(encode_list_request());
+}
 
+bool FileTransferService::request_list(const std::string& root_path,
+                                       const std::string& parent_rel) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    merge_next_list_ = !root_path.empty();
+  }
+  return send_bulk(encode_list_request(root_path, parent_rel));
 }
 
 
