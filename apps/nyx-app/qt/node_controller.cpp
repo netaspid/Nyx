@@ -1,4 +1,5 @@
 #include "node_controller.hpp"
+#include "win_chrome.hpp"
 
 #include "nyx/account_store.hpp"
 #include "nyx/chat_id.hpp"
@@ -7,23 +8,33 @@
 #include "nyx/group.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/message_store.hpp"
+#include "nyx/profile_meta.hpp"
+#include "nyx/avatar_store.hpp"
 #include "nyx/file_access.hpp"
+#include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
+#include "nyx/markdown_format.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
+
+#include <cstring>
 
 #include <QAction>
 #include <QClipboard>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QImage>
+#include <QTemporaryFile>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QMenu>
 #include <QPainter>
 #include <QPixmap>
 #include <QSettings>
+#include <QStyleHints>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
 #include <QUrl>
@@ -70,16 +81,7 @@ QString utf8q(const std::string& s) {
 }
 
 QIcon makeTrayIcon() {
-  QIcon icon(QStringLiteral(":/icons/nyx-mark.svg"));
-  if (!icon.isNull()) return icon;
-  QPixmap pm(32, 32);
-  pm.fill(Qt::transparent);
-  QPainter painter(&pm);
-  painter.setRenderHint(QPainter::Antialiasing);
-  painter.setBrush(QColor("#5288c1"));
-  painter.setPen(Qt::NoPen);
-  painter.drawEllipse(2, 2, 28, 28);
-  return QIcon(pm);
+  return nyxAppIcon();
 }
 
 bool parse_user_id_hex(const QString& hex, nyx::UserId& out) {
@@ -144,6 +146,8 @@ void NodeController::beginMainSession() {
   refreshProfile();
   refreshChatList();
   refreshGroupList();
+  refreshContactList();
+  loadProfileMeta();
   refreshFileAccessLists();
 
   lan_discovery_timer_.setInterval(5000);
@@ -325,8 +329,11 @@ void NodeController::setProfilePath(const QString& v) {
 }
 
 void NodeController::setNickname(const QString& v) {
-  service_.set_nickname(v.trimmed().toStdString());
+  const QString n = v.trimmed();
+  if (n == profile_nickname_) return;
+  service_.set_nickname(n.toStdString());
   refreshProfile();
+  showToast(QStringLiteral("Личная информация обновлена"));
 }
 
 void NodeController::setConnectionPanelOpen(bool open) {
@@ -339,6 +346,111 @@ void NodeController::setGroupsDialogOpen(bool open) {
   if (groups_dialog_open_ == open) return;
   groups_dialog_open_ = open;
   emit groupsDialogOpenChanged();
+}
+
+void NodeController::setFieldInfoOpen(bool open) {
+  if (field_info_open_ == open) return;
+  field_info_open_ = open;
+  emit fieldInfoOpenChanged();
+}
+
+void NodeController::setPeerInfoOpen(bool open) {
+  if (peer_info_open_ == open) return;
+  peer_info_open_ = open;
+  emit peerInfoOpenChanged();
+}
+
+void NodeController::syncFieldInfoState() {
+  field_info_invite_.clear();
+  field_info_is_owner_ = false;
+  field_info_description_.clear();
+  field_info_direction_.clear();
+  field_info_tags_.clear();
+  field_info_public_listed_ = false;
+  field_info_members_.clear();
+  const QString gid = field_info_group_id_.trimmed().toLower();
+  if (gid.isEmpty()) return;
+
+  auto apply_map = [this](const QVariantMap& m) {
+    field_info_invite_ = m.value(QStringLiteral("invite")).toString().trimmed();
+    field_info_is_owner_ = m.value(QStringLiteral("isOwner")).toBool();
+    field_info_description_ = m.value(QStringLiteral("description")).toString();
+    field_info_direction_ = m.value(QStringLiteral("direction")).toString();
+    field_info_tags_ = m.value(QStringLiteral("tags")).toString();
+    field_info_public_listed_ = m.value(QStringLiteral("publicListed")).toBool();
+    field_info_members_ = m.value(QStringLiteral("members")).toList();
+  };
+
+  for (const auto& item : group_list_) {
+    const QVariantMap m = item.toMap();
+    if (m.value(QStringLiteral("groupId")).toString().trimmed().toLower() != gid) continue;
+    apply_map(m);
+    return;
+  }
+
+  nyx::GroupId id{};
+  if (!nyx::GroupStore::group_id_from_hex(gid.toStdString(), id)) return;
+  nyx::Profile profile;
+  const bool have_profile = nyx::active_profile(profile);
+  for (const auto& g : service_.list_groups()) {
+    if (g.id != id) continue;
+    field_info_invite_ =
+        QString::fromStdString(nyx::GroupStore::invite_hex(g.invite_token));
+    field_info_description_ = QString::fromStdString(g.description);
+    field_info_direction_ = QString::fromStdString(g.direction);
+    field_info_tags_ = QString::fromStdString(g.tags);
+    field_info_public_listed_ = g.visibility == nyx::GroupVisibility::PublicListed;
+    if (have_profile) {
+      field_info_is_owner_ = g.owner_id == profile.user_id();
+      if (!field_info_is_owner_) {
+        for (const auto& mem : g.members) {
+          if (mem.role == nyx::GroupRole::Owner && mem.user_id == profile.user_id()) {
+            field_info_is_owner_ = true;
+            break;
+          }
+        }
+      }
+    }
+    for (const auto& member : g.members) {
+      QVariantMap mm;
+      const QString uid =
+          QString::fromStdString(nyx::to_hex(member.user_id.data(), member.user_id.size()));
+      mm.insert(QStringLiteral("userId"), uid);
+      mm.insert(QStringLiteral("nickname"), QString::fromStdString(member.nickname));
+      mm.insert(QStringLiteral("isOwner"), member.role == nyx::GroupRole::Owner);
+      mm.insert(QStringLiteral("idShort"),
+                QString::fromStdString(nyx::short_user_id(member.user_id)));
+      field_info_members_.append(mm);
+    }
+    return;
+  }
+}
+
+void NodeController::openFieldInfo(const QString& groupIdHex) {
+  QString gid = groupIdHex.trimmed().toLower();
+  if (gid.isEmpty()) gid = active_chat_ref_id_.trimmed().toLower();
+  if (gid.isEmpty()) {
+    showToast(QStringLiteral("Поле не выбрано"), true);
+    return;
+  }
+  field_info_group_id_ = gid;
+  refreshGroupList();
+  syncFieldInfoState();
+  field_info_open_ = true;
+  emit fieldInfoOpenChanged();
+}
+
+void NodeController::openPeerInfo(const QString& userIdHex) {
+  QString uid = userIdHex.trimmed().toLower();
+  if (uid.isEmpty()) uid = active_chat_ref_id_.trimmed().toLower();
+  if (uid.isEmpty()) {
+    showToast(QStringLiteral("Собеседник не выбран"), true);
+    return;
+  }
+  peer_info_user_id_ = uid;
+  refreshContactList();
+  peer_info_open_ = true;
+  emit peerInfoOpenChanged();
 }
 
 void NodeController::setMainViewMode(int mode) {
@@ -886,6 +998,10 @@ void NodeController::refreshFileAccess() { refreshFileAccessLists(); }
 
 void NodeController::refreshFieldRoster() {
   refreshGroupList();
+  if (field_info_open_) {
+    syncFieldInfoState();
+    emit fieldInfoOpenChanged();
+  }
   refreshFileAccessLists();
 }
 
@@ -1846,7 +1962,7 @@ void NodeController::wireCallbacks() {
             refreshGroupList();
             if (main_view_mode_ == 1) refreshFileAccessLists();
           }
-          // Lookup/rendezvous/register — только в статус-бар, не в тосты (reconnect спамит).
+          // Lookup/rendezvous/NAT/reconnect — только статус-бар (иначе тост-спам).
           const bool progress_noise =
               lower.contains(QStringLiteral("lookup")) ||
               lower.contains(QStringLiteral("rendezvous")) ||
@@ -1854,8 +1970,19 @@ void NodeController::wireCallbacks() {
               lower.contains(QStringLiteral("handshake")) ||
               lower.contains(QStringLiteral("bind ")) ||
               lower.startsWith(QStringLiteral("hub «")) ||
+              lower.startsWith(QStringLiteral("эфир «")) ||
               lower.contains(QStringLiteral("invite:")) ||
-              lower.contains(QStringLiteral("подключение к hub"));
+              lower.contains(QStringLiteral("подключение к hub")) ||
+              lower.contains(QStringLiteral("подключение к эфиру")) ||
+              lower.contains(QStringLiteral("подключение к ")) ||
+              lower.contains(QStringLiteral("поиск на rendezvous")) ||
+              lower.contains(QStringLiteral("повтор lookup")) ||
+              lower.contains(QStringLiteral("пробить nat")) ||
+              lower.contains(QStringLiteral("установить канал")) ||
+              lower.contains(QStringLiteral("собеседник не найден")) ||
+              lower.contains(QStringLiteral("эфир не найден")) ||
+              lower.contains(QStringLiteral("поле недоступно")) ||
+              lower.contains(QStringLiteral("владелец офлайн"));
           if (!progress_noise &&
               (lower.contains(QStringLiteral("failed")) ||
                lower.contains(QStringLiteral("не удалось")) ||
@@ -1865,10 +1992,13 @@ void NodeController::wireCallbacks() {
                lower.contains(QStringLiteral("приём")) ||
                lower.contains(QStringLiteral("запрос файла")) ||
                lower.contains(QStringLiteral("timeout")) ||
-               lower.contains(QStringLiteral("поле недоступно")))) {
+               lower.contains(QStringLiteral("не найден")) ||
+               lower.contains(QStringLiteral("не отвечает")))) {
             showToast(q, lower.contains(QStringLiteral("отказ")) ||
                              lower.contains(QStringLiteral("failed")) ||
-                             lower.contains(QStringLiteral("не удалось")));
+                             lower.contains(QStringLiteral("не удалось")) ||
+                             lower.contains(QStringLiteral("не найден")) ||
+                             lower.contains(QStringLiteral("не отвечает")));
           }
         },
         Qt::QueuedConnection);
@@ -1893,9 +2023,17 @@ void NodeController::wireCallbacks() {
               chat_key.isEmpty() || chat_key == active_chat_key_ ||
               (msg.session_id == service_.active_session_id());
           if (for_active) {
-            messages_.appendMessage(QString::fromStdString(msg.author),
-                                    QString::fromStdString(msg.text), msg.outgoing,
-                                    msg.timestamp_ms);
+            if (msg.message_id != 0 && messages_.hasMessageId(msg.message_id)) {
+              if (!msg.delivery.empty()) {
+                messages_.setDelivery(msg.message_id, QString::fromStdString(msg.delivery));
+              }
+            } else {
+              messages_.appendMessage(QString::fromStdString(msg.author),
+                                      QString::fromStdString(msg.text), msg.outgoing,
+                                      msg.timestamp_ms, msg.message_id,
+                                      QString::fromStdString(msg.delivery),
+                                      QString::fromStdString(msg.author_user_id));
+            }
           } else if (!msg.outgoing && !chat_key.isEmpty()) {
             chat_list_.bumpUnread(chat_key);
           }
@@ -1914,6 +2052,17 @@ void NodeController::wireCallbacks() {
         },
         Qt::QueuedConnection);
   });
+
+  service_.set_on_delivery(
+      [this](const std::string& /*session_id*/, uint64_t message_id, bool delivered) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, message_id, delivered]() {
+              messages_.setDelivery(message_id, delivered ? QStringLiteral("delivered")
+                                                          : QStringLiteral("failed"));
+            },
+            Qt::QueuedConnection);
+      });
 
   service_.set_on_chat_ready([this](const std::string& session_id, const std::string& peer_title,
                                     const std::string& conn_label, nyx::ConversationKind kind,
@@ -1949,14 +2098,15 @@ void NodeController::wireCallbacks() {
                         QStringLiteral("»"));
             }
           } else if (kind == nyx::ConversationKind::Group) {
-            showToast(QStringLiteral("Поле «") + QString::fromStdString(peer_title) +
-                      QStringLiteral("» снова в сети"));
+            showToast(QStringLiteral("Эфир «") + QString::fromStdString(peer_title) +
+                      QStringLiteral("» снова открыт"));
           } else {
-            showToast(QStringLiteral("Собеседник снова в сети"));
+            showToast(QStringLiteral("Собеседник снова на связи"));
           }
 
           refreshChatList();
           refreshGroupList();
+          refreshContactList();
           emit sessionsChanged();
           emit chatChanged();
         },
@@ -1991,7 +2141,7 @@ void NodeController::wireCallbacks() {
             pending_field_join_notify_ = false;
             const auto st = service_.session_state(session_id);
             if (st == nyx_app::SessionState::Offline) {
-              showToast(QStringLiteral("Владелец поля не в сети"), false);
+              showToast(QStringLiteral("Эфир закрыт — владелец не в сети"), false);
             }
           }
           // Auto-retry только при неожиданном Offline и включённом intent.
@@ -2067,6 +2217,30 @@ void NodeController::wireCallbacks() {
             toast_ = QStringLiteral("Поле создано — нажмите «Запустить hub» в списке полей");
           }
           emit toastChanged();
+        },
+        Qt::QueuedConnection);
+  });
+
+  service_.set_on_group_meta_changed([this]() {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          refreshGroupList();
+          if (field_info_open_) {
+            syncFieldInfoState();
+            emit fieldInfoOpenChanged();
+          }
+        },
+        Qt::QueuedConnection);
+  });
+
+  service_.set_on_avatars_changed([this]() {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          refreshContactList();
+          emit profilePhotosChanged();
+          emit chatChanged();
         },
         Qt::QueuedConnection);
   });
@@ -2309,6 +2483,7 @@ void NodeController::refreshProfile() {
   profile_id_short_ = QString::fromStdString(nyx::short_user_id(profile.user_id()));
   profile_user_id_hex_ =
       QString::fromStdString(nyx::to_hex(profile.user_id().data(), profile.user_id().size()));
+  loadProfileMeta();
   updateOnboardingFlag();
   emit profileChanged();
 }
@@ -2367,6 +2542,320 @@ void NodeController::refreshChatList() {
   }
 }
 
+void NodeController::setSidebarMode(int mode) {
+  if (mode < 0) mode = 0;
+  if (mode > 2) mode = 2;
+  if (sidebar_mode_ == mode) return;
+  sidebar_mode_ = mode;
+  if (mode == 1) refreshContactList();
+  if (mode == 2) refreshGroupList();
+  emit sidebarModeChanged();
+}
+
+QString NodeController::shortInviteCode(const QString& hex) const {
+  QString t = normalizeInviteHex(hex);
+  if (t.size() <= 14) return t;
+  return t.left(8) + QStringLiteral("…") + t.right(4);
+}
+
+void NodeController::refreshContactList() {
+  contact_list_.clear();
+  nyx::Profile profile;
+  if (!nyx::active_profile(profile)) {
+    emit contactListChanged();
+    return;
+  }
+  nyx::ContactBook book(nyx::default_contacts_path());
+  book.load();
+  const uint64_t now = static_cast<uint64_t>(QDateTime::currentMSecsSinceEpoch());
+  for (const auto& c : book.contacts()) {
+    if (c.user_id == profile.user_id()) continue;
+    QVariantMap m;
+    const QString uid =
+        QString::fromStdString(nyx::to_hex(c.user_id.data(), c.user_id.size()));
+    m.insert(QStringLiteral("userId"), uid);
+    m.insert(QStringLiteral("nickname"),
+             c.nickname.empty()
+                 ? QString::fromStdString(nyx::short_user_id(c.user_id))
+                 : QString::fromStdString(c.nickname));
+    m.insert(QStringLiteral("idShort"),
+             QString::fromStdString(nyx::short_user_id(c.user_id)));
+    m.insert(QStringLiteral("lastSeen"),
+             QString::fromStdString(nyx::format_last_seen(c.last_seen_ms, now)));
+    m.insert(QStringLiteral("hasInvite"), c.dm_inbox_token_hex.size() == 64);
+    m.insert(QStringLiteral("chatKey"), QStringLiteral("dm:") + uid.toLower());
+    m.insert(QStringLiteral("bio"), QString::fromStdString(c.bio));
+    m.insert(QStringLiteral("interests"), QString::fromStdString(c.interests));
+    m.insert(QStringLiteral("availability"),
+             QString::fromStdString(nyx::availability_to_string(c.availability)));
+    m.insert(QStringLiteral("availabilityLabel"),
+             QString::fromStdString(nyx::availability_label_ru(c.availability)));
+    QStringList photo_paths;
+    nyx::AvatarStore avatars;
+    avatars.load();
+    for (const auto& hex : c.photo_hashes) {
+      nyx::FileHash h{};
+      if (!nyx::hash_from_hex(hex, h)) continue;
+      const std::string p = avatars.peer_path(c.user_id, h);
+      if (!p.empty() && QFileInfo::exists(QString::fromStdString(p)))
+        photo_paths.append(QString::fromStdString(p));
+    }
+    m.insert(QStringLiteral("avatarPath"), photo_paths.isEmpty() ? QString() : photo_paths.first());
+    m.insert(QStringLiteral("photoPaths"), photo_paths);
+    const QString key = QStringLiteral("dm:") + uid.toLower();
+    m.insert(QStringLiteral("sessionState"),
+             QString::fromUtf8(
+                 nyx_app::session_state_name(service_.session_state(key.toStdString()))));
+    contact_list_.append(m);
+  }
+  emit contactListChanged();
+}
+
+void NodeController::refreshProfilePhotos() {
+  profile_photo_list_.clear();
+  profile_avatar_path_.clear();
+  nyx::AvatarStore store;
+  store.load();
+  for (const auto& e : store.photos()) {
+    QVariantMap m;
+    const QString path = QString::fromStdString(store.path_for(e.hash));
+    m.insert(QStringLiteral("hash"), QString::fromStdString(nyx::hash_hex(e.hash)));
+    m.insert(QStringLiteral("path"), path);
+    m.insert(QStringLiteral("mime"), QString::fromStdString(e.mime));
+    m.insert(QStringLiteral("setMs"), static_cast<qulonglong>(e.set_ms));
+    profile_photo_list_.append(m);
+    if (profile_avatar_path_.isEmpty() && !path.isEmpty()) profile_avatar_path_ = path;
+  }
+  emit profilePhotosChanged();
+}
+
+void NodeController::pickAndSetProfilePhoto() {
+  const QString src = QFileDialog::getOpenFileName(
+      nullptr, QStringLiteral("Фото профиля"), QString(),
+      QStringLiteral("Images (*.png *.jpg *.jpeg *.webp)"));
+  if (src.isEmpty()) return;
+  QImage img(src);
+  if (img.isNull()) {
+    showToast(QStringLiteral("Не удалось открыть изображение"), true);
+    return;
+  }
+  img = img.convertToFormat(QImage::Format_RGB32);
+  if (img.width() > 512 || img.height() > 512) {
+    img = img.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+  }
+  QTemporaryFile tmp(QDir::temp().filePath(QStringLiteral("nyx-avatar-XXXXXX.jpg")));
+  tmp.setAutoRemove(false);
+  if (!tmp.open()) {
+    showToast(QStringLiteral("Не удалось сохранить фото"), true);
+    return;
+  }
+  const QString tmp_path = tmp.fileName();
+  tmp.close();
+  if (!img.save(tmp_path, "JPG", 85)) {
+    showToast(QStringLiteral("Не удалось сжать фото"), true);
+    return;
+  }
+  nyx::AvatarStore store;
+  store.load();
+  if (!store.set_from_file(tmp_path.toStdString())) {
+    QFile::remove(tmp_path);
+    showToast(QStringLiteral("Фото слишком большое или повреждено (макс. 200 КБ)"), true);
+    return;
+  }
+  QFile::remove(tmp_path);
+  refreshProfilePhotos();
+  showToast(QStringLiteral("Фото профиля обновлено"));
+}
+
+void NodeController::makeProfilePhotoCurrent(const QString& hashHex) {
+  nyx::FileHash h{};
+  if (!nyx::hash_from_hex(hashHex.trimmed().toStdString(), h)) return;
+  nyx::AvatarStore store;
+  store.load();
+  if (!store.make_current(h)) {
+    showToast(QStringLiteral("Фото не найдено"), true);
+    return;
+  }
+  refreshProfilePhotos();
+}
+
+void NodeController::removeProfilePhoto(const QString& hashHex) {
+  nyx::FileHash h{};
+  if (!nyx::hash_from_hex(hashHex.trimmed().toStdString(), h)) return;
+  nyx::AvatarStore store;
+  store.load();
+  if (!store.remove(h)) {
+    showToast(QStringLiteral("Не удалось удалить фото"), true);
+    return;
+  }
+  refreshProfilePhotos();
+}
+
+QString NodeController::peerAvatarPath(const QString& userIdHex) const {
+  const QString uid = userIdHex.trimmed().toLower();
+  // Свой профиль — локальные фото, не contact book
+  if (!uid.isEmpty() && uid == profile_user_id_hex_.trimmed().toLower() &&
+      !profile_avatar_path_.isEmpty()) {
+    return profile_avatar_path_;
+  }
+  for (const QVariant& v : contact_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("userId")).toString().toLower() == uid)
+      return m.value(QStringLiteral("avatarPath")).toString();
+  }
+  nyx::UserId id{};
+  nyx::ByteBuffer bytes;
+  if (!nyx::from_hex(uid.toStdString(), bytes) || bytes.size() != id.size()) return {};
+  std::memcpy(id.data(), bytes.data(), id.size());
+  nyx::ContactBook book(nyx::default_contacts_path());
+  book.load();
+  nyx::AvatarStore store;
+  store.load();
+  for (const auto& c : book.contacts()) {
+    if (c.user_id != id) continue;
+    for (const auto& hex : c.photo_hashes) {
+      nyx::FileHash h{};
+      if (!nyx::hash_from_hex(hex, h)) continue;
+      const std::string p = store.peer_path(id, h);
+      if (QFileInfo::exists(QString::fromStdString(p))) return QString::fromStdString(p);
+    }
+  }
+  return {};
+}
+
+QVariantList NodeController::peerAvatarHistory(const QString& userIdHex) const {
+  QVariantList out;
+  const QString uid = userIdHex.trimmed().toLower();
+  for (const QVariant& v : contact_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("userId")).toString().toLower() != uid) continue;
+    const QStringList paths = m.value(QStringLiteral("photoPaths")).toStringList();
+    for (const QString& p : paths) out.append(p);
+    return out;
+  }
+  return out;
+}
+
+void NodeController::loadProfileMeta() {
+  nyx::ProfileMeta meta;
+  nyx::load_profile_meta(meta);
+  profile_bio_ = QString::fromStdString(meta.bio);
+  profile_interests_ = QString::fromStdString(meta.interests);
+  profile_availability_ =
+      QString::fromStdString(nyx::availability_to_string(meta.availability));
+  refreshProfilePhotos();
+  emit profileMetaChanged();
+}
+
+void NodeController::persistProfileMeta() {
+  nyx::ProfileMeta meta;
+  meta.bio = profile_bio_.toStdString();
+  meta.interests = profile_interests_.toStdString();
+  meta.availability = nyx::availability_from_string(profile_availability_.toStdString());
+  meta.updated_ms = static_cast<uint64_t>(QDateTime::currentMSecsSinceEpoch());
+  if (!nyx::save_profile_meta(meta)) {
+    showToast(QStringLiteral("Не удалось сохранить профиль"), true);
+    return;
+  }
+  emit profileMetaChanged();
+  showToast(QStringLiteral("Личная информация обновлена"));
+}
+
+void NodeController::setProfileBio(const QString& v) {
+  if (profile_bio_ == v) return;
+  profile_bio_ = v;
+  persistProfileMeta();
+}
+
+void NodeController::setProfileInterests(const QString& v) {
+  if (profile_interests_ == v) return;
+  profile_interests_ = v;
+  persistProfileMeta();
+}
+
+void NodeController::setProfileAvailability(const QString& v) {
+  const QString norm = v.trimmed().toLower();
+  if (profile_availability_ == norm) return;
+  profile_availability_ = norm.isEmpty() ? QStringLiteral("available") : norm;
+  persistProfileMeta();
+}
+
+QString NodeController::profileAvailabilityLabel() const {
+  return QString::fromStdString(
+      nyx::availability_label_ru(nyx::availability_from_string(profile_availability_.toStdString())));
+}
+
+QVariantMap NodeController::contactInfo(const QString& userIdHex) const {
+  const QString uid = userIdHex.trimmed().toLower();
+  if (!uid.isEmpty() && uid == profile_user_id_hex_.trimmed().toLower()) {
+    QVariantMap self;
+    self.insert(QStringLiteral("userId"), uid);
+    self.insert(QStringLiteral("nickname"), profile_nickname_);
+    self.insert(QStringLiteral("idShort"), profile_id_short_);
+    self.insert(QStringLiteral("bio"), profile_bio_);
+    self.insert(QStringLiteral("interests"), profile_interests_);
+    self.insert(QStringLiteral("availabilityLabel"), profileAvailabilityLabel());
+    self.insert(QStringLiteral("avatarPath"), profile_avatar_path_);
+    QStringList paths;
+    for (const QVariant& v : profile_photo_list_) {
+      const QVariantMap m = v.toMap();
+      const QString p = m.value(QStringLiteral("path")).toString();
+      if (!p.isEmpty()) paths.append(p);
+    }
+    self.insert(QStringLiteral("photoPaths"), paths);
+    self.insert(QStringLiteral("isSelf"), true);
+    return self;
+  }
+  for (const QVariant& v : contact_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("userId")).toString().toLower() == uid) {
+      QVariantMap out = m;
+      out.insert(QStringLiteral("isSelf"), false);
+      if (!out.contains(QStringLiteral("avatarPath")) ||
+          out.value(QStringLiteral("avatarPath")).toString().isEmpty()) {
+        out.insert(QStringLiteral("avatarPath"), peerAvatarPath(uid));
+      }
+      return out;
+    }
+  }
+  QVariantMap empty;
+  empty.insert(QStringLiteral("userId"), uid);
+  empty.insert(QStringLiteral("nickname"), uid.left(8));
+  empty.insert(QStringLiteral("bio"), QString());
+  empty.insert(QStringLiteral("interests"), QString());
+  empty.insert(QStringLiteral("availabilityLabel"), QStringLiteral("неизвестно"));
+  empty.insert(QStringLiteral("avatarPath"), peerAvatarPath(uid));
+  empty.insert(QStringLiteral("photoPaths"), peerAvatarHistory(uid));
+  empty.insert(QStringLiteral("isSelf"), false);
+  return empty;
+}
+
+void NodeController::openContact(const QString& userIdHex) {
+  const QString uid = userIdHex.trimmed().toLower();
+  if (uid.size() != 64) {
+    showToast(QStringLiteral("Неверный id контакта"), true);
+    return;
+  }
+  QString nick = uid.left(8);
+  QString last_seen;
+  for (const QVariant& v : contact_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("userId")).toString().toLower() != uid) continue;
+    nick = m.value(QStringLiteral("nickname")).toString();
+    last_seen = m.value(QStringLiteral("lastSeen")).toString();
+    break;
+  }
+  const QString key = QStringLiteral("dm:") + uid;
+  setSidebarMode(0);
+  showChatView();
+  openConversation(key, 0, uid, nick, last_seen);
+  if (!service_.is_session_live(key.toStdString())) {
+    if (!service_.ensure_session(key.toStdString())) {
+      showToast(QStringLiteral("Нет кода для связи — попросите новый invite"), true);
+    }
+  }
+}
+
 void NodeController::refreshGroupList() {
   group_list_.clear();
   nyx::Profile profile;
@@ -2400,6 +2889,11 @@ void NodeController::refreshGroupList() {
     m.insert(QStringLiteral("memberCount"), static_cast<int>(g.members.size()));
     m.insert(QStringLiteral("hubOnline"),
              service_.is_group_hub_running(gid.toStdString()));
+    m.insert(QStringLiteral("description"), QString::fromStdString(g.description));
+    m.insert(QStringLiteral("direction"), QString::fromStdString(g.direction));
+    m.insert(QStringLiteral("tags"), QString::fromStdString(g.tags));
+    m.insert(QStringLiteral("publicListed"),
+             g.visibility == nyx::GroupVisibility::PublicListed);
 
     QVariantList members;
     for (const auto& member : g.members) {
@@ -2443,7 +2937,9 @@ void NodeController::loadStoredHistory(int kind, const QString& refId,
   for (const auto& stored : store.recent(100)) {
     messages_.appendMessage(QString::fromStdString(stored.author),
                             QString::fromStdString(stored.text), stored.outgoing,
-                            stored.timestamp_ms);
+                            stored.timestamp_ms, stored.id,
+                            stored.outgoing ? QStringLiteral("delivered") : QString(),
+                            QString::fromStdString(stored.author_id_hex));
   }
 }
 
@@ -2457,26 +2953,6 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   active_chat_ref_id_ = refId;
   const bool owner_field = is_group && activeFieldIsOwner();
 
-  if (!live && !owner_field) {
-    chat_list_.setSessionState(key, QStringLiteral("offline"));
-    chat_list_.setSelectedKey({});
-    active_chat_key_.clear();
-    peer_title_.clear();
-    peer_connection_label_.clear();
-    peer_status_text_.clear();
-    in_chat_ = false;
-    messages_.clear();
-    if (is_group) {
-      showToast(QStringLiteral("Владелец поля не в сети"), false);
-    } else {
-      Q_UNUSED(lastSeen);
-      showToast(QStringLiteral("Собеседник не в сети"), false);
-    }
-    emit chatChanged();
-    emit filesChanged();
-    return;
-  }
-
   active_chat_key_ = key;
   peer_title_ = title;
   peer_connection_label_.clear();
@@ -2485,9 +2961,14 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
 
   in_chat_ = live;
   if (live) {
-    peer_status_text_ = is_group ? QStringLiteral("в поле") : QStringLiteral("в сети");
+    peer_status_text_ = is_group ? QStringLiteral("эфир открыт") : QStringLiteral("на связи");
+  } else if (owner_field) {
+    peer_status_text_ = QStringLiteral("открытие эфира…");
+  } else if (is_group) {
+    peer_status_text_ = QStringLiteral("эфир закрыт");
   } else {
-    peer_status_text_ = QStringLiteral("hub не запущен");
+    peer_status_text_ =
+        lastSeen.isEmpty() ? QStringLiteral("не на связи") : lastSeen;
   }
 
   loadStoredHistory(kind, refId, key);
@@ -2497,15 +2978,24 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
 
   if (live) return;
 
-  // Владелец поля: поднять hub и сразу дать писать после Live.
+  if (!owner_field) {
+    // История доступна при закрытом эфире / offline; писать нельзя.
+    chat_list_.setSessionState(key, QStringLiteral("offline"));
+    if (is_group) {
+      showToast(QStringLiteral("Эфир закрыт — можно смотреть историю"), false);
+    }
+    return;
+  }
+
+  // Владелец поля: открыть эфир и дать писать после Live.
   chat_list_.setSessionState(key, QStringLiteral("connecting"));
-  showToast(QStringLiteral("Запуск hub поля…"));
+  showToast(QStringLiteral("Открываем эфир…"));
   QTimer::singleShot(0, this, [this, key]() {
     if (!service_.ensure_session(key.toStdString())) {
-      peer_status_text_ = QStringLiteral("hub не запущен");
+      peer_status_text_ = QStringLiteral("эфир закрыт");
       in_chat_ = false;
       chat_list_.setSessionState(key, QStringLiteral("offline"));
-      showToast(QStringLiteral("Не удалось запустить hub поля"), true);
+      showToast(QStringLiteral("Не удалось открыть эфир"), true);
       emit chatChanged();
       refreshChatList();
     }
@@ -2557,7 +3047,7 @@ void NodeController::enterChat(const QString& peerName, const QString& connectio
   active_chat_kind_ = kind;
   active_chat_ref_id_ = refId;
   if (kind == static_cast<int>(nyx::ConversationKind::Group) && !refId.isEmpty()) {
-    peer_status_text_ = QStringLiteral("в поле");
+    peer_status_text_ = QStringLiteral("эфир открыт");
     active_chat_key_ = QStringLiteral("group:") + refId;
     const QString gid = refId.trimmed().toLower();
     if (file_scope_group_id_ != gid) {
@@ -2565,7 +3055,7 @@ void NodeController::enterChat(const QString& peerName, const QString& connectio
       syncFileScopeLabel();
     }
   } else {
-    peer_status_text_ = QStringLiteral("в сети");
+    peer_status_text_ = QStringLiteral("на связи");
     if (!refId.isEmpty()) active_chat_key_ = QStringLiteral("dm:") + refId;
   }
   emit chatChanged();
@@ -2579,10 +3069,11 @@ void NodeController::endLiveSession() {
   peer_connection_label_.clear();
   if (active_chat_kind_ == static_cast<int>(nyx::ConversationKind::Group)) {
     peer_status_text_ = activeFieldIsOwner()
-                            ? QStringLiteral("hub остановлен")
-                            : QStringLiteral("ожидание hub");
-  } else if (was_in || peer_status_text_ == QStringLiteral("в сети")) {
-    peer_status_text_ = QStringLiteral("история");
+                            ? QStringLiteral("эфир закрыт")
+                            : QStringLiteral("эфир закрыт — ждём владельца");
+  } else if (was_in || peer_status_text_ == QStringLiteral("на связи") ||
+             peer_status_text_ == QStringLiteral("в сети")) {
+    peer_status_text_ = QStringLiteral("не на связи");
   }
   file_progress_visible_ = false;
   file_progress_percent_ = 0;
@@ -2628,7 +3119,7 @@ void NodeController::showGroupInView(const QString& groupIdHex) {
     }
   }
   peer_connection_label_.clear();
-  peer_status_text_ = QStringLiteral("поле");
+  peer_status_text_ = QStringLiteral("эфир");
   loadStoredHistory(active_chat_kind_, groupIdHex, active_chat_key_);
   emit chatChanged();
 }
@@ -2695,19 +3186,214 @@ void NodeController::disconnectChat(const QString& key) {
   refreshChatList();
 }
 
+QString NodeController::chatMediaDir() {
+  return QString::fromStdString(nyx::data_dir() + "/chat_media");
+}
+
+void NodeController::ensureChatMediaRootIndexed() {
+  const QString dir = chatMediaDir();
+  QDir().mkpath(dir);
+  QString scope;
+  if (active_chat_kind_ == 1) scope = active_chat_ref_id_;
+  service_.index_folder(dir.toStdString(), scope.toStdString());
+}
+
+QString NodeController::mediaLocalPath(const QString& hashHex) const {
+  const QString hex = hashHex.trimmed().toLower();
+  if (hex.size() != 64) return {};
+  const QDir dir(chatMediaDir());
+  const QStringList matches =
+      dir.entryList(QStringList{hex + QStringLiteral(".*")}, QDir::Files);
+  if (!matches.isEmpty()) return dir.filePath(matches.first());
+  for (const auto& e : service_.local_files_for_scope(
+           active_chat_kind_ == 1 ? active_chat_ref_id_.toStdString() : std::string{})) {
+    if (nyx::to_hex(e.hash.data(), e.hash.size()) == hex.toStdString())
+      return QString::fromStdString(e.absolute_path());
+  }
+  const QString dl = QString::fromStdString(nyx::default_downloads_dir());
+  const QDir dld(dl);
+  const QStringList dlm = dld.entryList(QStringList{hex + QStringLiteral(".*")}, QDir::Files);
+  if (!dlm.isEmpty()) return dld.filePath(dlm.first());
+  return {};
+}
+
+bool NodeController::isImageMedia(const QString& hashHex) const {
+  const QString path = mediaLocalPath(hashHex);
+  if (path.isEmpty()) return true;
+  const QString suf = QFileInfo(path).suffix().toLower();
+  return suf == QLatin1String("jpg") || suf == QLatin1String("jpeg") ||
+         suf == QLatin1String("png") || suf == QLatin1String("webp") ||
+         suf == QLatin1String("gif") || suf == QLatin1String("bmp");
+}
+
+void NodeController::ensureMediaAvailable(const QString& hashHex) {
+  const QString hex = hashHex.trimmed().toLower();
+  if (hex.size() != 64) return;
+  if (!mediaLocalPath(hex).isEmpty()) return;
+  const QString dest = chatMediaDir() + QLatin1Char('/') + hex;
+  QDir().mkpath(chatMediaDir());
+  if (!service_.download_file(hex.toStdString(), dest.toStdString())) {
+    showToast(QStringLiteral("Не удалось запросить медиа"), true);
+  }
+}
+
+QString NodeController::pickChatMediaMarkdown() {
+  const QString src = QFileDialog::getOpenFileName(
+      nullptr, QStringLiteral("Фото или видео в сообщение"), QString(),
+      QStringLiteral("Media (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.mp4 *.webm *.mov *.mkv)"));
+  if (src.isEmpty()) return {};
+
+  QString work = src;
+  QString ext = QFileInfo(src).suffix().toLower();
+  const bool is_image = ext == QLatin1String("jpg") || ext == QLatin1String("jpeg") ||
+                        ext == QLatin1String("png") || ext == QLatin1String("webp") ||
+                        ext == QLatin1String("gif") || ext == QLatin1String("bmp");
+  QTemporaryFile tmp;
+  if (is_image) {
+    QImage img(src);
+    if (img.isNull()) {
+      showToast(QStringLiteral("Не удалось открыть изображение"), true);
+      return {};
+    }
+    if (img.width() > 1600 || img.height() > 1600)
+      img = img.scaled(1600, 1600, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    tmp.setFileTemplate(QDir::temp().filePath(QStringLiteral("nyx-media-XXXXXX.jpg")));
+    tmp.setAutoRemove(false);
+    if (!tmp.open()) {
+      showToast(QStringLiteral("Не удалось сохранить медиа"), true);
+      return {};
+    }
+    const QString tmp_path = tmp.fileName();
+    tmp.close();
+    if (!img.save(tmp_path, "JPG", 82)) {
+      QFile::remove(tmp_path);
+      showToast(QStringLiteral("Не удалось сжать изображение"), true);
+      return {};
+    }
+    const qint64 sz = QFileInfo(tmp_path).size();
+    if (sz > 2 * 1024 * 1024) {
+      showToast(QStringLiteral("Изображение больше 2 МБ — лучше отправить файлом"), true);
+    }
+    work = tmp_path;
+    ext = QStringLiteral("jpg");
+  } else {
+    const qint64 sz = QFileInfo(src).size();
+    if (sz > 50 * 1024 * 1024) {
+      showToast(QStringLiteral("Видео больше 50 МБ — отправьте через Файлы"), true);
+      return {};
+    }
+  }
+
+  nyx::FileHash hash{};
+  if (!nyx::hash_file(work.toStdString(), hash)) {
+    showToast(QStringLiteral("Не удалось посчитать hash"), true);
+    if (work != src) QFile::remove(work);
+    return {};
+  }
+  const QString hex = QString::fromStdString(nyx::to_hex(hash.data(), hash.size()));
+  QDir().mkpath(chatMediaDir());
+  const QString dest = chatMediaDir() + QLatin1Char('/') + hex + QLatin1Char('.') + ext;
+  if (QFile::exists(dest)) QFile::remove(dest);
+  if (!QFile::copy(work, dest)) {
+    // already exists / same file
+    if (!QFile::exists(dest)) {
+      showToast(QStringLiteral("Не удалось сохранить в chat_media"), true);
+      if (work != src) QFile::remove(work);
+      return {};
+    }
+  }
+  if (work != src) QFile::remove(work);
+  ensureChatMediaRootIndexed();
+  const QString caption = QFileInfo(src).completeBaseName();
+  return QStringLiteral("![%1](nyx-media:%2)").arg(caption, hex);
+}
+
 void NodeController::sendMessage(const QString& text) {
   if (text.trimmed().isEmpty()) return;
   if (!canSendMessage()) {
     showToast(QStringLiteral("Нет связи с собеседником — сообщение не отправлено"), true);
     return;
   }
-  if (!service_.send_message(text.toStdString(), active_chat_key_.toStdString())) {
+  const std::string normalized = nyx::normalize_me_message(text.toStdString());
+  ensureChatMediaRootIndexed();
+  const auto blocks = nyx::parse_markdown_blocks(normalized);
+  for (const auto& b : blocks) {
+    if (b.type != nyx::MdBlockType::Media || b.hash.empty()) continue;
+    const QString path = mediaLocalPath(QString::fromStdString(b.hash));
+    if (!path.isEmpty()) service_.send_file(path.toStdString());
+  }
+  if (!service_.send_message(normalized, active_chat_key_.toStdString())) {
     showToast(QStringLiteral("Не удалось отправить сообщение"), true);
   }
 }
 
-void NodeController::createGroup(const QString& name) {
-  service_.create_group(name.trimmed().toStdString());
+void NodeController::createGroup(const QString& name, const QString& description,
+                                 const QString& direction, const QString& tags,
+                                 bool publicListed) {
+  const QString n = name.trimmed();
+  if (n.isEmpty()) {
+    showToast(QStringLiteral("Укажите название поля"), true);
+    return;
+  }
+  if (!service_.create_group(n.toStdString())) {
+    showToast(QStringLiteral("Не удалось создать поле"), true);
+    return;
+  }
+  refreshGroupList();
+  QString gid;
+  for (const QVariant& v : group_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("name")).toString() == n &&
+        m.value(QStringLiteral("isOwner")).toBool()) {
+      gid = m.value(QStringLiteral("groupId")).toString();
+      break;
+    }
+  }
+  if (!gid.isEmpty()) {
+    service_.update_group_meta(gid.toStdString(), description.trimmed().toStdString(),
+                               direction.trimmed().toStdString(), tags.trimmed().toStdString(),
+                               publicListed);
+    refreshGroupList();
+  }
+  if (publicListed) {
+    showToast(QStringLiteral(
+        "Публичный режим сохранён локально. Поиск на rendezvous — в будущих версиях."));
+  }
+}
+
+void NodeController::updateGroupMeta(const QString& groupIdHex, const QString& description,
+                                     const QString& direction, const QString& tags,
+                                     bool publicListed) {
+  const QString gid = groupIdHex.trimmed().toLower();
+  if (gid.size() != 64) {
+    showToast(QStringLiteral("Неверный id поля"), true);
+    return;
+  }
+  bool is_owner = false;
+  if (field_info_open_ && field_info_group_id_.trimmed().toLower() == gid) {
+    is_owner = field_info_is_owner_;
+  } else {
+    for (const auto& item : group_list_) {
+      const QVariantMap m = item.toMap();
+      if (m.value(QStringLiteral("groupId")).toString().trimmed().toLower() != gid) continue;
+      is_owner = m.value(QStringLiteral("isOwner")).toBool();
+      break;
+    }
+  }
+  if (!is_owner) {
+    showToast(QStringLiteral("Мету поля может менять только создатель"), true);
+    return;
+  }
+  if (!service_.update_group_meta(gid.toStdString(), description.trimmed().toStdString(),
+                                  direction.trimmed().toStdString(), tags.trimmed().toStdString(),
+                                  publicListed)) {
+    showToast(QStringLiteral("Не удалось сохранить мету поля"), true);
+    return;
+  }
+  refreshGroupList();
+  if (field_info_open_) syncFieldInfoState();
+  emit fieldInfoOpenChanged();
+  showToast(QStringLiteral("Мете поля обновлена"));
 }
 
 void NodeController::deleteGroup(const QString& groupIdHex) {
@@ -2764,9 +3450,9 @@ void NodeController::startFieldHub(const QString& groupIdHex) {
   }
   showGroupInView(gid);
   setGroupsDialogOpen(false);
-  peer_status_text_ = QStringLiteral("запуск…");
+  peer_status_text_ = QStringLiteral("открытие эфира…");
   emit chatChanged();
-  showToast(QStringLiteral("Запуск поля…"));
+  showToast(QStringLiteral("Открываем эфир…"));
   service_.start_group_hub(gid.toStdString());
   emit listeningChanged();
   emit busyChanged();
@@ -2800,13 +3486,14 @@ void NodeController::joinField(const QString& inviteHex) {
       intent.invite_hex = normalized.toStdString();
       intent.enabled = true;
       service_.enable_session_intent(std::move(intent));
+      service_.reset_join_reconnect_budget(key);
       chat_list_.setSessionState(QString::fromStdString(key), QStringLiteral("connecting"));
       break;
     }
   }
 
   showToast(QStringLiteral("Подключение к полю…"));
-  service_.start_group_join(normalized.toStdString());
+  service_.start_group_join(normalized.toStdString(), false);
   emit listeningChanged();
   emit busyChanged();
   emit sessionsChanged();
@@ -2874,6 +3561,7 @@ void NodeController::connectActiveField() {
 void NodeController::copyToClipboard(const QString& text) {
   if (text.isEmpty()) return;
   QGuiApplication::clipboard()->setText(text);
+  toast_is_error_ = false;
   toast_ = QStringLiteral("Скопировано");
   emit toastChanged();
 }
@@ -2891,6 +3579,12 @@ void NodeController::clearToast() {
   toast_.clear();
   toast_is_error_ = false;
   emit toastChanged();
+}
+
+void NodeController::setNativeChromeDark(bool dark) {
+  if (auto* hints = QGuiApplication::styleHints())
+    hints->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+  nyxApplyNativeChromeDarkAll(dark);
 }
 
 void NodeController::setWindowActive(bool active) {

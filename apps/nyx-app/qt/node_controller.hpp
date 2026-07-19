@@ -54,6 +54,7 @@ class NodeController : public QObject {
   Q_PROPERTY(ChatListModel* chatList READ chatList CONSTANT)
   Q_PROPERTY(LanPeerModel* lanPeers READ lanPeers CONSTANT)
   Q_PROPERTY(QVariantList groupList READ groupList NOTIFY groupListChanged)
+  Q_PROPERTY(QVariantList contactList READ contactList NOTIFY contactListChanged)
   Q_PROPERTY(QString rendezvous READ rendezvous WRITE setRendezvous NOTIFY rendezvousChanged)
   Q_PROPERTY(QString rendezvousList READ rendezvousList WRITE setRendezvousList NOTIFY rendezvousChanged)
   Q_PROPERTY(int discoveryMode READ discoveryMode WRITE setDiscoveryMode NOTIFY networkSettingsChanged)
@@ -111,10 +112,35 @@ class NodeController : public QObject {
                  NOTIFY connectionPanelOpenChanged)
   Q_PROPERTY(bool groupsDialogOpen READ groupsDialogOpen WRITE setGroupsDialogOpen
                  NOTIFY groupsDialogOpenChanged)
+  Q_PROPERTY(bool fieldInfoOpen READ fieldInfoOpen WRITE setFieldInfoOpen
+                 NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(QString fieldInfoGroupId READ fieldInfoGroupId NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(QString fieldInfoInvite READ fieldInfoInvite NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(bool fieldInfoIsOwner READ fieldInfoIsOwner NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(QString fieldInfoDescription READ fieldInfoDescription NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(QString fieldInfoDirection READ fieldInfoDirection NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(QString fieldInfoTags READ fieldInfoTags NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(bool fieldInfoPublicListed READ fieldInfoPublicListed NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(QVariantList fieldInfoMembers READ fieldInfoMembers NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(bool peerInfoOpen READ peerInfoOpen WRITE setPeerInfoOpen
+                 NOTIFY peerInfoOpenChanged)
+  Q_PROPERTY(QString peerInfoUserId READ peerInfoUserId NOTIFY peerInfoOpenChanged)
   Q_PROPERTY(bool trayAvailable READ trayAvailable CONSTANT)
   Q_PROPERTY(QString activeChatKey READ activeChatKey NOTIFY chatChanged)
   Q_PROPERTY(QString sessionSummary READ sessionSummary NOTIFY sessionsChanged)
   Q_PROPERTY(QString dmInboxToken READ dmInboxToken NOTIFY inviteTokenChanged)
+  /** 0=чаты, 1=друзья, 2=поля — режим левого списка. */
+  Q_PROPERTY(int sidebarMode READ sidebarMode WRITE setSidebarMode NOTIFY sidebarModeChanged)
+  Q_PROPERTY(QString profileBio READ profileBio WRITE setProfileBio NOTIFY profileMetaChanged)
+  Q_PROPERTY(QString profileInterests READ profileInterests WRITE setProfileInterests
+                 NOTIFY profileMetaChanged)
+  /** available | away | busy | invisible */
+  Q_PROPERTY(QString profileAvailability READ profileAvailability WRITE setProfileAvailability
+                 NOTIFY profileMetaChanged)
+  Q_PROPERTY(QString profileAvailabilityLabel READ profileAvailabilityLabel
+                 NOTIFY profileMetaChanged)
+  Q_PROPERTY(QString profileAvatarPath READ profileAvatarPath NOTIFY profilePhotosChanged)
+  Q_PROPERTY(QVariantList profilePhotoList READ profilePhotoList NOTIFY profilePhotosChanged)
 
  public:
   explicit NodeController(QObject* parent = nullptr);
@@ -149,6 +175,18 @@ class NodeController : public QObject {
   ChatListModel* chatList() { return &chat_list_; }
   LanPeerModel* lanPeers() { return &lan_peers_; }
   QVariantList groupList() const { return group_list_; }
+  QVariantList contactList() const { return contact_list_; }
+  int sidebarMode() const { return sidebar_mode_; }
+  void setSidebarMode(int mode);
+  QString profileBio() const { return profile_bio_; }
+  void setProfileBio(const QString& v);
+  QString profileInterests() const { return profile_interests_; }
+  void setProfileInterests(const QString& v);
+  QString profileAvailability() const { return profile_availability_; }
+  void setProfileAvailability(const QString& v);
+  QString profileAvailabilityLabel() const;
+  QString profileAvatarPath() const { return profile_avatar_path_; }
+  QVariantList profilePhotoList() const { return profile_photo_list_; }
   QString rendezvous() const { return rendezvous_; }
   QString rendezvousList() const { return rendezvous_list_; }
   int discoveryMode() const { return discovery_mode_; }
@@ -207,6 +245,19 @@ class NodeController : public QObject {
   int permFileManageRoles() const { return static_cast<int>(nyx::FilePermission::ManageRoles); }
   bool connectionPanelOpen() const { return connection_panel_open_; }
   bool groupsDialogOpen() const { return groups_dialog_open_; }
+  bool fieldInfoOpen() const { return field_info_open_; }
+  void setFieldInfoOpen(bool open);
+  QString fieldInfoGroupId() const { return field_info_group_id_; }
+  QString fieldInfoInvite() const { return field_info_invite_; }
+  bool fieldInfoIsOwner() const { return field_info_is_owner_; }
+  QString fieldInfoDescription() const { return field_info_description_; }
+  QString fieldInfoDirection() const { return field_info_direction_; }
+  QString fieldInfoTags() const { return field_info_tags_; }
+  bool fieldInfoPublicListed() const { return field_info_public_listed_; }
+  QVariantList fieldInfoMembers() const { return field_info_members_; }
+  bool peerInfoOpen() const { return peer_info_open_; }
+  void setPeerInfoOpen(bool open);
+  QString peerInfoUserId() const { return peer_info_user_id_; }
   bool trayAvailable() const { return tray_icon_ != nullptr; }
   QString activeChatKey() const { return active_chat_key_; }
   QString sessionSummary() const;
@@ -246,7 +297,18 @@ class NodeController : public QObject {
   Q_INVOKABLE void completeOnboarding(const QString& nickname);
   Q_INVOKABLE void refreshChatList();
   Q_INVOKABLE void refreshGroupList();
+  Q_INVOKABLE void refreshContactList();
+  Q_INVOKABLE void refreshProfilePhotos();
+  Q_INVOKABLE void pickAndSetProfilePhoto();
+  Q_INVOKABLE void makeProfilePhotoCurrent(const QString& hashHex);
+  Q_INVOKABLE void removeProfilePhoto(const QString& hashHex);
+  Q_INVOKABLE QString peerAvatarPath(const QString& userIdHex) const;
+  Q_INVOKABLE QVariantList peerAvatarHistory(const QString& userIdHex) const;
+  Q_INVOKABLE void openContact(const QString& userIdHex);
+  Q_INVOKABLE QString shortInviteCode(const QString& hex) const;
   Q_INVOKABLE void openGroupsDialog();
+  Q_INVOKABLE void openFieldInfo(const QString& groupIdHex = {});
+  Q_INVOKABLE void openPeerInfo(const QString& userIdHex = {});
   Q_INVOKABLE void openFilesView();
   Q_INVOKABLE void showChatView();
   Q_INVOKABLE void openFilesDialog();
@@ -317,7 +379,18 @@ class NodeController : public QObject {
   Q_INVOKABLE QString sessionStateForKey(const QString& key) const;
   Q_INVOKABLE bool isChatSelectable(const QString& key) const;
   Q_INVOKABLE void sendMessage(const QString& text);
-  Q_INVOKABLE void createGroup(const QString& name);
+  /** Выбрать фото/видео → скопировать в chat_media → markdown `![…](nyx-media:hash)`. */
+  Q_INVOKABLE QString pickChatMediaMarkdown();
+  Q_INVOKABLE QString mediaLocalPath(const QString& hashHex) const;
+  Q_INVOKABLE void ensureMediaAvailable(const QString& hashHex);
+  Q_INVOKABLE bool isImageMedia(const QString& hashHex) const;
+  Q_INVOKABLE void createGroup(const QString& name, const QString& description = {},
+                               const QString& direction = {}, const QString& tags = {},
+                               bool publicListed = false);
+  Q_INVOKABLE void updateGroupMeta(const QString& groupIdHex, const QString& description,
+                                   const QString& direction, const QString& tags,
+                                   bool publicListed);
+  Q_INVOKABLE QVariantMap contactInfo(const QString& userIdHex) const;
   Q_INVOKABLE void deleteGroup(const QString& groupIdHex);
   Q_INVOKABLE void removeFieldMember(const QString& groupIdHex, const QString& userIdHex);
   Q_INVOKABLE void startFieldHub(const QString& groupIdHex);
@@ -328,6 +401,8 @@ class NodeController : public QObject {
   Q_INVOKABLE void copyDmInboxToken();
   Q_INVOKABLE void copyLastGroupInvite();
   Q_INVOKABLE void clearToast();
+  /** Синхронизировать системный title bar (Windows) с темой UI. */
+  Q_INVOKABLE void setNativeChromeDark(bool dark);
 
  signals:
   void sessionUnlockedChanged();
@@ -336,6 +411,10 @@ class NodeController : public QObject {
   void statusTextChanged();
   void inviteTokenChanged();
   void lastGroupInviteChanged();
+  void contactListChanged();
+  void sidebarModeChanged();
+  void profileMetaChanged();
+  void profilePhotosChanged();
   void chatChanged();
   void busyChanged();
   void listeningChanged();
@@ -351,6 +430,8 @@ class NodeController : public QObject {
   void fileAccessChanged();
   void connectionPanelOpenChanged();
   void groupsDialogOpenChanged();
+  void fieldInfoOpenChanged();
+  void peerInfoOpenChanged();
   void groupListChanged();
   void sessionsChanged();
   void incomingMessage(const QString& author, const QString& preview);
@@ -445,8 +526,29 @@ class NodeController : public QObject {
   bool window_active_ = true;
   bool connection_panel_open_ = false;
   bool groups_dialog_open_ = false;
+  bool field_info_open_ = false;
+  QString field_info_group_id_;
+  QString field_info_invite_;
+  bool field_info_is_owner_ = false;
+  QString field_info_description_;
+  QString field_info_direction_;
+  QString field_info_tags_;
+  bool field_info_public_listed_ = false;
+  QVariantList field_info_members_;
+  bool peer_info_open_ = false;
+  QString peer_info_user_id_;
+  void syncFieldInfoState();
   QVariantList group_list_;
+  QVariantList contact_list_;
+  int sidebar_mode_ = 0;
+  QString profile_bio_;
+  QString profile_avatar_path_;
+  QVariantList profile_photo_list_;
+  QString profile_interests_;
+  QString profile_availability_ = QStringLiteral("available");
   QString file_progress_label_;
+  void loadProfileMeta();
+  void persistProfileMeta();
   int file_progress_percent_ = 0;
   bool file_progress_visible_ = false;
   int main_view_mode_ = 0;
@@ -478,4 +580,7 @@ class NodeController : public QObject {
   QString file_access_target_label_;
   QSystemTrayIcon* tray_icon_ = nullptr;
   QMenu* tray_menu_ = nullptr;
+
+  void ensureChatMediaRootIndexed();
+  static QString chatMediaDir();
 };
