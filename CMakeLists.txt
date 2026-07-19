@@ -131,6 +131,7 @@ add_library(nyx-appcore
   apps/nyx-app/appcore/node_service_chat.cpp
   apps/nyx-app/appcore/node_service_files.cpp
   apps/nyx-app/appcore/node_service_group.cpp
+  apps/nyx-app/appcore/node_service_avatar.cpp
 )
 target_include_directories(nyx-appcore PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/apps/nyx-app/appcore

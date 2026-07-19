@@ -54,7 +54,7 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
     nyx::UdpSocket listen_socket;
     std::string bind_error;
     if (!listen_socket.bind("0.0.0.0", 0, &bind_error)) {
-      emit_status("inbox bind failed: " + bind_error);
+      emit_status("не удалось открыть порт inbox: " + bind_error);
       std::this_thread::sleep_for(std::chrono::seconds(2));
       continue;
     }
@@ -63,7 +63,7 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
     pool.set_servers(network_config_.rendezvous_servers);
     if (network_config_.mode != nyx::DiscoveryMode::LanOnly) {
       if (!pool.register_token(token)) {
-        emit_status("inbox register failed");
+        emit_status("rendezvous не отвечает — inbox не зарегистрирован");
         std::this_thread::sleep_for(std::chrono::seconds(2));
         continue;
       }
@@ -160,7 +160,7 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
   nyx::UdpSocket listen_socket;
   std::string bind_error;
   if (!listen_socket.bind("0.0.0.0", 0, &bind_error)) {
-    emit_status("bind failed: " + bind_error);
+    emit_status("не удалось открыть сетевой порт: " + bind_error);
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -169,7 +169,8 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
   pool.set_servers(network_config_.rendezvous_servers);
   if (network_config_.mode != nyx::DiscoveryMode::LanOnly) {
     if (!pool.register_token(token)) {
-      emit_status("register failed — проверьте rendezvous (" + rendezvous_list_string() + ")");
+      emit_status("rendezvous не отвечает — проверьте адрес (" + rendezvous_list_string() +
+                  ")");
       finish_session(session, SessionState::Offline);
       return;
     }
@@ -234,7 +235,7 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
   auto conn = nyx::Connection::accept_responder(std::move(pool.socket()), peer_host, peer_port,
                                                 &first_packet);
   if (!conn) {
-    emit_status("handshake timeout");
+    emit_status("не удалось установить защищённый канал (таймаут)");
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -261,7 +262,7 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
 
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
-    emit_status("bind failed");
+    emit_status("не удалось открыть сетевой порт");
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -269,17 +270,17 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
   std::string rendezvous_host;
   uint16_t rendezvous_port = 0;
   if (!parse_rendezvous(rendezvous_host, rendezvous_port)) {
-    emit_status("неверный rendezvous");
+    emit_status("неверный адрес rendezvous");
     finish_session(session, SessionState::Offline);
     return;
   }
 
-  emit_status("lookup на rendezvous (" + rendezvous_list_string() + ")...");
+  emit_status("поиск на rendezvous (" + rendezvous_list_string() + ")...");
   nyx::RendezvousPool pool(std::move(socket));
   pool.set_servers(network_config_.rendezvous_servers);
   auto hint = pool.lookup(token);
   if (!hint) {
-    emit_status("lookup failed");
+    emit_status("собеседник не найден — online и тот же rendezvous?");
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -289,7 +290,7 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
 
   auto result = connect_via_rendezvous_hint(pool.socket(), *hint);
   if (!result.connection) {
-    emit_status("handshake failed");
+    emit_status("не удалось пробить NAT / установить канал");
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -305,14 +306,14 @@ void NodeService::run_connect_peer(std::shared_ptr<NetSession> session, std::str
 
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
-    emit_status("bind failed");
+    emit_status("не удалось открыть сетевой порт");
     finish_session(session, SessionState::Offline);
     return;
   }
 
   auto conn = nyx::Connection::connect_initiator(std::move(socket), host, port);
   if (!conn) {
-    emit_status("handshake failed");
+    emit_status("не удалось установить канал с peer");
     finish_session(session, SessionState::Offline);
     return;
   }

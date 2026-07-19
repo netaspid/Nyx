@@ -11,6 +11,7 @@
 #include "nyx/connection.hpp"
 #include "nyx/conversation.hpp"
 #include "nyx/file_access.hpp"
+#include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_transfer.hpp"
 #include "nyx/group.hpp"
@@ -27,7 +28,9 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <unordered_map>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -37,10 +40,15 @@
 namespace nyx_app {
 
 struct UiMessage {
+  uint64_t message_id = 0;
   uint64_t timestamp_ms = 0;
   std::string author;
+  /** Hex user id автора (для /me и @). */
+  std::string author_user_id;
   std::string text;
   bool outgoing = false;
+  /** pending | delivered | failed | пусто */
+  std::string delivery;
   std::string session_id;
   std::string chat_key;
 };
@@ -59,6 +67,8 @@ class NodeService {
  public:
   using StatusCallback = std::function<void(const std::string&)>;
   using MessageCallback = std::function<void(const UiMessage&)>;
+  using DeliveryCallback =
+      std::function<void(const std::string& session_id, uint64_t message_id, bool delivered)>;
   using TokenCallback = std::function<void(const std::string& token_hex)>;
   using LanPeersCallback = std::function<void(const std::vector<nyx::LanPeer>&)>;
   using GroupInfoCallback = std::function<void(const std::string& group_id_hex,
@@ -90,9 +100,12 @@ class NodeService {
 
   void set_on_status(StatusCallback cb);
   void set_on_message(MessageCallback cb);
+  void set_on_delivery(DeliveryCallback cb);
   void set_on_invite_token(TokenCallback cb);
   void set_on_lan_peers(LanPeersCallback cb);
   void set_on_group_created(GroupInfoCallback cb);
+  /** Мете поля обновилась у участника (push от hub). */
+  void set_on_group_meta_changed(SessionsChangedCallback cb);
   void set_on_chat_ready(ChatReadyCallback cb);
 
   using FileProgressCallback =
@@ -105,6 +118,7 @@ class NodeService {
   void set_on_file_index_progress(FileIndexProgressCallback cb);
   void set_on_remote_files(RemoteFilesCallback cb);
   void set_on_file_access_sync(FileAccessSyncCallback cb);
+  void set_on_avatars_changed(SessionsChangedCallback cb);
   void set_on_mode(std::function<void(NodeMode)> cb);
   void set_on_session_ended(SessionEndedCallback cb);
   void set_on_sessions_changed(SessionsChangedCallback cb);
@@ -125,18 +139,25 @@ class NodeService {
 
   bool start_listen(bool lan_advertise = true);
   bool start_dm_inbox();
-  bool start_connect_token(const std::string& token_hex);
+  /** @param quiet_ui — фоновый reconnect без «переподключение» в UI. */
+  bool start_connect_token(const std::string& token_hex, bool quiet_ui = false);
   bool start_connect_peer(const std::string& host, uint16_t port);
   bool start_browse(int timeout_ms = 3000);
   bool scan_lan_peers(int timeout_ms = 2000);
 
   bool create_group(const std::string& name);
+  bool update_group_meta(const std::string& group_id_hex, const std::string& description,
+                         const std::string& direction, const std::string& tags,
+                         bool public_listed);
   bool delete_group(const std::string& group_id_hex);
   bool remove_group_member(const std::string& group_id_hex, const std::string& user_id_hex);
   bool auto_start_owned_hub() const { return network_config_.auto_start_owned_hub; }
   void set_auto_start_owned_hub(bool enabled);
   bool start_group_hub(const std::string& group_id_hex);
-  bool start_group_join(const std::string& invite_hex);
+  /** @param quiet_ui — не показывать «переподключение» в списке (фоновый probe). */
+  bool start_group_join(const std::string& invite_hex, bool quiet_ui = false);
+  /** Сброс счётчика фоновых ретраев (ручной join / «подключить»). */
+  void reset_join_reconnect_budget(const std::string& chat_key);
 
   /** Останавливает одну сессию (или active, если id пуст). */
   bool stop_session(const std::string& session_id = {});
@@ -241,6 +262,10 @@ class NodeService {
     SessionKind kind = SessionKind::Idle;
     std::atomic<SessionState> state{SessionState::Idle};
     std::atomic<bool> running{false};
+    /** Connecting, но UI показывает offline (тихий фоновый probe). */
+    std::atomic<bool> quiet_ui{false};
+    /** Уже был Live в этой сессии — обрыв эфира не считается failed join. */
+    std::atomic<bool> ever_live{false};
     std::thread worker;
     std::unique_ptr<nyx::Connection> connection;
     std::unique_ptr<nyx::ChatService> chat;
@@ -253,6 +278,15 @@ class NodeService {
     std::string ref_id_hex;
     std::deque<FileDownloadRequest> download_queue;
     std::mutex download_mutex;
+
+    struct AvatarRx {
+      nyx::FileHash hash{};
+      uint64_t size = 0;
+      std::string mime;
+      nyx::ByteBuffer data;
+    };
+    std::optional<AvatarRx> avatar_rx;
+    nyx::UserId avatar_peer{};
 
     NetSession() = default;
     NetSession(const NetSession&) = delete;
@@ -271,7 +305,9 @@ class NodeService {
 
   void emit_status(const std::string& text);
   void emit_message(const std::shared_ptr<NetSession>& session, const nyx::ChatMessage& msg,
-                    bool outgoing);
+                    bool outgoing, const std::string& delivery = {});
+  void emit_delivery(const std::shared_ptr<NetSession>& session, uint64_t message_id,
+                     bool delivered);
   void emit_session_ended(const std::string& session_id);
   void emit_sessions_changed();
   void emit_chat_ready(const std::shared_ptr<NetSession>& session, const std::string& title,
@@ -314,28 +350,53 @@ class NodeService {
   void try_pump_download_queue();
   void after_file_access_changed(const std::string& scope_group_id_hex);
   bool try_apply_file_access_policy(const nyx::ByteBuffer& payload);
+
+  void request_missing_avatars(nyx::Connection& conn, const nyx::UserId& peer,
+                               const std::vector<nyx::FileHash>& hashes);
+  void sync_avatars_after_hello(const std::shared_ptr<NetSession>& session,
+                                const nyx::HelloMessage& peer);
+  bool handle_avatar_bulk(const std::shared_ptr<NetSession>& session,
+                          const nyx::ByteBuffer& payload);
   std::string resolve_share_root_path(const std::string& root_path) const;
   nyx::GroupId scope_from_hex(const std::string& scope_group_id_hex) const;
   void remember_intent_for_session(const std::shared_ptr<NetSession>& session,
                                    const std::string& invite_hex = {});
 
+  /** Бюджет видимых join-ретраев чужого поля; дальше — тихие редкие probe. */
+  struct JoinReconnectBudget {
+    int failures = 0;
+    int64_t next_attempt_ms = 0;
+  };
+  static constexpr int kMaxVisibleJoinRetries = 3;
+  static constexpr int64_t kQuietJoinProbeIntervalMs = 60'000;
+
+  static int64_t steady_now_ms();
+  void note_join_reconnect_failure(const std::string& chat_key);
+  void clear_join_reconnect_budget(const std::string& chat_key);
+  SessionState ui_session_state(const std::shared_ptr<NetSession>& session) const;
+
   mutable std::mutex cb_mutex_;
   mutable std::mutex live_group_mutex_;
   mutable std::mutex sessions_mutex_;
+  mutable std::mutex join_reconnect_mutex_;
   std::map<nyx::GroupId, nyx::GroupRecord> live_group_snapshots_;
   std::map<std::string, std::shared_ptr<NetSession>> sessions_;
+  std::unordered_map<std::string, JoinReconnectBudget> join_reconnect_;
   std::string active_session_id_;
 
   StatusCallback on_status_;
   MessageCallback on_message_;
+  DeliveryCallback on_delivery_;
   TokenCallback on_invite_token_;
   LanPeersCallback on_lan_peers_;
   GroupInfoCallback on_group_created_;
+  SessionsChangedCallback on_group_meta_changed_;
   ChatReadyCallback on_chat_ready_;
   FileProgressCallback on_file_progress_;
   FileIndexProgressCallback on_file_index_progress_;
   RemoteFilesCallback on_remote_files_;
   FileAccessSyncCallback on_file_access_sync_;
+  SessionsChangedCallback on_avatars_changed_;
   std::function<void(NodeMode)> on_mode_;
   SessionEndedCallback on_session_ended_;
   SessionsChangedCallback on_sessions_changed_;

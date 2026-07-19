@@ -7,6 +7,7 @@
 #include "nyx/rendezvous_pool.hpp"
 #include "nyx/util.hpp"
 
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -84,6 +85,11 @@ void NodeService::set_on_status(StatusCallback cb) {
   std::lock_guard lock(cb_mutex_);
   on_status_ = std::move(cb);
 }
+void NodeService::set_on_delivery(DeliveryCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_delivery_ = std::move(cb);
+}
+
 void NodeService::set_on_message(MessageCallback cb) {
   std::lock_guard lock(cb_mutex_);
   on_message_ = std::move(cb);
@@ -100,6 +106,11 @@ void NodeService::set_on_group_created(GroupInfoCallback cb) {
   std::lock_guard lock(cb_mutex_);
   on_group_created_ = std::move(cb);
 }
+
+void NodeService::set_on_group_meta_changed(SessionsChangedCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_group_meta_changed_ = std::move(cb);
+}
 void NodeService::set_on_chat_ready(ChatReadyCallback cb) {
   std::lock_guard lock(cb_mutex_);
   on_chat_ready_ = std::move(cb);
@@ -115,12 +126,54 @@ void NodeService::reload_account_data() {
   file_access_.load();
   intent_store_ = nyx::SessionIntentStore{};
   intent_store_.load();
+  {
+    std::lock_guard lock(join_reconnect_mutex_);
+    join_reconnect_.clear();
+  }
 }
 
 void NodeService::clear_account_data() {
   file_index_.clear();
   file_access_.clear();
   intent_store_ = nyx::SessionIntentStore{};
+  {
+    std::lock_guard lock(join_reconnect_mutex_);
+    join_reconnect_.clear();
+  }
+}
+
+int64_t NodeService::steady_now_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+void NodeService::note_join_reconnect_failure(const std::string& chat_key) {
+  if (chat_key.empty()) return;
+  std::lock_guard lock(join_reconnect_mutex_);
+  auto& bud = join_reconnect_[chat_key];
+  if (bud.failures < kMaxVisibleJoinRetries)
+    ++bud.failures;
+  if (bud.failures >= kMaxVisibleJoinRetries)
+    bud.next_attempt_ms = steady_now_ms() + kQuietJoinProbeIntervalMs;
+}
+
+void NodeService::clear_join_reconnect_budget(const std::string& chat_key) {
+  if (chat_key.empty()) return;
+  std::lock_guard lock(join_reconnect_mutex_);
+  join_reconnect_.erase(chat_key);
+}
+
+void NodeService::reset_join_reconnect_budget(const std::string& chat_key) {
+  clear_join_reconnect_budget(chat_key);
+}
+
+SessionState NodeService::ui_session_state(const std::shared_ptr<NetSession>& session) const {
+  if (!session) return SessionState::Idle;
+  const auto st = session->state.load();
+  if (st == SessionState::Connecting && session->quiet_ui.load())
+    return SessionState::Offline;
+  return st;
 }
 
 namespace {
@@ -200,6 +253,11 @@ void NodeService::set_on_remote_files(RemoteFilesCallback cb) {
   on_remote_files_ = std::move(cb);
 }
 
+void NodeService::set_on_avatars_changed(SessionsChangedCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_avatars_changed_ = std::move(cb);
+}
+
 void NodeService::set_on_file_access_sync(FileAccessSyncCallback cb) {
   std::lock_guard lock(cb_mutex_);
   on_file_access_sync_ = std::move(cb);
@@ -249,7 +307,8 @@ void NodeService::emit_status(const std::string& text) {
 }
 
 void NodeService::emit_message(const std::shared_ptr<NetSession>& session,
-                               const nyx::ChatMessage& msg, bool outgoing) {
+                               const nyx::ChatMessage& msg, bool outgoing,
+                               const std::string& delivery) {
   MessageCallback cb;
   {
     std::lock_guard lock(cb_mutex_);
@@ -257,15 +316,29 @@ void NodeService::emit_message(const std::shared_ptr<NetSession>& session,
   }
   if (!cb) return;
   UiMessage ui;
+  ui.message_id = msg.id;
   ui.timestamp_ms = msg.timestamp_ms;
   ui.author = msg.author;
+  ui.author_user_id = nyx::to_hex(msg.author_id.data(), msg.author_id.size());
   ui.text = msg.text;
   ui.outgoing = outgoing;
+  ui.delivery = delivery;
   if (session) {
     ui.session_id = session->id;
     ui.chat_key = session->id;
   }
   cb(ui);
+}
+
+void NodeService::emit_delivery(const std::shared_ptr<NetSession>& session, uint64_t message_id,
+                                bool delivered) {
+  DeliveryCallback cb;
+  {
+    std::lock_guard lock(cb_mutex_);
+    cb = on_delivery_;
+  }
+  if (!cb || message_id == 0) return;
+  cb(session ? session->id : std::string{}, message_id, delivered);
 }
 
 void NodeService::emit_session_ended(const std::string& session_id) {
@@ -294,7 +367,12 @@ void NodeService::emit_chat_ready(const std::shared_ptr<NetSession>& session,
   if (session) {
     session->title = title;
     session->ref_id_hex = ref_id_hex;
+    session->quiet_ui.store(false);
+    session->ever_live.store(true);
     session->state.store(SessionState::Live);
+    clear_join_reconnect_budget(session->id);
+    if (!ref_id_hex.empty())
+      clear_join_reconnect_budget(make_group_session_id(ref_id_hex));
   }
   ChatReadyCallback cb;
   {
@@ -362,6 +440,19 @@ std::shared_ptr<NodeService::NetSession> NodeService::create_session(const std::
 void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
                                  SessionState final_state) {
   if (!session) return;
+  if (final_state == SessionState::Offline && !session->ever_live.load()) {
+    if (session->kind == SessionKind::GroupMember) {
+      const std::string key = !session->ref_id_hex.empty()
+                                  ? make_group_session_id(session->ref_id_hex)
+                                  : session->id;
+      note_join_reconnect_failure(key);
+    } else if (session->kind == SessionKind::Direct) {
+      const std::string key = !session->ref_id_hex.empty()
+                                  ? make_dm_session_id(session->ref_id_hex)
+                                  : session->id;
+      note_join_reconnect_failure(key);
+    }
+  }
   session->chat.reset();
   session->files.reset();
   session->group_hub.reset();
@@ -369,6 +460,7 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
   session->connection.reset();
   session->mdns.reset();
   session->running.store(false);
+  session->quiet_ui.store(false);
   session->state.store(final_state);
   // Не detach здесь: параллельный join() из UI даёт data race / краш.
   // Поток остаётся joinable до join() снаружи или ~NetSession.
@@ -465,7 +557,7 @@ std::vector<SessionInfo> NodeService::list_sessions() const {
     SessionInfo info;
     info.id = s->id;
     info.kind = s->kind;
-    info.state = s->state.load();
+    info.state = ui_session_state(s);
     info.title = s->title;
     info.ref_id_hex = s->ref_id_hex;
     out.push_back(std::move(info));
@@ -476,15 +568,19 @@ std::vector<SessionInfo> NodeService::list_sessions() const {
 SessionState NodeService::session_state(const std::string& session_id) const {
   auto s = find_session(session_id);
   if (!s) return SessionState::Idle;
-  return s->state.load();
+  return ui_session_state(s);
 }
 
 bool NodeService::is_session_live(const std::string& session_id) const {
-  return session_state(session_id) == SessionState::Live;
+  auto s = find_session(session_id);
+  return s && s->state.load() == SessionState::Live;
 }
 
 bool NodeService::is_session_up(const std::string& session_id) const {
-  const auto st = session_state(session_id);
+  // Сырой state: тихий Connecting тоже «занят», иначе timer запустит второй join.
+  auto s = find_session(session_id);
+  if (!s) return false;
+  const auto st = s->state.load();
   return st == SessionState::Live || st == SessionState::Connecting;
 }
 
@@ -645,7 +741,7 @@ bool NodeService::start_dm_inbox() {
   return true;
 }
 
-bool NodeService::start_connect_token(const std::string& token_hex) {
+bool NodeService::start_connect_token(const std::string& token_hex, bool quiet_ui) {
   const std::string pending_id = "dm:pending:" + token_hex.substr(0, 8);
   {
     auto existing = find_session(pending_id);
@@ -662,6 +758,7 @@ bool NodeService::start_connect_token(const std::string& token_hex) {
     std::lock_guard lock(sessions_mutex_);
     sessions_.erase(pending_id);
     session = create_session(pending_id, SessionKind::Direct);
+    session->quiet_ui.store(quiet_ui);
     if (active_session_id_.empty() || active_session_id_ == pending_id)
       active_session_id_ = pending_id;
   }
@@ -714,6 +811,45 @@ bool NodeService::scan_lan_peers(int timeout_ms) {
     run_lan_scan(timeout_ms);
     discovery_busy_.store(false);
   });
+  return true;
+}
+
+bool NodeService::update_group_meta(const std::string& group_id_hex,
+                                    const std::string& description,
+                                    const std::string& direction, const std::string& tags,
+                                    bool public_listed) {
+  nyx::GroupId gid{};
+  if (!nyx::GroupStore::group_id_from_hex(group_id_hex, gid)) return false;
+  const auto profile = load_profile();
+  nyx::GroupStore store;
+  store.load();
+  const auto group = store.find(gid);
+  if (!group) return false;
+  if (group->owner_id != profile.user_id()) {
+    bool owner_member = false;
+    for (const auto& m : group->members) {
+      if (m.role == nyx::GroupRole::Owner && m.user_id == profile.user_id()) {
+        owner_member = true;
+        break;
+      }
+    }
+    if (!owner_member) return false;
+  }
+  const auto visibility = public_listed ? nyx::GroupVisibility::PublicListed
+                                        : nyx::GroupVisibility::Circle;
+  if (!store.update_meta(gid, description, direction, tags, visibility)) return false;
+
+  // Живой hub — пушим мету участникам в эфире.
+  {
+    std::lock_guard lock(sessions_mutex_);
+    for (auto& [id, session] : sessions_) {
+      (void)id;
+      if (!session || !session->group_hub) continue;
+      if (session->group_hub->group().id != gid) continue;
+      session->group_hub->publish_meta(description, direction, tags, visibility);
+      break;
+    }
+  }
   return true;
 }
 
@@ -810,7 +946,7 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
   return true;
 }
 
-bool NodeService::start_group_join(const std::string& invite_hex) {
+bool NodeService::start_group_join(const std::string& invite_hex, bool quiet_ui) {
   nyx::InviteToken token{};
   std::string sid = "group:join:" + invite_hex.substr(0, 12);
   std::string ref_hex;
@@ -857,6 +993,7 @@ bool NodeService::start_group_join(const std::string& invite_hex) {
     sessions_.erase(sid);
     session = create_session(sid, SessionKind::GroupMember);
     session->ref_id_hex = ref_hex;
+    session->quiet_ui.store(quiet_ui);
     if (active_session_id_.empty() || active_session_id_ == sid) active_session_id_ = sid;
   }
   session->worker =
@@ -953,6 +1090,8 @@ void NodeService::auto_reconnect_all() {
   if (!network_config_.auto_start_owned_hub) return;
 
   // Чужие поля / join — только если intent явно включён (не после «Отключиться»).
+  // После 3 видимых неудач — офлайн в UI, тихий probe раз в ~60 с.
+  const int64_t now_ms = steady_now_ms();
   for (const auto& g : store.all()) {
     if (g.owner_id == profile.user_id()) continue;
     const std::string gid = nyx::GroupStore::group_id_hex(g.id);
@@ -964,7 +1103,18 @@ void NodeService::auto_reconnect_all() {
         (intent && intent->invite_hex.size() == 64)
             ? intent->invite_hex
             : nyx::GroupStore::invite_hex(g.invite_token);
-    start_group_join(invite);
+
+    bool quiet = false;
+    {
+      std::lock_guard lock(join_reconnect_mutex_);
+      const auto it = join_reconnect_.find(key);
+      if (it != join_reconnect_.end() && it->second.failures >= kMaxVisibleJoinRetries) {
+        if (now_ms < it->second.next_attempt_ms) continue;
+        it->second.next_attempt_ms = now_ms + kQuietJoinProbeIntervalMs;
+        quiet = true;
+      }
+    }
+    start_group_join(invite, quiet);
   }
 
   intent_store_.load();
@@ -972,7 +1122,21 @@ void NodeService::auto_reconnect_all() {
     if (!intent.enabled) continue;
     if (intent.kind != nyx::SessionIntentKind::Direct) continue;
     if (is_session_up(intent.key)) continue;
-    if (intent.invite_hex.size() == 64) start_connect_token(intent.invite_hex);
+    if (intent.invite_hex.size() != 64) continue;
+
+    bool quiet = false;
+    {
+      std::lock_guard lock(join_reconnect_mutex_);
+      auto it = join_reconnect_.find(intent.key);
+      if (it == join_reconnect_.end())
+        it = join_reconnect_.find("dm:pending:" + intent.invite_hex.substr(0, 8));
+      if (it != join_reconnect_.end() && it->second.failures >= kMaxVisibleJoinRetries) {
+        if (now_ms < it->second.next_attempt_ms) continue;
+        it->second.next_attempt_ms = now_ms + kQuietJoinProbeIntervalMs;
+        quiet = true;
+      }
+    }
+    start_connect_token(intent.invite_hex, quiet);
   }
 }
 
@@ -1030,6 +1194,12 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
     live.id = view.id;
     live.name = view.name;
     live.members = view.members;
+    if (view.meta_received) {
+      live.description = view.description;
+      live.direction = view.direction;
+      live.tags = view.tags;
+      live.visibility = view.visibility;
+    }
     nyx::GroupStore store;
     store.load();
     if (const auto stored = store.find(live.id)) {
@@ -1037,6 +1207,12 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
       nyx::UserId zero{};
       if (stored->owner_id != zero) live.owner_id = stored->owner_id;
       nyx::GroupStore::merge_member_roster(live.members, stored->members);
+      if (!view.meta_received) {
+        live.description = stored->description;
+        live.direction = stored->direction;
+        live.tags = stored->tags;
+        live.visibility = stored->visibility;
+      }
     }
     for (const auto& m : view.members) {
       if (m.role == nyx::GroupRole::Owner) {
@@ -1059,6 +1235,14 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
       if (!live.name.empty()) merged.name = live.name;
       nyx::UserId zero{};
       if (live.owner_id != zero) merged.owner_id = live.owner_id;
+      // Hub всегда источник меты; участник — только после GroupMeta.
+      if (session->group_hub ||
+          (session->group_member && session->group_member->view().meta_received)) {
+        merged.description = live.description;
+        merged.direction = live.direction;
+        merged.tags = live.tags;
+        merged.visibility = live.visibility;
+      }
       nyx::GroupStore::ensure_roster(merged);
       store.upsert(merged);
       store.save();

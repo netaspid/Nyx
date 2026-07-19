@@ -68,12 +68,13 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
   nyx::HelloMessage peer_hello;
   if (!nyx::exchange_hello(*session->connection, profile, peer_hello, 10,
                            [session]() { return session->running.load(); })) {
-    emit_status("Hello timeout");
+    emit_status("не удалось поздороваться с собеседником");
     finish_session(session, SessionState::Offline);
     return;
   }
 
   nyx::remember_contact(peer_hello);
+  sync_avatars_after_hello(session, peer_hello);
   const std::string peer_hex =
       nyx::to_hex(peer_hello.public_key.data(), peer_hello.public_key.size());
   const std::string final_id = make_dm_session_id(peer_hex);
@@ -117,8 +118,12 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
   wire_file_transfer(session, *session->files);
 
   session->chat->set_on_message([this, session](const nyx::ChatMessage& msg, bool outgoing) {
-    emit_message(session, msg, outgoing);
+    emit_message(session, msg, outgoing, outgoing ? "pending" : "");
   });
+  session->chat->set_on_delivery(
+      [this, session](uint64_t message_id, nyx::DeliveryStatus status) {
+        emit_delivery(session, message_id, status == nyx::DeliveryStatus::Delivered);
+      });
   session->chat->set_on_event([this](const std::string& text) { emit_status(text); });
 
   const auto recent = session->chat->history(30);
@@ -128,7 +133,8 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
     msg.timestamp_ms = stored.timestamp_ms;
     msg.author = stored.author;
     msg.text = stored.text;
-    emit_message(session, msg, stored.outgoing);
+    emit_message(session, msg, stored.outgoing,
+                 stored.outgoing ? "delivered" : "");
   }
 
   pump_direct_chat(
@@ -137,7 +143,10 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
       [session]() {
         if (session->chat) session->chat->send_bye("пользователь вышел");
       },
-      [this, session]() { drain_file_download_queue(session); });
+      [this, session]() { drain_file_download_queue(session); },
+      [this, session](const nyx::ByteBuffer& payload) {
+        return handle_avatar_bulk(session, payload);
+      });
 
   finish_session(session, SessionState::Disconnected);
   emit_status("сессия завершена");
