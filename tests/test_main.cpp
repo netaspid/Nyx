@@ -20,6 +20,9 @@
 #include "nyx/group_hub.hpp"
 #include "nyx/group_member.hpp"
 #include "nyx/group_proto.hpp"
+#include "nyx/avatar_proto.hpp"
+#include "nyx/markdown_format.hpp"
+#include "nyx/profile_meta.hpp"
 #include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/proto.hpp"
@@ -1093,6 +1096,140 @@ static void test_group_member_persistence() {
   std::cout << "group member persistence ok\n";
 }
 
+static void test_profile_meta_photos_wire() {
+  nyx::ProfileMeta meta;
+  meta.bio = "hi";
+  meta.interests = "x";
+  meta.availability = nyx::Availability::Away;
+  meta.updated_ms = 42;
+  nyx::FileHash h{};
+  h[0] = 0xab;
+  h[31] = 0xcd;
+  meta.photo_hashes.push_back(h);
+  nyx::ByteBuffer wire;
+  nyx::append_profile_meta_wire(wire, meta);
+  nyx::ProfileMeta out;
+  std::size_t off = 0;
+  assert(nyx::read_profile_meta_wire(wire, off, out));
+  assert(out.bio == "hi");
+  assert(out.availability == nyx::Availability::Away);
+  assert(out.updated_ms == 42);
+  assert(out.photo_hashes.size() == 1);
+  assert(out.photo_hashes[0] == h);
+
+  // Старый кадр без хвоста фото.
+  nyx::ByteBuffer legacy;
+  nyx::write_u16_le(legacy, 2);
+  legacy.push_back('o');
+  legacy.push_back('k');
+  nyx::write_u16_le(legacy, 0);
+  legacy.push_back(0);
+  nyx::ProfileMeta legacy_out;
+  std::size_t loff = 0;
+  assert(nyx::read_profile_meta_wire(legacy, loff, legacy_out));
+  assert(legacy_out.bio == "ok");
+  assert(legacy_out.photo_hashes.empty());
+  std::cout << "profile meta photos wire ok\n";
+}
+
+static void test_avatar_proto_roundtrip() {
+  nyx::FileHash h{};
+  h[0] = 1;
+  nyx::AvatarRequest req;
+  req.hash = h;
+  const auto req_w = req.encode();
+  assert(nyx::is_avatar_frame(req_w));
+  assert(!nyx::ByeMessage::decode(req_w));
+  auto req_d = nyx::AvatarRequest::decode(req_w);
+  assert(req_d && req_d->hash == h);
+
+  nyx::AvatarOffer offer;
+  offer.hash = h;
+  offer.size = 3;
+  offer.mime = "image/jpeg";
+  auto offer_d = nyx::AvatarOffer::decode(offer.encode());
+  assert(offer_d && offer_d->size == 3);
+
+  nyx::AvatarChunk chunk;
+  chunk.hash = h;
+  chunk.index = 0;
+  chunk.data = {9, 8, 7};
+  auto chunk_d = nyx::AvatarChunk::decode(chunk.encode());
+  assert(chunk_d && chunk_d->data.size() == 3 && chunk_d->data[0] == 9);
+
+  nyx::AvatarDone done;
+  done.hash = h;
+  assert(nyx::AvatarDone::decode(done.encode()));
+  std::cout << "avatar proto roundtrip ok\n";
+}
+
+static void test_markdown_to_html() {
+  const auto bold = nyx::markdown_to_html("**hi**");
+  assert(bold.find("<b>hi</b>") != std::string::npos);
+
+  const auto under = nyx::markdown_to_html("__u__");
+  assert(under.find("<u>u</u>") != std::string::npos);
+
+  const auto strike = nyx::markdown_to_html("~~x~~");
+  assert(strike.find("<s>x</s>") != std::string::npos);
+
+  const auto spoil = nyx::markdown_to_html("||secret||");
+  assert(spoil.find("nyx-spoiler:0") != std::string::npos);
+  assert(spoil.find("secret") != std::string::npos);
+
+  const auto revealed = nyx::markdown_to_html("||secret||", {0});
+  assert(revealed.find("nyx-spoiler:") == std::string::npos);
+  assert(revealed.find("<span") != std::string::npos);
+
+  const auto code = nyx::markdown_to_html("`a<b>`");
+  assert(code.find("<code") != std::string::npos);
+  assert(code.find("&lt;") != std::string::npos);
+
+  const auto link = nyx::markdown_to_html("[t](https://example.com)");
+  assert(link.find("href=\"https://example.com\"") != std::string::npos);
+
+  const auto quote = nyx::markdown_to_html("> hi");
+  assert(quote.find("<blockquote") != std::string::npos);
+  assert(quote.find("hi") != std::string::npos);
+
+  const auto h1 = nyx::markdown_to_html("# Title");
+  assert(h1.find("Title") != std::string::npos);
+  assert(h1.find("font-weight:700") != std::string::npos);
+
+  const auto ul = nyx::markdown_to_html("- one\n- two");
+  assert(ul.find("<ul") != std::string::npos);
+  assert(ul.find("<li>one</li>") != std::string::npos);
+
+  const auto table = nyx::table_to_html("| a | b |\n| --- | --- |\n| 1 | 2 |");
+  assert(table.find("<table") != std::string::npos);
+  assert(table.find("<th") != std::string::npos);
+
+  const auto math = nyx::formula_to_html("a^2 + \\pi");
+  assert(math.find("<sup>2</sup>") != std::string::npos);
+  assert(math.find("π") != std::string::npos);
+
+  const auto mention = nyx::markdown_to_html(
+      "[@bob](nyx-user:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef)");
+  assert(mention.find("nyx-user:") != std::string::npos);
+
+  assert(nyx::normalize_me_message("/me jumps") == "nyx-me:jumps");
+  assert(nyx::is_action_message("nyx-me:jumps"));
+  assert(nyx::action_message_body("nyx-me:jumps") == "jumps");
+
+  const auto blocks = nyx::parse_markdown_blocks(
+      "hi\n\n![pic](nyx-media:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef)\n\n$$x^2$$");
+  assert(blocks.size() >= 3);
+  bool saw_media = false;
+  bool saw_formula = false;
+  for (const auto& b : blocks) {
+    if (b.type == nyx::MdBlockType::Media) saw_media = true;
+    if (b.type == nyx::MdBlockType::Formula) saw_formula = true;
+  }
+  assert(saw_media && saw_formula);
+
+  std::cout << "markdown to html ok\n";
+}
+
 static void test_file_access_roles() {
   std::remove(nyx::FileAccessStore::store_path().c_str());
   nyx::GroupId gid{};
@@ -1515,6 +1652,9 @@ int main() {
 #endif
   test_file_transfer_1mb();
   test_group_member_persistence();
+  test_profile_meta_photos_wire();
+  test_avatar_proto_roundtrip();
+  test_markdown_to_html();
   test_file_access_roles();
   test_share_policy();
   test_conversation_list();

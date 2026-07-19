@@ -4,6 +4,7 @@
  *  Долгоживущая идентичность: Ed25519 ключи, nickname, профиль, контакты.
  */
 
+#include "nyx/profile_meta.hpp"
 #include "nyx/types.hpp"
 
 #include <array>
@@ -51,6 +52,12 @@ struct Contact {
   uint64_t last_seen_ms = 0;
   /** Стабильный DM-inbox token peer (hex, 64); пусто если неизвестен. */
   std::string dm_inbox_token_hex;
+  /** Последняя известная публичная мета (из Hello). */
+  std::string bio;
+  std::string interests;
+  Availability availability = Availability::Available;
+  /** Хеши фото peer (current = [0]), hex 64. */
+  std::vector<std::string> photo_hashes;
 };
 
 /** Локальная книга контактов (JSON на диске). */

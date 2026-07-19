@@ -4,6 +4,8 @@
 #include "nyx/account_store.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/paths.hpp"
+#include "nyx/avatar_store.hpp"
+#include "nyx/profile_meta.hpp"
 #include "nyx/session_intent.hpp"
 #include "nyx/util.hpp"
 
@@ -30,7 +32,7 @@ bool read_nickname(const ByteBuffer& data, std::size_t offset, std::size_t len,
 ByteBuffer HelloMessage::encode() const {
   ByteBuffer out;
   out.reserve(1 + kPublicKeySize + 2 + nickname.size() + 4 +
-              (has_dm_inbox_token ? kInviteTokenSize : 0));
+              (has_dm_inbox_token ? kInviteTokenSize : 0) + 64);
   out.push_back(static_cast<uint8_t>(ChatKind::Hello));
   out.insert(out.end(), public_key.begin(), public_key.end());
   write_u16_le(out, static_cast<uint16_t>(nickname.size()));
@@ -38,6 +40,9 @@ ByteBuffer HelloMessage::encode() const {
   write_u32_le(out, capabilities);
   if (has_dm_inbox_token && (capabilities & kHelloCapDmInboxToken) != 0) {
     out.insert(out.end(), dm_inbox_token.begin(), dm_inbox_token.end());
+  }
+  if (has_profile_meta && (capabilities & kHelloCapProfileMeta) != 0) {
+    append_profile_meta_wire(out, profile_meta);
   }
   return out;
 }
@@ -54,11 +59,19 @@ std::optional<HelloMessage> HelloMessage::decode(const ByteBuffer& data) {
   const std::size_t cap_off = nick_off + nick_len;
   if (cap_off + 4 > data.size()) return std::nullopt;
   msg.capabilities = read_u32_le(data.data() + cap_off);
-  const std::size_t token_off = cap_off + 4;
+  std::size_t offset = cap_off + 4;
   if ((msg.capabilities & kHelloCapDmInboxToken) != 0 &&
-      token_off + kInviteTokenSize <= data.size()) {
-    std::memcpy(msg.dm_inbox_token.data(), data.data() + token_off, kInviteTokenSize);
+      offset + kInviteTokenSize <= data.size()) {
+    std::memcpy(msg.dm_inbox_token.data(), data.data() + offset, kInviteTokenSize);
     msg.has_dm_inbox_token = true;
+    offset += kInviteTokenSize;
+  }
+  if ((msg.capabilities & kHelloCapProfileMeta) != 0) {
+    ProfileMeta meta;
+    if (read_profile_meta_wire(data, offset, meta)) {
+      msg.profile_meta = std::move(meta);
+      msg.has_profile_meta = true;
+    }
   }
   return msg;
 }
@@ -91,6 +104,19 @@ bool exchange_hello(Connection& connection, const Profile& profile, HelloMessage
     hello.has_dm_inbox_token = true;
     hello.capabilities |= kHelloCapDmInboxToken;
   }
+  ProfileMeta meta;
+  if (load_profile_meta(meta)) {
+    AvatarStore avatars;
+    avatars.load();
+    meta.photo_hashes.clear();
+    for (const auto& e : avatars.photos()) {
+      meta.photo_hashes.push_back(e.hash);
+      if (meta.photo_hashes.size() >= kMaxProfilePhotosWire) break;
+    }
+    hello.profile_meta = std::move(meta);
+    hello.has_profile_meta = true;
+    hello.capabilities |= kHelloCapProfileMeta;
+  }
   if (!connection.send_payload(kChatStream, hello.encode())) return false;
 
   const auto deadline =
@@ -120,11 +146,26 @@ void remember_contact(const HelloMessage& peer) {
   ContactBook book(default_contacts_path());
   book.load();
   Contact contact;
+  for (const auto& existing : book.contacts()) {
+    if (existing.user_id == peer.public_key) {
+      contact = existing;
+      break;
+    }
+  }
   contact.user_id = peer.public_key;
   contact.nickname = peer.nickname;
   contact.last_seen_ms = now_ms();
   if (peer.has_dm_inbox_token) {
     contact.dm_inbox_token_hex = to_hex(peer.dm_inbox_token.data(), peer.dm_inbox_token.size());
+  }
+  if (peer.has_profile_meta) {
+    contact.bio = peer.profile_meta.bio;
+    contact.interests = peer.profile_meta.interests;
+    contact.availability = peer.profile_meta.availability;
+    contact.photo_hashes.clear();
+    for (const auto& h : peer.profile_meta.photo_hashes) {
+      contact.photo_hashes.push_back(to_hex(h.data(), h.size()));
+    }
   }
   book.upsert(std::move(contact));
   book.save();

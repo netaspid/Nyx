@@ -60,6 +60,10 @@ add_library(nyx
   src/console.cpp
   src/paths.cpp
   src/identity.cpp
+  src/profile_meta.cpp
+  src/avatar_store.cpp
+  src/avatar_proto.cpp
+  src/markdown_format.cpp
   src/profile_crypto.cpp
   src/recovery_phrase.cpp
   src/account_store.cpp

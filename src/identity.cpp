@@ -186,6 +186,41 @@ bool ContactBook::load() {
         contact.dm_inbox_token_hex = json.substr(start, end - start);
       }
     }
+    const auto bio_key = json.find("\"bio\":\"", pos);
+    if (bio_key != std::string::npos && bio_key < nick_end + 400) {
+      const auto start = bio_key + 7;
+      const auto end = json.find('"', start);
+      if (end != std::string::npos) contact.bio = json.substr(start, end - start);
+    }
+    const auto int_key = json.find("\"interests\":\"", pos);
+    if (int_key != std::string::npos && int_key < nick_end + 500) {
+      const auto start = int_key + 13;
+      const auto end = json.find('"', start);
+      if (end != std::string::npos) contact.interests = json.substr(start, end - start);
+    }
+    const auto av_key = json.find("\"availability\":\"", pos);
+    if (av_key != std::string::npos && av_key < nick_end + 600) {
+      const auto start = av_key + 16;
+      const auto end = json.find('"', start);
+      if (end != std::string::npos) {
+        contact.availability = availability_from_string(json.substr(start, end - start));
+      }
+    }
+    contact.photo_hashes.clear();
+    const auto ph_key = json.find("\"photos\":[", pos);
+    if (ph_key != std::string::npos && ph_key < nick_end + 900) {
+      std::size_t p = ph_key + 10;
+      while (p < json.size() && json[p] != ']') {
+        if (json[p] == '"') {
+          const auto end = json.find('"', p + 1);
+          if (end == std::string::npos) break;
+          contact.photo_hashes.push_back(json.substr(p + 1, end - p - 1));
+          p = end + 1;
+        } else {
+          ++p;
+        }
+      }
+    }
     contacts_.push_back(std::move(contact));
     pos = nick_end;
   }
@@ -204,7 +239,14 @@ bool ContactBook::save() const {
          << "\",\"nickname\":\"" << json_escape(c.nickname)
          << "\",\"trust\":" << static_cast<int>(c.trust_level)
          << ",\"last_seen\":" << c.last_seen_ms << ",\"dm_inbox\":\""
-         << json_escape(c.dm_inbox_token_hex) << "\"}";
+         << json_escape(c.dm_inbox_token_hex) << "\",\"bio\":\"" << json_escape(c.bio)
+         << "\",\"interests\":\"" << json_escape(c.interests) << "\",\"availability\":\""
+         << availability_to_string(c.availability) << "\",\"photos\":[";
+    for (std::size_t pi = 0; pi < c.photo_hashes.size(); ++pi) {
+      if (pi) file << ',';
+      file << '"' << json_escape(c.photo_hashes[pi]) << '"';
+    }
+    file << "]}";
   }
   file << "]}\n";
   return static_cast<bool>(file);
@@ -219,6 +261,10 @@ void ContactBook::upsert(Contact contact) {
       if (!contact.dm_inbox_token_hex.empty()) {
         existing.dm_inbox_token_hex = contact.dm_inbox_token_hex;
       }
+      existing.bio = contact.bio;
+      existing.interests = contact.interests;
+      existing.availability = contact.availability;
+      if (!contact.photo_hashes.empty()) existing.photo_hashes = contact.photo_hashes;
       return;
     }
   }

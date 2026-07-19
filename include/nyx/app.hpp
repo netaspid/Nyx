@@ -7,6 +7,7 @@
 #include "nyx/connection.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/messaging.hpp"
+#include "nyx/profile_meta.hpp"
 #include "nyx/types.hpp"
 
 #include <functional>
@@ -17,6 +18,8 @@ namespace nyx {
 
 /** Bit в HelloMessage::capabilities: следом идёт 32-байтный DM-inbox token. */
 constexpr uint32_t kHelloCapDmInboxToken = 1u << 0;
+/** После optional inbox token — ProfileMeta (bio, interests, availability). */
+constexpr uint32_t kHelloCapProfileMeta = 1u << 1;
 
 /** Приветствие после handshake: публичный ключ, nickname, capabilities. */
 struct HelloMessage {
@@ -26,6 +29,8 @@ struct HelloMessage {
   /** Стабильный inbox token отправителя (если capabilities & kHelloCapDmInboxToken). */
   InviteToken dm_inbox_token{};
   bool has_dm_inbox_token = false;
+  ProfileMeta profile_meta{};
+  bool has_profile_meta = false;
 
   ByteBuffer encode() const;
   static std::optional<HelloMessage> decode(const ByteBuffer& data);
