@@ -23,6 +23,9 @@ QtObject {
     readonly property color bubbleOut: darkMode ? "#2b5278" : "#effdde"
     readonly property color bubbleTextIn: darkMode ? "#ffffff" : "#000000"
     readonly property color bubbleTextOut: darkMode ? "#ffffff" : "#000000"
+    /** /me action bubble */
+    readonly property color bubbleAction: darkMode ? "#243447" : "#e8f0fa"
+    readonly property color bubbleActionText: darkMode ? "#c5d4e8" : "#1a3a5c"
     readonly property color accent: darkMode ? "#5288c1" : "#3390ec"
     readonly property color accentHover: darkMode ? "#6a9fd4" : "#4da3f7"
     readonly property color accentPress: darkMode ? "#4674a8" : "#2b7fd4"

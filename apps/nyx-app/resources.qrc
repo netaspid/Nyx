@@ -20,6 +20,13 @@
     <file>ui/components/FileListRow.qml</file>
     <file>ui/components/FileAccessAssignPopup.qml</file>
     <file>ui/components/FieldInfoPopup.qml</file>
+    <file>ui/components/MarkdownToolbar.qml</file>
+    <file>ui/components/ComposerPreview.qml</file>
+    <file>ui/components/SpoilerSpan.qml</file>
+    <file>ui/components/CodeBlockView.qml</file>
+    <file>ui/components/MentionPopup.qml</file>
+    <file>ui/js/MarkdownFormat.js</file>
+    <file>ui/components/EmojiPicker.qml</file>
     <file>ui/components/StatusBar.qml</file>
     <file>ui/components/DialogChrome.qml</file>
     <file>ui/components/ToastHost.qml</file>
