@@ -1,11 +1,14 @@
 #include <QApplication>
+#include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
-#include <QIcon>
+#include <QStyleHints>
+#include <QTimer>
 
 #include "nyx/log.hpp"
 #include "node_controller.hpp"
+#include "win_chrome.hpp"
 
 #include <QString>
 #include <cstdlib>
@@ -20,13 +23,22 @@ int main(int argc, char* argv[]) {
     qInstallMessageHandler(stderrQtHandler);
   }
 
+#if defined(_WIN32)
+  // Разрешить тёмную рамку окна (если платформа не задана явно).
+  if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM"))
+    qputenv("QT_QPA_PLATFORM", "windows:darkmode=1");
+#endif
+
   QApplication app(argc, argv);
   nyx::log_init();
   QQuickStyle::setStyle(QStringLiteral("Basic"));
   QApplication::setApplicationName(QStringLiteral("Nyx"));
   QApplication::setApplicationDisplayName(QStringLiteral("Nyx"));
   QApplication::setOrganizationName(QStringLiteral("Nyx"));
-  QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/nyx-mark.svg")));
+  const QIcon app_icon = nyxAppIcon();
+  QApplication::setWindowIcon(app_icon);
+  if (auto* hints = QGuiApplication::styleHints())
+    hints->setColorScheme(Qt::ColorScheme::Dark);
 
   NodeController node;
 
@@ -50,6 +62,11 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // winId готов после показа окна
+  QTimer::singleShot(0, &app, []() {
+    nyxApplyNativeChromeDarkAll(true);
+  });
+
   return app.exec();
 }
-
+

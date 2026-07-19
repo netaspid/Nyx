@@ -156,12 +156,39 @@ if(NYX_BUILD_GUI)
     qt_add_executable(nyx-app
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
+      apps/nyx-app/qt/win_chrome.cpp
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp
       apps/nyx-app/qt/file_list_model.cpp
       apps/nyx-app/resources.qrc
     )
+    if(WIN32)
+      # windres+gcc из ProgramData ломается в build/ из‑за чужих libgcc*.dll рядом с exe.
+      # Собираем .res в чистом подкаталоге без Qt-DLL.
+      set(NYX_WINRC_DIR "${CMAKE_CURRENT_BINARY_DIR}/_winrc")
+      file(MAKE_DIRECTORY "${NYX_WINRC_DIR}")
+      configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/apps/nyx-app/resources/icons/nyx.ico"
+        "${NYX_WINRC_DIR}/nyx.ico"
+        COPYONLY)
+      set(NYX_APP_ICON_RC "nyx.ico")
+      configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/apps/nyx-app/nyx-app.rc.in"
+        "${NYX_WINRC_DIR}/nyx-app.rc"
+        @ONLY)
+      set(NYX_APP_RC_OBJ "${NYX_WINRC_DIR}/nyx-app_res.o")
+      add_custom_command(
+        OUTPUT "${NYX_APP_RC_OBJ}"
+        COMMAND "${CMAKE_RC_COMPILER}" -O coff nyx-app.rc nyx-app_res.o
+        DEPENDS
+          "${NYX_WINRC_DIR}/nyx-app.rc"
+          "${NYX_WINRC_DIR}/nyx.ico"
+        WORKING_DIRECTORY "${NYX_WINRC_DIR}"
+        COMMENT "windres: nyx-app icon"
+        VERBATIM)
+      target_sources(nyx-app PRIVATE "${NYX_APP_RC_OBJ}")
+    endif()
     target_include_directories(nyx-app PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/apps/nyx-app/qt
       ${CMAKE_CURRENT_SOURCE_DIR}/apps/nyx-app/appcore
@@ -180,6 +207,7 @@ if(NYX_BUILD_GUI)
     endif()
     if(WIN32)
       set_target_properties(nyx-app PROPERTIES WIN32_EXECUTABLE TRUE)
+      target_link_libraries(nyx-app PRIVATE dwmapi)
       target_compile_options(nyx-app PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
       find_program(WINDEPLOYQT_EXECUTABLE windeployqt
         HINTS "${Qt6_DIR}/../../../bin" "${Qt6_INSTALL_PREFIX}/bin")

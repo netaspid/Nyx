@@ -20,6 +20,9 @@
     <file>ui/components/FileListRow.qml</file>
     <file>ui/components/FileAccessAssignPopup.qml</file>
     <file>ui/components/FieldInfoPopup.qml</file>
+    <file>ui/components/InviteCodeRow.qml</file>
+    <file>ui/components/TagChip.qml</file>
+    <file>ui/components/TagEditor.qml</file>
     <file>ui/components/MarkdownToolbar.qml</file>
     <file>ui/components/ComposerPreview.qml</file>
     <file>ui/components/SpoilerSpan.qml</file>
@@ -27,9 +30,6 @@
     <file>ui/components/MentionPopup.qml</file>
     <file>ui/js/MarkdownFormat.js</file>
     <file>ui/components/EmojiPicker.qml</file>
-    <file>ui/components/InviteCodeRow.qml</file>
-    <file>ui/components/TagChip.qml</file>
-    <file>ui/components/TagEditor.qml</file>
     <file>ui/components/PeerInfoPopup.qml</file>
     <file>ui/components/StatusBar.qml</file>
     <file>ui/components/DialogChrome.qml</file>
@@ -49,6 +49,9 @@
   <qresource prefix="/icons">
     <file alias="nyx-logo.svg">resources/icons/nyx-logo.svg</file>
     <file alias="nyx-mark.svg">resources/icons/nyx-mark.svg</file>
+    <file alias="nyx.ico">resources/icons/nyx.ico</file>
+    <file alias="nyx-32.png">resources/icons/nyx-32.png</file>
+    <file alias="nyx-256.png">resources/icons/nyx-256.png</file>
     <file alias="send.svg">resources/icons/send.svg</file>
     <file alias="attach.svg">resources/icons/attach.svg</file>
     <file alias="search.svg">resources/icons/search.svg</file>
