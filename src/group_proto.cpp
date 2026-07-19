@@ -11,6 +11,7 @@ namespace {
 constexpr std::size_t kMaxNameLen = 256;
 constexpr std::size_t kMaxReasonLen = 256;
 constexpr std::size_t kMaxNickLen = 128;
+constexpr std::size_t kMaxMetaFieldLen = 1024;
 
 bool read_string(const ByteBuffer& data, std::size_t offset, std::size_t len,
                  std::size_t max_len, std::string& out) {
@@ -43,6 +44,7 @@ bool read_member(const ByteBuffer& data, std::size_t& off, GroupMemberRecord& m)
 bool is_group_frame(const ByteBuffer& data) {
   if (data.empty()) return false;
   const uint8_t b = data[0];
+  if (b == static_cast<uint8_t>(GroupKind::Meta)) return true;
   return b >= static_cast<uint8_t>(GroupKind::Join) &&
          b <= static_cast<uint8_t>(GroupKind::MemberJoined);
 }
@@ -121,6 +123,46 @@ std::optional<GroupMemberJoinedMessage> GroupMemberJoinedMessage::decode(
   GroupMemberJoinedMessage msg;
   std::size_t off = 1;
   if (!read_member(data, off, msg.member)) return std::nullopt;
+  return msg;
+}
+
+ByteBuffer GroupMetaMessage::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(GroupKind::Meta));
+  write_u16_le(out, static_cast<uint16_t>(description.size()));
+  out.insert(out.end(), description.begin(), description.end());
+  write_u16_le(out, static_cast<uint16_t>(direction.size()));
+  out.insert(out.end(), direction.begin(), direction.end());
+  write_u16_le(out, static_cast<uint16_t>(tags.size()));
+  out.insert(out.end(), tags.begin(), tags.end());
+  out.push_back(visibility == GroupVisibility::PublicListed ? 1 : 0);
+  return out;
+}
+
+std::optional<GroupMetaMessage> GroupMetaMessage::decode(const ByteBuffer& data) {
+  if (data.size() < 1 + 2 + 2 + 2 + 1 ||
+      data[0] != static_cast<uint8_t>(GroupKind::Meta)) {
+    return std::nullopt;
+  }
+  GroupMetaMessage msg;
+  std::size_t off = 1;
+  const uint16_t desc_len = read_u16_le(data.data() + off);
+  off += 2;
+  if (!read_string(data, off, desc_len, kMaxMetaFieldLen, msg.description)) return std::nullopt;
+  off += desc_len;
+  if (off + 2 > data.size()) return std::nullopt;
+  const uint16_t dir_len = read_u16_le(data.data() + off);
+  off += 2;
+  if (!read_string(data, off, dir_len, kMaxMetaFieldLen, msg.direction)) return std::nullopt;
+  off += dir_len;
+  if (off + 2 > data.size()) return std::nullopt;
+  const uint16_t tags_len = read_u16_le(data.data() + off);
+  off += 2;
+  if (!read_string(data, off, tags_len, kMaxMetaFieldLen, msg.tags)) return std::nullopt;
+  off += tags_len;
+  if (off >= data.size()) return std::nullopt;
+  msg.visibility =
+      data[off] != 0 ? GroupVisibility::PublicListed : GroupVisibility::Circle;
   return msg;
 }
 

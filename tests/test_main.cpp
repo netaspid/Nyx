@@ -20,10 +20,10 @@
 #include "nyx/group_hub.hpp"
 #include "nyx/group_member.hpp"
 #include "nyx/group_proto.hpp"
+#include "nyx/messaging.hpp"
 #include "nyx/avatar_proto.hpp"
 #include "nyx/markdown_format.hpp"
 #include "nyx/profile_meta.hpp"
-#include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/proto.hpp"
 #include "nyx/transport.hpp"
@@ -1230,6 +1230,37 @@ static void test_markdown_to_html() {
   std::cout << "markdown to html ok\n";
 }
 
+static void test_group_meta_message() {
+  nyx::GroupMetaMessage msg;
+  msg.description = "desc";
+  msg.direction = "dir";
+  msg.tags = "a, b";
+  msg.visibility = nyx::GroupVisibility::PublicListed;
+  const auto wire = msg.encode();
+  assert(nyx::is_group_frame(wire));
+  assert(wire[0] != static_cast<uint8_t>(nyx::ChatKind::Bye));
+  assert(!nyx::ByeMessage::decode(wire));
+  const auto decoded = nyx::GroupMetaMessage::decode(wire);
+  assert(decoded);
+  assert(decoded->description == "desc");
+  assert(decoded->direction == "dir");
+  assert(decoded->tags == "a, b");
+  assert(decoded->visibility == nyx::GroupVisibility::PublicListed);
+
+  // Пустая мета тоже не должна читаться как Bye.
+  nyx::GroupMetaMessage empty;
+  const auto empty_wire = empty.encode();
+  assert(!nyx::ByeMessage::decode(empty_wire));
+  assert(nyx::GroupMetaMessage::decode(empty_wire));
+
+  nyx::ByeMessage bye;
+  bye.reason = "эфир закрыт";
+  const auto bye_wire = bye.encode();
+  assert(nyx::ByeMessage::decode(bye_wire));
+  assert(!nyx::GroupMetaMessage::decode(bye_wire));
+  std::cout << "group meta message ok\n";
+}
+
 static void test_file_access_roles() {
   std::remove(nyx::FileAccessStore::store_path().c_str());
   nyx::GroupId gid{};
@@ -1655,6 +1686,7 @@ int main() {
   test_profile_meta_photos_wire();
   test_avatar_proto_roundtrip();
   test_markdown_to_html();
+  test_group_meta_message();
   test_file_access_roles();
   test_share_policy();
   test_conversation_list();

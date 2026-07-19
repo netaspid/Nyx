@@ -12,6 +12,7 @@
 #include "nyx/file_transfer.hpp"
 #include "nyx/message_store.hpp"
 #include "nyx/messaging.hpp"
+#include "nyx/outbox.hpp"
 #include "nyx/udp.hpp"
 
 #include <functional>
@@ -19,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nyx {
@@ -43,6 +45,8 @@ struct HubMember {
 class GroupHub {
  public:
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
+  using DeliveryCallback =
+      std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
 
   GroupHub(UdpSocket socket, Profile owner, GroupRecord group);
@@ -56,6 +60,7 @@ class GroupHub {
   void handle_chat_payload(HubMember& member, const ByteBuffer& payload);
 
   void set_on_message(MessageCallback cb) { on_message_ = std::move(cb); }
+  void set_on_delivery(DeliveryCallback cb) { on_delivery_ = std::move(cb); }
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
 
   /** Индекс, scope и ACL для kBulkStream на соединениях участников. */
@@ -72,10 +77,17 @@ class GroupHub {
   bool remove_member(const UserId& user_id);
 
   /** Bye всем участникам перед остановкой hub (мгновенный офлайн у клиентов). */
-  void notify_shutdown(const std::string& reason = "hub остановлен");
+  void notify_shutdown(const std::string& reason = "эфир закрыт");
 
   /** Рассылает актуальную ACL всем участникам поля. */
   void broadcast_file_access_policy();
+
+  /** Обновляет мету в group_, пишет на диск и шлёт GroupMeta всем joined. */
+  bool publish_meta(const std::string& description, const std::string& direction,
+                    const std::string& tags, GroupVisibility visibility);
+  /** Шлёт текущую мету одному участнику (после JoinAck). */
+  void send_meta_to(HubMember& member);
+  void broadcast_meta();
 
   /** Каталог share-корней поля с учётом ACL (без рекурсивного дампа файлов). */
   std::vector<FileEntry> catalog_for(const UserId& requester) const;
@@ -116,7 +128,10 @@ class GroupHub {
   std::vector<HubMember> members_;
 
   MessageCallback on_message_;
+  DeliveryCallback on_delivery_;
   EventCallback on_event_;
+  /** Исходящие owner-сообщения, ждущие Ack хотя бы от одного участника. */
+  std::unordered_set<uint64_t> pending_member_acks_;
 
   FileIndex* file_index_ = nullptr;
   FileAccessStore* file_access_ = nullptr;

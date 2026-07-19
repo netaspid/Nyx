@@ -27,6 +27,12 @@ struct GroupMemberRecord {
   GroupRole role = GroupRole::Member;
 };
 
+/** Режим поля: сейчас только invite+hub; PublicListed — задел на поиск в rendezvous. */
+enum class GroupVisibility : uint8_t {
+  Circle = 0,       /**< Свой круг: invite, эфир держит владелец. */
+  PublicListed = 1, /**< Будущее: публичное, поиск на RV (пока локальный флаг). */
+};
+
 /** Описание поля на диске. */
 struct GroupRecord {
   GroupId id{};
@@ -35,6 +41,10 @@ struct GroupRecord {
   InviteToken invite_token{};
   std::vector<GroupMemberRecord> members;
   uint64_t created_ms = 0;
+  std::string description;
+  std::string direction;
+  std::string tags;
+  GroupVisibility visibility = GroupVisibility::Circle;
 };
 
 /** Локальное хранилище полей: data_dir()/groups.json. */
@@ -48,6 +58,11 @@ class GroupStore {
   /** Создаёт поле с owner в roster. */
   GroupRecord create(const std::string& name, const UserId& owner_id,
                      const std::string& owner_nickname);
+
+  /** Обновляет мету существующего поля (описание, теги, …). */
+  bool update_meta(const GroupId& id, const std::string& description,
+                   const std::string& direction, const std::string& tags,
+                   GroupVisibility visibility);
 
   std::optional<GroupRecord> find(const GroupId& id) const;
   std::optional<GroupRecord> find_by_invite(const InviteToken& token) const;

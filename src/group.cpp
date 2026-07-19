@@ -149,6 +149,14 @@ std::optional<GroupRecord> parse_group_object(const std::string& obj) {
     group.members.push_back(std::move(member));
   });
 
+  if (auto d = json_get_string(obj, "description")) group.description = *d;
+  if (auto dir = json_get_string(obj, "direction")) group.direction = *dir;
+  if (auto tags = json_get_string(obj, "tags")) group.tags = *tags;
+  if (auto vis = json_get_string(obj, "visibility")) {
+    group.visibility =
+        (*vis == "public") ? GroupVisibility::PublicListed : GroupVisibility::Circle;
+  }
+
   GroupStore::ensure_roster(group);
   return group;
 }
@@ -255,6 +263,20 @@ GroupRecord GroupStore::create(const std::string& name, const UserId& owner_id,
   return group;
 }
 
+bool GroupStore::update_meta(const GroupId& id, const std::string& description,
+                             const std::string& direction, const std::string& tags,
+                             GroupVisibility visibility) {
+  for (auto& g : groups_) {
+    if (g.id != id) continue;
+    g.description = description;
+    g.direction = direction;
+    g.tags = tags;
+    g.visibility = visibility;
+    return save();
+  }
+  return false;
+}
+
 std::optional<GroupRecord> GroupStore::find(const GroupId& id) const {
   for (const auto& g : groups_) {
     if (g.id == id) return g;
@@ -353,7 +375,12 @@ bool GroupStore::save() const {
     const auto& g = groups_[i];
     file << "{\"group_id\":\"" << group_id_hex(g.id) << "\",\"name\":\""
          << json_escape(g.name) << "\",\"invite\":\"" << invite_hex(g.invite_token)
-         << "\",\"owner\":\"" << to_hex(g.owner_id.data(), g.owner_id.size()) << "\",\"members\":[";
+         << "\",\"owner\":\"" << to_hex(g.owner_id.data(), g.owner_id.size())
+         << "\",\"description\":\"" << json_escape(g.description) << "\",\"direction\":\""
+         << json_escape(g.direction) << "\",\"tags\":\"" << json_escape(g.tags)
+         << "\",\"visibility\":\""
+         << (g.visibility == GroupVisibility::PublicListed ? "public" : "circle")
+         << "\",\"members\":[";
     for (std::size_t mi = 0; mi < g.members.size(); ++mi) {
       if (mi > 0) file << ',';
       const auto& m = g.members[mi];

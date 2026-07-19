@@ -1,6 +1,8 @@
 #include "nyx/group_hub.hpp"
 
 #include "nyx/app.hpp"
+#include "nyx/avatar_proto.hpp"
+#include "nyx/avatar_store.hpp"
 #include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/group.hpp"
@@ -168,6 +170,49 @@ void GroupHub::relay_file_request(HubMember& provider, HubMember& requester,
 
 void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) {
   if (payload.empty()) return;
+
+  if (is_avatar_frame(payload)) {
+    if (auto req = AvatarRequest::decode(payload)) {
+      AvatarStore store;
+      store.load();
+      ByteBuffer data;
+      if (!store.read_bytes(req->hash, data)) {
+        AvatarDeny deny;
+        deny.hash = req->hash;
+        deny.reason = "нет фото";
+        member.connection.send_payload(kBulkStream, deny.encode());
+        return;
+      }
+      std::string mime = "image/jpeg";
+      for (const auto& e : store.photos()) {
+        if (e.hash == req->hash) {
+          mime = e.mime;
+          break;
+        }
+      }
+      AvatarOffer offer;
+      offer.hash = req->hash;
+      offer.size = data.size();
+      offer.mime = mime;
+      member.connection.send_payload(kBulkStream, offer.encode());
+      uint32_t index = 0;
+      for (std::size_t off = 0; off < data.size(); off += kAvatarChunkSize) {
+        AvatarChunk chunk;
+        chunk.hash = req->hash;
+        chunk.index = index++;
+        const std::size_t n = std::min(kAvatarChunkSize, data.size() - off);
+        chunk.data.assign(data.begin() + static_cast<std::ptrdiff_t>(off),
+                         data.begin() + static_cast<std::ptrdiff_t>(off + n));
+        member.connection.send_payload(kBulkStream, chunk.encode());
+      }
+      AvatarDone done;
+      done.hash = req->hash;
+      member.connection.send_payload(kBulkStream, done.encode());
+      return;
+    }
+    return;
+  }
+
   const auto kind = static_cast<FileKind>(payload[0]);
 
   if (kind == FileKind::ListReq) {
@@ -391,6 +436,7 @@ void GroupHub::complete_join(HubMember& member) {
   ack.group_name = group_.name;
   ack.members = group_.members;
   member.connection.send_payload(kChatStream, ack.encode());
+  send_meta_to(member);
 
   send_history_to(member);
 
@@ -403,6 +449,40 @@ void GroupHub::complete_join(HubMember& member) {
   }
 
   send_file_access_policy(member);
+}
+
+void GroupHub::send_meta_to(HubMember& member) {
+  GroupMetaMessage meta;
+  meta.description = group_.description;
+  meta.direction = group_.direction;
+  meta.tags = group_.tags;
+  meta.visibility = group_.visibility;
+  member.connection.send_payload(kChatStream, meta.encode());
+}
+
+void GroupHub::broadcast_meta() {
+  GroupMetaMessage meta;
+  meta.description = group_.description;
+  meta.direction = group_.direction;
+  meta.tags = group_.tags;
+  meta.visibility = group_.visibility;
+  broadcast_to_members(meta.encode(), nullptr);
+}
+
+bool GroupHub::publish_meta(const std::string& description, const std::string& direction,
+                            const std::string& tags, GroupVisibility visibility) {
+  group_.description = description;
+  group_.direction = direction;
+  group_.tags = tags;
+  group_.visibility = visibility;
+  {
+    GroupStore store;
+    store.load();
+    store.upsert(group_);
+    store.save();
+  }
+  broadcast_meta();
+  return true;
 }
 
 void GroupHub::send_file_access_policy(HubMember& member) {
@@ -458,6 +538,7 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
       ack.group_name = group_.name;
       ack.members = group_.members;
       member.connection.send_payload(kChatStream, ack.encode());
+      send_meta_to(member);
       send_history_to(member);
       return;
     }
@@ -466,10 +547,13 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
   }
 
   if (GroupMemberJoinedMessage::decode(payload)) return;
+  if (GroupMetaMessage::decode(payload)) return;
   if (GroupJoinAckMessage::decode(payload)) return;
 
   if (auto ack = AckMessage::decode(payload)) {
-    (void)ack;
+    if (pending_member_acks_.erase(ack->message_id) > 0 && on_delivery_) {
+      on_delivery_(ack->message_id, DeliveryStatus::Delivered);
+    }
     return;
   }
 
@@ -508,7 +592,18 @@ bool GroupHub::send_message(const std::string& text) {
   store_.append(to_stored(msg, true));
   if (on_message_) on_message_(msg, true);
   const ByteBuffer wire = msg.encode();
+
+  int live_joined = 0;
+  for (const auto& m : members_) {
+    if (m.joined && m.connection.state() == ConnectionState::Established) ++live_joined;
+  }
   broadcast_to_members(wire, nullptr);
+  if (live_joined == 0) {
+    // Никого в эфире — сообщение в локальной истории (уедет с history при join).
+    if (on_delivery_) on_delivery_(msg.id, DeliveryStatus::Delivered);
+  } else {
+    pending_member_acks_.insert(msg.id);
+  }
   return true;
 }
 
@@ -534,8 +629,10 @@ void GroupHub::poll() {
       while (member->connection.pop_stream(stream_id, payload)) {
         if (stream_id == kChatStream) {
           handle_chat_payload(*member, payload);
-        } else if (stream_id == kBulkStream && file_index_) {
-          handle_member_bulk(*member, payload);
+        } else if (stream_id == kBulkStream) {
+          if (is_avatar_frame(payload) || file_index_) {
+            handle_member_bulk(*member, payload);
+          }
         }
       }
     }

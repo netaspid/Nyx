@@ -16,6 +16,11 @@ enum class GroupKind : uint8_t {
   Join = 1,
   JoinAck = 2,
   MemberJoined = 3,
+  /**
+   * Мете поля от hub к участникам.
+   * Не 4: байт 4 = ChatKind::Bye — иначе Meta читается как Bye и рвёт сессию.
+   */
+  Meta = 0x40,
 };
 
 struct GroupJoinMessage {
@@ -41,6 +46,16 @@ struct GroupMemberJoinedMessage {
 
   ByteBuffer encode() const;
   static std::optional<GroupMemberJoinedMessage> decode(const ByteBuffer& data);
+};
+
+struct GroupMetaMessage {
+  std::string description;
+  std::string direction;
+  std::string tags;
+  GroupVisibility visibility = GroupVisibility::Circle;
+
+  ByteBuffer encode() const;
+  static std::optional<GroupMetaMessage> decode(const ByteBuffer& data);
 };
 
 /** Распознаёт GroupKind по первому байту (не ChatKind). */

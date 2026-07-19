@@ -125,6 +125,7 @@ bool GroupMemberService::send_message(const std::string& text, uint64_t* out_id)
     return false;
   }
   store_.append(to_stored(msg, true));
+  pending_acks_.insert(msg.id);
   if (on_message_) on_message_(msg, true);
   if (out_id) *out_id = msg.id;
   return true;
@@ -147,6 +148,10 @@ void GroupMemberService::handle_payload(const ByteBuffer& payload) {
       }
       return;
     }
+    if (auto meta = GroupMetaMessage::decode(payload)) {
+      apply_meta(*meta);
+      return;
+    }
     if (GroupJoinAckMessage::decode(payload)) return;
     if (GroupJoinMessage::decode(payload)) return;
   }
@@ -154,7 +159,9 @@ void GroupMemberService::handle_payload(const ByteBuffer& payload) {
   if (decode_hello_message(payload)) return;
 
   if (auto ack = AckMessage::decode(payload)) {
-    (void)ack;
+    if (pending_acks_.erase(ack->message_id) > 0 && on_delivery_) {
+      on_delivery_(ack->message_id, DeliveryStatus::Delivered);
+    }
     return;
   }
 
@@ -168,14 +175,51 @@ void GroupMemberService::tick() {
   if (!joined_) return;
   if (!connection_.drive()) {
     joined_ = false;
+    if (on_delivery_) {
+      for (const uint64_t id : pending_acks_) {
+        on_delivery_(id, DeliveryStatus::Failed);
+      }
+    }
+    pending_acks_.clear();
     if (on_event_) {
       if (!connection_.peer_alive()) {
-        on_event_("поле не отвечает (владелец офлайн)");
+        on_event_("эфир не отвечает (владелец офлайн)");
       } else {
         on_event_("соединение с полем закрыто");
       }
     }
   }
+}
+
+void GroupMemberService::apply_meta(const GroupMetaMessage& meta) {
+  view_.description = meta.description;
+  view_.direction = meta.direction;
+  view_.tags = meta.tags;
+  view_.visibility = meta.visibility;
+  view_.meta_received = true;
+
+  GroupStore store;
+  store.load();
+  GroupRecord rec;
+  if (const auto existing = store.find(view_.id)) {
+    rec = *existing;
+  } else {
+    rec.id = view_.id;
+    rec.name = view_.name;
+    rec.members = view_.members;
+  }
+  rec.description = meta.description;
+  rec.direction = meta.direction;
+  rec.tags = meta.tags;
+  rec.visibility = meta.visibility;
+  if (!view_.name.empty()) rec.name = view_.name;
+  if (!view_.members.empty()) {
+    GroupStore::merge_member_roster(rec.members, view_.members);
+  }
+  store.upsert(rec);
+  store.save();
+
+  if (on_meta_) on_meta_();
 }
 
 }  // namespace nyx
