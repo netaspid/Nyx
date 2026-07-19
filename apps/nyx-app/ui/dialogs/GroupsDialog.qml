@@ -36,7 +36,7 @@ Dialog {
         Label {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: qsTr("Создатель запускает hub поля. Участники подключаются по invite, когда hub в сети.")
+            text: qsTr("Создатель открывает эфир поля. Участники входят по invite, пока эфир открыт.")
             color: theme.textMuted
             font.pixelSize: 11
         }
@@ -124,7 +124,7 @@ Dialog {
                             Label {
                                 id: statusLabel
                                 anchors.centerIn: parent
-                                text: qsTr("hub в сети")
+                                text: qsTr("эфир открыт")
                                 color: "#ffffff"
                                 font.pixelSize: 10
                                 font.bold: true
@@ -200,8 +200,8 @@ Dialog {
                         NyxButton {
                             theme: root.theme
                             text: isOwner
-                                  ? (hubOnline ? qsTr("Hub активен") : qsTr("Запустить hub"))
-                                  : qsTr("Подключиться")
+                                  ? (hubOnline ? qsTr("Эфир открыт") : qsTr("Открыть эфир"))
+                                  : qsTr("Войти в эфир")
                             enabled: isOwner ? !hubOnline : true
                             onClicked: {
                                 if (isOwner) {

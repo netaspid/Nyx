@@ -1,29 +1,40 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
+import "."
 import "../controls"
 
-/** Сведения о поле: имя, invite, hub, roster участников. */
+/** Сведения о поле: invite и roster участников. */
 Popup {
     id: root
     required property var theme
     required property var node
+    required property var avatarColorFn
 
     property string groupId: ""
-
-    parent: Overlay.overlay
 
     modal: true
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: theme.spacing
-    width: Math.min(420, parent ? parent.width - 48 : 420)
-    implicitHeight: contentCol.implicitHeight + padding * 2
-    anchors.centerIn: Overlay.overlay
+    width: Math.min(440, (parent ? parent.width : 480) - 48)
+    height: Math.min(520, (parent ? parent.height : 640) - 64)
+    anchors.centerIn: parent
+    dim: true
 
-    /** @param gid hex id поля из activeChatRefId или groupList. */
+    function ensureOverlayParent() {
+        // Popup внутри StackLayout иначе open() невидим — вешаем на overlay окна.
+        const w = Window.window
+        if (w && w.overlay)
+            root.parent = w.overlay
+        else if (Overlay.overlay)
+            root.parent = Overlay.overlay
+    }
+
     function openForGroup(gid) {
-        groupId = String(gid || "").trimmed().toLower()
+        groupId = String(gid || "").trimmed().toLowerCase()
+        ensureOverlayParent()
         node.refreshFieldRoster()
         open()
     }
@@ -47,13 +58,14 @@ Popup {
     }
 
     contentItem: ColumnLayout {
-        id: contentCol
+        spacing: theme.spacing
+        width: root.availableWidth
 
         RowLayout {
             Layout.fillWidth: true
             Label {
                 Layout.fillWidth: true
-                text: qsTr("О поле")
+                text: qsTr("Участники поля")
                 color: theme.textPrimary
                 font.pixelSize: 16
                 font.bold: true
@@ -80,8 +92,6 @@ Popup {
                 }
             }
         }
-        spacing: theme.spacing
-        width: root.availableWidth
 
         Label {
             Layout.fillWidth: true
@@ -89,8 +99,8 @@ Popup {
                 const g = root.groupEntry()
                 return g ? g.name : qsTr("Поле")
             }
-            color: theme.textPrimary
-            font.pixelSize: 16
+            color: theme.accent
+            font.pixelSize: 15
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
@@ -101,18 +111,11 @@ Popup {
             visible: root.groupEntry() !== null
 
             Label {
-                text: root.groupEntry().isOwner ? qsTr("Создатель") : qsTr("Участник")
-                color: root.groupEntry().isOwner ? theme.accent : theme.textMuted
-                font.pixelSize: 11
-                font.bold: root.groupEntry().isOwner
-            }
-
-            Label {
-                text: qsTr("· %1 участн.").arg(root.groupEntry().memberCount || 0)
+                text: root.groupEntry().isOwner ? qsTr("Вы — создатель") : qsTr("Вы — участник")
                 color: theme.textMuted
                 font.pixelSize: 11
             }
-
+            Item { Layout.fillWidth: true }
             Rectangle {
                 visible: root.groupEntry().hubOnline
                 radius: 4
@@ -122,7 +125,7 @@ Popup {
                 Label {
                     id: hubLabel
                     anchors.centerIn: parent
-                    text: qsTr("hub в сети")
+                    text: qsTr("эфир открыт")
                     color: "#ffffff"
                     font.pixelSize: 10
                     font.bold: true
@@ -130,85 +133,181 @@ Popup {
             }
         }
 
-        RowLayout {
+        InviteCodeRow {
             Layout.fillWidth: true
-            spacing: 8
+            theme: root.theme
+            node: root.node
+            code: root.groupEntry() ? root.groupEntry().invite : ""
+            label: qsTr("Invite — отправьте другу")
             visible: root.groupEntry() && root.groupEntry().invite
+        }
+
+        Label {
+            Layout.fillWidth: true
+            visible: root.groupEntry() && root.groupEntry().description
+            wrapMode: Text.WordWrap
+            text: root.groupEntry() ? root.groupEntry().description : ""
+            color: theme.textPrimary
+            font.pixelSize: 12
+        }
+        Label {
+            Layout.fillWidth: true
+            visible: root.groupEntry() && (root.groupEntry().direction || root.groupEntry().tags)
+            wrapMode: Text.WordWrap
+            text: {
+                const g = root.groupEntry()
+                if (!g) return ""
+                const parts = []
+                if (g.direction) parts.push(qsTr("Направление: %1").arg(g.direction))
+                if (g.tags) parts.push(qsTr("Теги: %1").arg(g.tags))
+                return parts.join(" · ")
+            }
+            color: theme.textSecondary
+            font.pixelSize: 11
+        }
+        Label {
+            Layout.fillWidth: true
+            visible: root.groupEntry() && root.groupEntry().publicListed
+            text: qsTr("Публичное (поиск на rendezvous — позже)")
+            color: theme.accent
+            font.pixelSize: 11
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            visible: root.groupEntry() && root.groupEntry().isOwner
 
             Label {
-                Layout.fillWidth: true
-                text: qsTr("invite: %1").arg(root.groupEntry().invite)
+                text: qsTr("Мете поля")
                 color: theme.textSecondary
                 font.pixelSize: 10
-                font.family: "Consolas"
-                elide: Text.ElideMiddle
+                font.capitalization: Font.AllUppercase
             }
-
-            NyxButtonSecondary {
+            NyxTextField {
+                id: editDesc
+                Layout.fillWidth: true
                 theme: root.theme
-                text: qsTr("Копировать")
-                onClicked: node.copyToClipboard(root.groupEntry().invite)
+                placeholderText: qsTr("Описание")
+                text: root.groupEntry() ? (root.groupEntry().description || "") : ""
+            }
+            NyxTextField {
+                id: editDir
+                Layout.fillWidth: true
+                theme: root.theme
+                placeholderText: qsTr("Направление")
+                text: root.groupEntry() ? (root.groupEntry().direction || "") : ""
+            }
+            NyxTextField {
+                id: editTags
+                Layout.fillWidth: true
+                theme: root.theme
+                placeholderText: qsTr("Теги через запятую")
+                text: root.groupEntry() ? (root.groupEntry().tags || "") : ""
+            }
+            NyxCheckBox {
+                id: editPublic
+                theme: root.theme
+                text: qsTr("Публичное поле (задел на поиск)")
+                checked: root.groupEntry() ? !!root.groupEntry().publicListed : false
+            }
+            NyxButtonSecondary {
+                Layout.fillWidth: true
+                theme: root.theme
+                text: qsTr("Сохранить мету")
+                onClicked: {
+                    node.updateGroupMeta(root.groupId, editDesc.text, editDir.text, editTags.text,
+                                         editPublic.checked)
+                    node.refreshFieldRoster()
+                }
             }
         }
 
         Label {
             Layout.fillWidth: true
-            text: qsTr("Участники")
+            text: qsTr("В эфире · %1").arg(root.groupEntry() ? (root.groupEntry().memberCount || 0) : 0)
             color: theme.textSecondary
-            font.pixelSize: 10
+            font.pixelSize: 11
             font.capitalization: Font.AllUppercase
         }
 
-        Repeater {
+        ListView {
+            id: membersList
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 4
             model: root.groupEntry() ? root.groupEntry().members : []
-            delegate: RowLayout {
+
+            delegate: Rectangle {
                 required property string userId
                 required property string nickname
                 required property bool isOwner
                 required property string idShort
 
-                Layout.fillWidth: true
-                spacing: 8
+                width: membersList.width
+                height: 52
+                radius: theme.radiusBtn
+                color: theme.inputBg
 
-                Label {
-                    Layout.fillWidth: true
-                    text: nickname + (isOwner ? qsTr(" · создатель") : "")
-                    color: theme.textPrimary
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 10
 
-                Label {
-                    text: idShort
-                    color: theme.textMuted
-                    font.pixelSize: 10
-                    font.family: "Consolas"
-                }
+                    AvatarBadge {
+                        size: 36
+                        label: nickname
+                        baseColor: root.avatarColorFn(nickname)
+                        textColor: theme.textPrimary
+                    }
 
-                NyxButtonSecondary {
-                    visible: root.groupEntry()
-                             && root.groupEntry().isOwner
-                             && !isOwner
-                    theme: root.theme
-                    text: qsTr("Исключить")
-                    onClicked: node.removeFieldMember(root.groupId, userId)
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Label {
+                            Layout.fillWidth: true
+                            text: nickname + (isOwner ? qsTr(" · создатель") : "")
+                            color: theme.textPrimary
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            text: idShort
+                            color: theme.textMuted
+                            font.pixelSize: 10
+                            font.family: "Consolas"
+                        }
+                    }
+
+                    NyxButtonSecondary {
+                        visible: root.groupEntry()
+                                 && root.groupEntry().isOwner
+                                 && !isOwner
+                        theme: root.theme
+                        text: qsTr("Исключить")
+                        onClicked: node.removeFieldMember(root.groupId, userId)
+                    }
                 }
             }
-        }
 
-        Label {
-            Layout.fillWidth: true
-            visible: !root.groupEntry() || root.groupEntry().members.length === 0
-            wrapMode: Text.WordWrap
-            text: qsTr("Состав поля сохраняется локально. Участники остаются в списке после выхода из hub.")
-            color: theme.textMuted
-            font.pixelSize: 11
+            Label {
+                anchors.centerIn: parent
+                visible: membersList.count === 0
+                width: parent.width - 16
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("Пока никого. Отправьте invite — участники появятся здесь.")
+                color: theme.textMuted
+                font.pixelSize: 12
+            }
         }
 
         NyxButtonSecondary {
             Layout.fillWidth: true
             theme: root.theme
-            text: qsTr("Обновить список участников")
+            text: qsTr("Обновить")
             onClicked: node.refreshFieldRoster()
         }
     }

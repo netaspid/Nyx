@@ -13,6 +13,7 @@ Dialog {
     modal: true
     standardButtons: Dialog.NoButton
     width: Math.min(440, parent ? parent.width - 48 : 440)
+    height: Math.min(640, parent ? parent.height - 80 : 640)
     padding: 0
 
     background: Rectangle {
@@ -28,92 +29,245 @@ Dialog {
     }
 
     contentItem: ColumnLayout {
-        spacing: theme.spacing
-        width: parent.width
+        width: parent ? parent.width : implicitWidth
+        spacing: 0
 
-        Item { Layout.preferredHeight: 0 }
-
-        ColumnLayout {
+        Flickable {
+            id: settingsFlick
             Layout.fillWidth: true
+            Layout.fillHeight: true
             Layout.leftMargin: theme.spacing
             Layout.rightMargin: theme.spacing
             Layout.bottomMargin: theme.spacing
-            spacing: theme.spacing
+            clip: true
+            readonly property int scrollGutter: contentHeight > height + 1 ? 14 : 0
+            contentWidth: width
+            contentHeight: settingsCol.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            interactive: contentHeight > height
 
-            Label {
-                text: qsTr("Профиль")
-                color: theme.textSecondary
-                font.pixelSize: 12
-                font.capitalization: Font.AllUppercase
+            ScrollBar.vertical: ScrollBar {
+                policy: settingsFlick.contentHeight > settingsFlick.height
+                        ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                width: 10
+                padding: 1
             }
 
-            NyxTextField {
-                Layout.fillWidth: true
-                theme: root.theme
-                text: node.profileNickname
-                placeholderText: qsTr("Никнейм")
-                onEditingFinished: node.profileNickname = text
-            }
+            ColumnLayout {
+                id: settingsCol
+                width: settingsFlick.width - settingsFlick.scrollGutter
+                spacing: theme.spacing
 
-            NyxButton {
-                Layout.fillWidth: true
-                theme: root.theme
-                text: qsTr("Копировать id")
-                onClicked: node.copyToClipboard(node.profileIdShort)
-            }
+                Label {
+                    text: qsTr("Профиль")
+                    color: theme.textSecondary
+                    font.pixelSize: 12
+                    font.capitalization: Font.AllUppercase
+                }
 
-            Label {
-                text: qsTr("Оформление")
-                color: theme.textSecondary
-                font.pixelSize: 12
-                font.capitalization: Font.AllUppercase
-                Layout.topMargin: 8
-            }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    AvatarBadge {
+                        size: 64
+                        label: node.profileNickname
+                        baseColor: "#5288c1"
+                        textColor: "#ffffff"
+                        imageSource: node.profileAvatarPath
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        NyxButton {
+                            Layout.fillWidth: true
+                            theme: root.theme
+                            text: qsTr("Выбрать фото")
+                            onClicked: node.pickAndSetProfilePhoto()
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: qsTr("До 5 фото в истории. Peer видит их после Hello и подтягивает по P2P.")
+                            color: theme.textMuted
+                            font.pixelSize: 11
+                        }
+                    }
+                }
 
-            RowLayout {
-                Layout.fillWidth: true
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: node.profilePhotoList.length > 0 ? 72 : 0
+                    visible: node.profilePhotoList.length > 0
+                    contentWidth: photoRow.implicitWidth
+                    clip: true
+                    flickableDirection: Flickable.HorizontalFlick
+                    Row {
+                        id: photoRow
+                        spacing: 8
+                        Repeater {
+                            model: node.profilePhotoList
+                            delegate: Item {
+                                required property var modelData
+                                width: 64
+                                height: 64
+                                AvatarBadge {
+                                    anchors.fill: parent
+                                    size: 64
+                                    label: node.profileNickname
+                                    baseColor: "#5288c1"
+                                    imageSource: modelData.path || ""
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onClicked: function(mouse) {
+                                        if (mouse.button === Qt.RightButton)
+                                            node.removeProfilePhoto(modelData.hash)
+                                        else
+                                            node.makeProfilePhotoCurrent(modelData.hash)
+                                    }
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: qsTr("ЛКМ — сделать текущим · ПКМ — удалить")
+                                    hoverEnabled: true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                NyxTextField {
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    text: node.profileNickname
+                    placeholderText: qsTr("Никнейм")
+                    onEditingFinished: node.profileNickname = text
+                }
+
+                NyxTextField {
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    text: node.profileBio
+                    placeholderText: qsTr("Подпись о себе")
+                    onEditingFinished: node.profileBio = text
+                }
+
+                NyxTextField {
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    text: node.profileInterests
+                    placeholderText: qsTr("Интересы через запятую")
+                    onEditingFinished: node.profileInterests = text
+                }
+
+                Label {
+                    text: qsTr("Доступность")
+                    color: theme.textMuted
+                    font.pixelSize: 11
+                }
+
+                NyxComboBox {
+                    id: availBox
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    textRole: "text"
+                    model: [
+                        { value: "available", text: qsTr("Доступен") },
+                        { value: "away", text: qsTr("Отошёл") },
+                        { value: "busy", text: qsTr("Занят") },
+                        { value: "invisible", text: qsTr("Невидимый") }
+                    ]
+                    Component.onCompleted: syncAvail()
+                    onCurrentIndexChanged: {
+                        const row = rowAt(currentIndex)
+                        if (row && row.value)
+                            node.profileAvailability = row.value
+                    }
+                    function syncAvail() {
+                        const cur = node.profileAvailability
+                        for (let i = 0; i < model.length; ++i) {
+                            if (model[i].value === cur) {
+                                currentIndex = i
+                                return
+                            }
+                        }
+                    }
+                    Connections {
+                        target: node
+                        function onProfileMetaChanged() { availBox.syncAvail() }
+                    }
+                }
+
                 Label {
                     Layout.fillWidth: true
-                    text: qsTr("Тёмная тема")
-                    color: theme.textPrimary
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Подпись и интересы уходят peer при подключении (Hello). Хранятся только локально у вас и у них. Изменения сохраняются сами — без отдельной кнопки.")
+                    color: theme.textMuted
+                    font.pixelSize: 11
                 }
-                Switch {
-                    checked: theme.darkMode
-                    onToggled: theme.setDarkMode(checked)
+
+                NyxButton {
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    text: qsTr("Копировать id")
+                    onClicked: node.copyToClipboard(node.profileIdShort)
                 }
-            }
 
-            Label {
-                text: qsTr("Сеть")
-                color: theme.textSecondary
-                font.pixelSize: 12
-                font.capitalization: Font.AllUppercase
-                Layout.topMargin: 8
-            }
-
-            NetworkSettingsSection {
-                Layout.fillWidth: true
-                theme: root.theme
-                node: root.node
-            }
-
-            NyxButtonSecondary {
-                Layout.fillWidth: true
-                theme: root.theme
-                text: qsTr("Выйти из аккаунта")
-                onClicked: {
-                    root.close()
-                    node.signOut()
+                Label {
+                    text: qsTr("Оформление")
+                    color: theme.textSecondary
+                    font.pixelSize: 12
+                    font.capitalization: Font.AllUppercase
+                    Layout.topMargin: 8
                 }
-            }
 
-            Label {
-                text: qsTr("Папки для обмена — вкладка «Файлы» · Ctrl+Enter — отправить · Ctrl+K — сеть")
-                color: theme.textMuted
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-        }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Тёмная тема")
+                        color: theme.textPrimary
+                    }
+                    Switch {
+                        checked: theme.darkMode
+                        onToggled: theme.setDarkMode(checked)
+                    }
+                }
+
+                Label {
+                    text: qsTr("Сеть")
+                    color: theme.textSecondary
+                    font.pixelSize: 12
+                    font.capitalization: Font.AllUppercase
+                    Layout.topMargin: 8
+                }
+
+                NetworkSettingsSection {
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    node: root.node
+                }
+
+                NyxButtonSecondary {
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    text: qsTr("Выйти из аккаунта")
+                    onClicked: {
+                        root.close()
+                        node.signOut()
+                    }
+                }
+
+                Label {
+                    text: qsTr("Папки для обмена — вкладка «Файлы» · Ctrl+Enter — отправить · Ctrl+K — сеть")
+                    color: theme.textMuted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                } // settingsCol
+        } // Flickable
     }
+
+    footer: Item { implicitHeight: 4 }
 }

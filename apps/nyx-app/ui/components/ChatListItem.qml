@@ -75,6 +75,7 @@ Rectangle {
                 label: title
                 baseColor: avatarColorFn(title)
                 textColor: theme.textPrimary
+                imageSource: kind === 0 ? node.peerAvatarPath(refId) : ""
                 opacity: (offline && !connecting) ? 0.55 : 1
             }
 
@@ -117,9 +118,13 @@ Rectangle {
                 Label {
                     Layout.fillWidth: true
                     text: {
-                        if (connecting) return qsTr("подключение…")
-                        if (live) return kind === 1 ? qsTr("в поле") : qsTr("в сети")
-                        if (offline) return qsTr("не в сети")
+                        if (connecting) return qsTr("переподключение…")
+                        if (live) return kind === 1 ? qsTr("эфир открыт") : qsTr("на связи")
+                        if (offline) {
+                            if (kind === 1) return qsTr("эфир закрыт")
+                            if (lastSeen.length) return lastSeen
+                            return qsTr("не на связи")
+                        }
                         if (preview.length) return preview
                         if (kind === 1 && fieldMemberHint.length) return fieldMemberHint
                         return qsTr("Нет сообщений")

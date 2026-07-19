@@ -29,6 +29,12 @@ ApplicationWindow {
     palette.highlightedText: appTheme.textPrimary
     palette.placeholderText: appTheme.textMuted
 
+    Component.onCompleted: app.setNativeChromeDark(appTheme.darkMode)
+    Connections {
+        target: appTheme
+        function onDarkModeChanged() { app.setNativeChromeDark(appTheme.darkMode) }
+    }
+
     function formatMsgTime(ms) {
         if (!ms) return ""
         return Qt.formatTime(new Date(ms), "HH:mm")
@@ -134,6 +140,24 @@ ApplicationWindow {
         anchors.centerIn: parent
         theme: appTheme
         node: app
+    }
+
+    FieldInfoDialog {
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        z: 20
+        theme: appTheme
+        node: app
+        avatarColorFn: avatarColor
+    }
+
+    PeerInfoDialog {
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        z: 30
+        theme: appTheme
+        node: app
+        avatarColorFn: avatarColor
     }
 
     ToastHost {

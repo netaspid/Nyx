@@ -155,32 +155,30 @@ Drawer {
             Layout.preferredHeight: 220
             currentIndex: connTabs.currentIndex
 
-            // Пригласить: один понятный код
+            // Пригласить: короткий код + копирование
             ColumnLayout {
                 spacing: 10
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
-                    text: qsTr("Отправьте этот код другу — он вставит его во вкладке «Личный чат».")
+                    text: qsTr("Скопируйте код и отправьте другу любым способом. Он вставит его во вкладке «Личный чат».")
                     color: theme.textSecondary
                     font.pixelSize: 12
                 }
-                NyxTextField {
-                    id: myInviteField
+                InviteCodeRow {
                     Layout.fillWidth: true
                     theme: root.theme
-                    readOnly: true
-                    text: node.dmInboxToken
-                    placeholderText: qsTr("Код появится после входа")
-                    font.family: "Consolas"
-                    font.pixelSize: 11
+                    node: root.node
+                    code: node.dmInboxToken
+                    label: qsTr("Ваш код для личного чата")
                 }
-                NyxButton {
+                Label {
                     Layout.fillWidth: true
-                    theme: root.theme
-                    text: qsTr("Скопировать код приглашения")
-                    enabled: node.dmInboxToken.length > 0
-                    onClicked: node.copyDmInboxToken()
+                    wrapMode: Text.WordWrap
+                    visible: node.dmInboxToken.length === 0
+                    text: qsTr("Код появится после входа в аккаунт.")
+                    color: theme.textMuted
+                    font.pixelSize: 11
                 }
             }
 
@@ -219,7 +217,7 @@ Drawer {
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
-                    text: qsTr("Вставьте invite поля. Создатель поля должен быть в сети (hub запущен).")
+                    text: qsTr("Вставьте invite поля. Владелец должен держать эфир открытым.")
                     color: theme.textSecondary
                     font.pixelSize: 12
                 }
@@ -227,14 +225,14 @@ Drawer {
                     id: fieldInviteField
                     Layout.fillWidth: true
                     theme: root.theme
-                    placeholderText: qsTr("Invite поля")
+                    placeholderText: qsTr("Вставьте invite (можно длинный hex)")
                     font.family: "Consolas"
                     font.pixelSize: 11
                 }
                 NyxButton {
                     Layout.fillWidth: true
                     theme: root.theme
-                    text: qsTr("Войти в поле")
+                    text: qsTr("Войти в эфир")
                     enabled: fieldInviteField.text.trim().length > 0
                     onClicked: {
                         node.joinField(fieldInviteField.text)
@@ -244,10 +242,10 @@ Drawer {
                 NyxButtonSecondary {
                     Layout.fillWidth: true
                     theme: root.theme
-                    text: qsTr("Открыть список полей")
+                    text: qsTr("Мои поля в сайдбаре")
                     onClicked: {
                         root.close()
-                        node.openGroupsDialog()
+                        node.sidebarMode = 2
                     }
                 }
             }

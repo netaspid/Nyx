@@ -85,7 +85,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Label {
             Layout.fillWidth: true
-            text: qsTr("Автоподключение сессий (hub, поля, DM)")
+            text: qsTr("Автоподключение сессий (эфир, поля, лички)")
             color: theme.textPrimary
             wrapMode: Text.WordWrap
             font.pixelSize: 13

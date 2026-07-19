@@ -10,14 +10,21 @@ Rectangle {
     property string text: ""
     property bool busy: false
 
-    implicitHeight: 28
-    color: theme.bgChatHeader
-    border.color: theme.border
+    implicitHeight: 30
+    color: theme.bgApp
+
+    Rectangle {
+        anchors.top: parent.top
+        width: parent.width
+        height: 1
+        color: theme.border
+    }
 
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: theme.spacing
         anchors.rightMargin: theme.spacing
+        anchors.topMargin: 1
         spacing: 8
 
         Rectangle {
