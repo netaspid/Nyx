@@ -418,6 +418,12 @@ void NodeController::syncFieldInfoState() {
       mm.insert(QStringLiteral("userId"), uid);
       mm.insert(QStringLiteral("nickname"), QString::fromStdString(member.nickname));
       mm.insert(QStringLiteral("isOwner"), member.role == nyx::GroupRole::Owner);
+      mm.insert(QStringLiteral("isHost"), member.role == nyx::GroupRole::Host);
+      mm.insert(QStringLiteral("role"),
+                member.role == nyx::GroupRole::Owner
+                    ? QStringLiteral("owner")
+                    : (member.role == nyx::GroupRole::Host ? QStringLiteral("host")
+                                                           : QStringLiteral("member")));
       mm.insert(QStringLiteral("idShort"),
                 QString::fromStdString(nyx::short_user_id(member.user_id)));
       field_info_members_.append(mm);
@@ -2245,6 +2251,30 @@ void NodeController::wireCallbacks() {
         Qt::QueuedConnection);
   });
 
+  service_.set_on_call_changed([this]() {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          emit callChanged();
+          syncCallAudio();
+        },
+        Qt::QueuedConnection);
+  });
+  service_.set_on_call_media([this](nyx::CallMediaType type, const nyx::ByteBuffer& payload) {
+    QByteArray packet(reinterpret_cast<const char*>(payload.data()),
+                      static_cast<int>(payload.size()));
+    QMetaObject::invokeMethod(
+        this,
+        [this, type, packet]() {
+          if (type == nyx::CallMediaType::Opus) {
+            call_audio_.onRemoteOpus(packet);
+          } else if (type == nyx::CallMediaType::Video) {
+            call_video_.onRemoteVideo(packet);
+          }
+        },
+        Qt::QueuedConnection);
+  });
+
   service_.set_on_file_progress([this](const std::string& label, int percent) {
     QMetaObject::invokeMethod(
         this,
@@ -2903,6 +2933,12 @@ void NodeController::refreshGroupList() {
       mm.insert(QStringLiteral("userId"), uid);
       mm.insert(QStringLiteral("nickname"), QString::fromStdString(member.nickname));
       mm.insert(QStringLiteral("isOwner"), member.role == nyx::GroupRole::Owner);
+      mm.insert(QStringLiteral("isHost"), member.role == nyx::GroupRole::Host);
+      mm.insert(QStringLiteral("role"),
+                member.role == nyx::GroupRole::Owner
+                    ? QStringLiteral("owner")
+                    : (member.role == nyx::GroupRole::Host ? QStringLiteral("host")
+                                                           : QStringLiteral("member")));
       mm.insert(QStringLiteral("idShort"),
                 QString::fromStdString(nyx::short_user_id(member.user_id)));
       members.append(mm);
@@ -3327,6 +3363,100 @@ void NodeController::sendMessage(const QString& text) {
   }
 }
 
+QString NodeController::callState() const {
+  switch (service_.call_state()) {
+    case nyx::CallState::Outgoing:
+      return QStringLiteral("outgoing");
+    case nyx::CallState::Incoming:
+      return QStringLiteral("incoming");
+    case nyx::CallState::Ringing:
+      return QStringLiteral("ringing");
+    case nyx::CallState::Active:
+      return QStringLiteral("active");
+    case nyx::CallState::Ended:
+      return QStringLiteral("ended");
+    case nyx::CallState::Idle:
+    default:
+      return QStringLiteral("idle");
+  }
+}
+
+QString NodeController::callTitle() const {
+  const QString t = QString::fromStdString(service_.call_title());
+  return t.isEmpty() ? peer_title_ : t;
+}
+
+bool NodeController::callVideo() const {
+  return service_.call_mode() == nyx::CallMode::AudioVideo;
+}
+
+bool NodeController::canStartCall() const {
+  return service_.can_start_call(active_chat_key_.toStdString());
+}
+
+bool NodeController::callIsFieldRoom() const { return service_.call_is_field_room(); }
+
+void NodeController::startCall(bool video) {
+  if (!service_.can_start_call(active_chat_key_.toStdString())) {
+    showToast(QStringLiteral("Нет права открывать комнату (нужна роль ведущего)"), true);
+    return;
+  }
+  if (!service_.start_call(video, active_chat_key_.toStdString())) {
+    showToast(QStringLiteral("Не удалось начать звонок"), true);
+  }
+}
+
+void NodeController::acceptCall() {
+  if (!service_.accept_call()) showToast(QStringLiteral("Не удалось войти в комнату"), true);
+}
+
+void NodeController::rejectCall() { service_.reject_call(); }
+
+void NodeController::hangupCall() { service_.hangup_call(); }
+
+void NodeController::syncCallAudio() {
+  const auto st = service_.call_state();
+  const bool video = service_.call_mode() == nyx::CallMode::AudioVideo;
+  if (st == nyx::CallState::Active) {
+    call_audio_.setSendFn([this](const std::vector<uint8_t>& packet) {
+      return service_.send_call_media(nyx::CallMediaType::Opus, packet);
+    });
+    if (!call_audio_.start()) {
+      showToast(QStringLiteral("Микрофон/динамик недоступны — только сигналинг"), true);
+    }
+    if (video) {
+      call_video_.setSendFn([this](const QByteArray& jpeg) {
+        const nyx::ByteBuffer buf(jpeg.begin(), jpeg.end());
+        return service_.send_call_media(nyx::CallMediaType::Video, buf);
+      });
+      disconnect(&call_video_, &CallVideoIo::remoteFrameChanged, this, nullptr);
+      connect(&call_video_, &CallVideoIo::remoteFrameChanged, this, [this]() {
+        const QImage img = call_video_.lastRemoteFrame();
+        if (img.isNull()) return;
+        const QString path =
+            QDir::temp().filePath(QStringLiteral("nyx-call-remote.jpg"));
+        if (img.save(path, "JPG", 80)) {
+          call_remote_frame_url_ = QUrl::fromLocalFile(path);
+          call_remote_frame_url_.setQuery(QString::number(QDateTime::currentMSecsSinceEpoch()));
+          emit callRemoteFrameChanged();
+        }
+      });
+      if (!call_video_.start()) {
+        showToast(QStringLiteral("Камера недоступна — аудио без видео"), true);
+      }
+    } else {
+      call_video_.stop();
+    }
+  } else {
+    call_audio_.stop();
+    call_video_.stop();
+    call_remote_frame_url_.clear();
+    emit callRemoteFrameChanged();
+  }
+}
+
+QUrl NodeController::callRemoteFrameUrl() const { return call_remote_frame_url_; }
+
 void NodeController::createGroup(const QString& name, const QString& description,
                                  const QString& direction, const QString& tags,
                                  bool publicListed) {
@@ -3440,6 +3570,25 @@ void NodeController::removeFieldMember(const QString& groupIdHex, const QString&
   }
   refreshGroupList();
   showToast(QStringLiteral("Участник исключён"));
+}
+
+void NodeController::setFieldMemberRole(const QString& groupIdHex, const QString& userIdHex,
+                                        const QString& role) {
+  const QString gid = groupIdHex.trimmed().toLower();
+  const QString uid = userIdHex.trimmed().toLower();
+  const QString r = role.trimmed().toLower();
+  if (gid.size() != 64 || uid.size() != 64 || (r != QLatin1String("host") && r != QLatin1String("member"))) {
+    showToast(QStringLiteral("Неверные параметры роли"), true);
+    return;
+  }
+  if (!service_.set_field_member_role(gid.toStdString(), uid.toStdString(), r.toStdString())) {
+    showToast(QStringLiteral("Не удалось назначить роль (нужен эфир владельца)"), true);
+    return;
+  }
+  refreshGroupList();
+  refreshFieldRoster();
+  showToast(r == QLatin1String("host") ? QStringLiteral("Назначен ведущий звонков")
+                                       : QStringLiteral("Роль: участник"));
 }
 
 void NodeController::startFieldHub(const QString& groupIdHex) {
