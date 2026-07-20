@@ -73,6 +73,15 @@ class Connection {
   /** Отправка произвольной нагрузки на логический поток. */
   bool send_payload(uint32_t stream_id, const ByteBuffer& data);
 
+  /**
+   * Ненадёжная отправка на kRealtimeStream (PacketType::Realtime).
+   * Без ARQ/retransmit — для аудио/видео. Рекомендуемый размер ≤ ~1100 байт.
+   */
+  bool send_realtime(const ByteBuffer& data);
+
+  /** Неблокирующий приём realtime-кадра (после drive/feed_wire). */
+  bool recv_realtime(ByteBuffer& out);
+
   /** false после таймаута без ответа от peer. */
   bool peer_alive() const { return peer_alive_; }
 
@@ -95,6 +104,9 @@ class Connection {
   bool drive_without_recv();
 
  private:
+  friend class PendingConnection;
+  Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port, Session session);
+
   void touch_peer_activity();
   bool process_incoming(int timeout_ms);
   bool run_handshake(HandshakeDriver& hs, const ByteBuffer* first_in);
@@ -102,6 +114,7 @@ class Connection {
   bool send_stream(uint32_t stream_id, const ByteBuffer& data, bool check_rekey = true);
   void flush_outbound();
   void process_wire(const ByteBuffer& wire);
+  bool handle_realtime_wire(const Frame& frame);
   bool decrypt_dispatch(const ByteBuffer& cipher);
   void maybe_rekey();
   bool send_rekey(std::uint64_t epoch);
@@ -118,6 +131,48 @@ class Connection {
   std::chrono::steady_clock::time_point last_ping_sent_{};
   bool peer_alive_ = true;
   std::deque<ByteBuffer> outbound_wires_;
+  std::deque<ByteBuffer> realtime_inbox_;
+  uint32_t realtime_seq_ = 0;
+};
+
+/**
+ * Пошаговый Noise handshake на shared UDP (mesh / demux).
+ * Не вызывает recv_from — пакеты подаёт владелец сокета через feed_wire.
+ */
+class PendingConnection {
+ public:
+  PendingConnection(UdpSocket socket, std::string peer_host, uint16_t peer_port,
+                    HandshakeRole role);
+  ~PendingConnection() = default;
+
+  PendingConnection(const PendingConnection&) = delete;
+  PendingConnection& operator=(const PendingConnection&) = delete;
+
+  /** Отправить первый шаг; для responder — передать уже принятый HandshakeInit wire. */
+  bool start(const ByteBuffer* first_wire = nullptr);
+
+  /** Обработать один UDP-кадр с peer. @return true если handshake завершён. */
+  bool feed_wire(const ByteBuffer& wire);
+
+  bool complete() const { return complete_; }
+  bool failed() const { return failed_; }
+  const std::string& peer_host() const { return peer_host_; }
+  uint16_t peer_port() const { return peer_port_; }
+
+  /** Забирает Established Connection (только после complete). */
+  std::optional<Connection> take();
+
+ private:
+  bool send_hs(PacketType type, const ByteBuffer& payload);
+  bool apply_payload(const ByteBuffer& hs_payload);
+
+  UdpSocket socket_;
+  std::string peer_host_;
+  uint16_t peer_port_;
+  HandshakeDriver hs_;
+  bool complete_ = false;
+  bool failed_ = false;
+  bool started_ = false;
 };
 
 }  // namespace nyx
