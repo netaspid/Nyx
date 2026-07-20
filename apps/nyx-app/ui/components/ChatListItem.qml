@@ -76,7 +76,6 @@ Rectangle {
                 baseColor: avatarColorFn(title)
                 textColor: theme.textPrimary
                 imageSource: kind === 0 ? node.peerAvatarPath(refId) : ""
-                opacity: (offline && !connecting) ? 0.55 : 1
             }
 
             Rectangle {
