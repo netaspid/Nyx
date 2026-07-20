@@ -3,11 +3,13 @@
 #include "nyx/app.hpp"
 #include "nyx/avatar_proto.hpp"
 #include "nyx/avatar_store.hpp"
+#include "nyx/call_proto.hpp"
 #include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/group.hpp"
 #include "nyx/group_proto.hpp"
 #include "nyx/messaging.hpp"
+#include "nyx/nat.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/proto.hpp"
 #include "nyx/file_proto.hpp"
@@ -372,6 +374,83 @@ void GroupHub::broadcast_to_members(const ByteBuffer& payload, HubMember* skip) 
   }
 }
 
+bool GroupHub::send_call_frame(const ByteBuffer& frame, const UserId* skip_user) {
+  if (!is_call_frame(frame)) return false;
+  for (auto& m : members_) {
+    if (!m.joined) continue;
+    if (skip_user && m.user_id == *skip_user) continue;
+    if (m.connection.state() != ConnectionState::Established) continue;
+    m.connection.send_payload(kChatStream, frame);
+  }
+  return true;
+}
+
+void GroupHub::distribute_call_mesh_intros(const CallId& call_id) {
+  CallRosterMessage roster;
+  roster.call_id = call_id;
+  roster.participants.push_back(owner_.public_key);
+  for (const auto& m : members_) {
+    if (!m.joined) continue;
+    roster.participants.push_back(m.user_id);
+    if (roster.participants.size() >= kMaxCallParticipants) break;
+  }
+  send_call_frame(roster.encode());
+
+  auto send_intro = [&](HubMember& target, const UserId& uid, const std::string& host,
+                        uint16_t port) {
+    CallPeerIntroMessage intro;
+    intro.call_id = call_id;
+    intro.peer.user_id = uid;
+    intro.peer.host = host;
+    intro.peer.port = port;
+    target.connection.send_payload(kChatStream, intro.encode());
+  };
+
+  const std::string owner_host = guess_lan_ipv4();
+  for (auto& target : members_) {
+    if (!target.joined) continue;
+    // Owner → member (порт уточнит Endpoint от owner).
+    send_intro(target, owner_.public_key, owner_host, socket_.local_port());
+    for (const auto& src : members_) {
+      if (!src.joined || src.user_id == target.user_id) continue;
+      send_intro(target, src.user_id, src.connection.peer_host(), src.connection.peer_port());
+    }
+  }
+}
+
+bool GroupHub::send_realtime_all(const ByteBuffer& data) {
+  bool any = false;
+  for (auto& m : members_) {
+    if (!m.joined) continue;
+    if (m.connection.send_realtime(data)) any = true;
+  }
+  return any;
+}
+
+void GroupHub::drain_realtime(const std::function<void(ByteBuffer)>& on_frame) {
+  if (!on_frame) return;
+  for (auto& m : members_) {
+    if (!m.joined) continue;
+    ByteBuffer raw;
+    while (m.connection.recv_realtime(raw)) on_frame(std::move(raw));
+  }
+}
+
+void GroupHub::relay_realtime(const std::function<void(ByteBuffer)>& on_local) {
+  for (auto& m : members_) {
+    if (!m.joined) continue;
+    ByteBuffer raw;
+    while (m.connection.recv_realtime(raw)) {
+      if (on_local) on_local(raw);
+      for (auto& o : members_) {
+        if (!o.joined || o.user_id == m.user_id) continue;
+        if (o.connection.state() != ConnectionState::Established) continue;
+        o.connection.send_realtime(raw);
+      }
+    }
+  }
+}
+
 void GroupHub::relay_message(const ChatMessage& msg, const UserId* exclude_author) {
   (void)exclude_author;
   store_.append(to_stored(msg, msg.author_id == owner_.public_key));
@@ -485,6 +564,46 @@ bool GroupHub::publish_meta(const std::string& description, const std::string& d
   return true;
 }
 
+GroupRole GroupHub::role_of(const UserId& user_id) const {
+  if (user_id == owner_.public_key) return GroupRole::Owner;
+  for (const auto& m : group_.members) {
+    if (m.user_id == user_id) return m.role;
+  }
+  return GroupRole::Member;
+}
+
+bool GroupHub::set_member_role(const UserId& user_id, GroupRole role) {
+  if (user_id == owner_.public_key) return false;
+  if (role == GroupRole::Owner) return false;
+  if (role != GroupRole::Member && role != GroupRole::Host) return false;
+
+  GroupMemberRecord* rec = nullptr;
+  for (auto& m : group_.members) {
+    if (m.user_id == user_id) {
+      rec = &m;
+      break;
+    }
+  }
+  if (!rec) return false;
+  rec->role = role;
+
+  {
+    GroupStore store;
+    store.load();
+    store.upsert(group_);
+    store.save();
+  }
+
+  GroupMemberJoinedMessage notice;
+  notice.member = *rec;
+  broadcast_to_members(notice.encode(), nullptr);
+  if (on_event_) {
+    on_event_(rec->nickname + (role == GroupRole::Host ? " — ведущий звонков"
+                                                       : " — обычный участник"));
+  }
+  return true;
+}
+
 void GroupHub::send_file_access_policy(HubMember& member) {
   if (!file_access_) return;
   const GroupFileAccess* policy = file_access_->find_policy(file_scope_);
@@ -553,6 +672,35 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
   if (auto ack = AckMessage::decode(payload)) {
     if (pending_member_acks_.erase(ack->message_id) > 0 && on_delivery_) {
       on_delivery_(ack->message_id, DeliveryStatus::Delivered);
+    }
+    return;
+  }
+
+  if (is_call_frame(payload)) {
+    if (auto inv = CallInviteMessage::decode(payload)) {
+      GroupRole role = GroupRole::Member;
+      for (const auto& rec : group_.members) {
+        if (rec.user_id == member.user_id) {
+          role = rec.role;
+          break;
+        }
+      }
+      if (member.user_id == owner_.public_key) role = GroupRole::Owner;
+      if (!can_start_field_call(role)) {
+        CallRejectMessage rej;
+        rej.call_id = inv->call_id;
+        rej.reason = CallRejectReason::Unsupported;
+        member.connection.send_payload(kChatStream, rej.encode());
+        if (on_event_) on_event_("отклонён старт звонка: нет роли ведущего");
+        return;
+      }
+    }
+    if (on_call_frame_) on_call_frame_(member.user_id, payload);
+    for (auto& m : members_) {
+      if (!m.joined) continue;
+      if (m.user_id == member.user_id) continue;
+      if (m.connection.state() != ConnectionState::Established) continue;
+      m.connection.send_payload(kChatStream, payload);
     }
     return;
   }
