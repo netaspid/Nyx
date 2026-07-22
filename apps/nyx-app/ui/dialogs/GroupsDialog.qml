@@ -9,17 +9,22 @@ Dialog {
     required property var theme
     required property var node
 
+    readonly property bool fullBleed: Qt.platform.os === "android"
+                                      || (parent && parent.width < 720)
+
     modal: true
     standardButtons: Dialog.NoButton
-    width: Math.min(520, parent ? parent.width - 48 : 520)
-    height: Math.min(580, parent ? parent.height - 80 : 580)
-    padding: theme.spacing
+    width: fullBleed ? (parent ? parent.width : Overlay.overlay.width) : (Math.min(520, parent ? parent.width - 48 : 520))
+    height: fullBleed ? (parent ? parent.height : Overlay.overlay.height) : (Math.min(580, parent ? parent.height - 80 : 580))
+    padding: fullBleed ? theme.spacing : theme.spacing
+    x: fullBleed ? 0 : (parent ? Math.round((parent.width - width) / 2) : 0)
+    y: fullBleed ? 0 : (parent ? Math.round((parent.height - height) / 2) : 0)
 
     onAboutToShow: node.refreshGroupList()
 
     background: Rectangle {
         color: theme.bgSidebar
-        radius: theme.radiusBtn
+        radius: root.fullBleed ? 0 : theme.radiusBtn
         border.color: theme.border
     }
 
@@ -227,8 +232,7 @@ Dialog {
                         NyxButtonSecondary {
                             theme: root.theme
                             text: qsTr("Удалить")
-                            visible: isOwner
-                            onClicked: node.deleteGroup(groupId)
+                            onClicked: node.removeConversation("group:" + groupId)
                         }
                     }
                 }

@@ -11,11 +11,16 @@ Dialog {
     required property var node
     required property var avatarColorFn
 
+    readonly property bool fullBleed: Qt.platform.os === "android"
+                                      || (parent && parent.width < 720)
+
     modal: true
     standardButtons: Dialog.NoButton
-    width: Math.min(460, parent ? parent.width - 48 : 460)
-    height: Math.min(600, parent ? parent.height - 80 : 600)
+    width: fullBleed ? (parent ? parent.width : Overlay.overlay.width) : (Math.min(460, parent ? parent.width - 48 : 460))
+    height: fullBleed ? (parent ? parent.height : Overlay.overlay.height) : (Math.min(600, parent ? parent.height - 80 : 600))
     padding: 0
+    x: fullBleed ? 0 : (parent ? Math.round((parent.width - width) / 2) : 0)
+    y: fullBleed ? 0 : (parent ? Math.round((parent.height - height) / 2) : 0)
 
     readonly property string groupId: node.fieldInfoGroupId
     readonly property var groupListRef: node.groupList
@@ -24,11 +29,11 @@ Dialog {
     readonly property var group: groupEntry()
 
     function groupEntry() {
-        const id = String(groupId || "").trimmed().toLowerCase()
+        const id = String(groupId || "").trim().toLowerCase()
         const list = groupListRef
         for (let i = 0; i < list.length; ++i) {
             const g = list[i]
-            if (String(g.groupId).trimmed().toLowerCase() === id)
+            if (String(g.groupId).trim().toLowerCase() === id)
                 return g
         }
         return null
@@ -49,7 +54,7 @@ Dialog {
     }
 
     function openMemberProfile(userId) {
-        const uid = String(userId || "").trimmed().toLowerCase()
+        const uid = String(userId || "").trim().toLowerCase()
         if (uid.length !== 64) return
         // PeerInfo поверх модалки поля
         node.openPeerInfo(uid)
@@ -62,7 +67,7 @@ Dialog {
 
     background: Rectangle {
         color: theme.bgSidebar
-        radius: theme.radiusBtn
+        radius: root.fullBleed ? 0 : theme.radiusBtn
         border.color: theme.border
     }
 
@@ -130,7 +135,7 @@ Dialog {
                     }
 
                     Rectangle {
-                        visible: root.group && root.group.hubOnline
+                        visible: !!(root.group && root.group.hubOnline)
                         radius: 10
                         color: Qt.rgba(theme.online.r, theme.online.g, theme.online.b, 0.2)
                         border.color: theme.online
@@ -453,8 +458,7 @@ Dialog {
 
                                 Label {
                                     visible: !kickBtn.visible && !hostBtn.visible
-                                    text: "\uE76C"
-                                    font.family: "Segoe MDL2 Assets"
+                                    text: "·"
                                     font.pixelSize: 12
                                     color: theme.textMuted
                                 }

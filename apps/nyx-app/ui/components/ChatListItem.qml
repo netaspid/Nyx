@@ -164,6 +164,7 @@ Rectangle {
             }
             root.clicked()
         }
+        onPressAndHold: contextMenu.popup()
     }
 
     Menu {
@@ -185,6 +186,11 @@ Rectangle {
                     }
                 }
             }
+        }
+        MenuSeparator {}
+        MenuItem {
+            text: root.kind === 1 ? qsTr("Удалить поле из списка") : qsTr("Удалить чат")
+            onTriggered: node.removeConversation(root.key)
         }
     }
 
