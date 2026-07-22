@@ -37,14 +37,14 @@ class UdpSocket {
   /** Локальный порт после bind. */
   uint16_t local_port() const;
 
-  /** Multicast-слушатель для LAN discovery: bind(port) + join(group). */
+  /** Bind + join multicast group; optional iface IPv4 (empty = auto). */
   bool bind_multicast_listener(const std::string& group, uint16_t port,
-                               std::string* err = nullptr);
+                               std::string* err = nullptr,
+                               const std::string& iface_ipv4 = {});
 
-  /** Allow UDP broadcast (LAN discovery fallback). */
   bool enable_broadcast(std::string* err = nullptr);
 
-  /** Prefer this IPv4 as IP_MULTICAST_IF (empty = INADDR_ANY). */
+  /** Set multicast TX iface; re-joins membership when group was joined. */
   bool set_multicast_interface(const std::string& ipv4, std::string* err = nullptr);
 
   /** @deprecated используйте bind_multicast_listener */
@@ -54,6 +54,8 @@ class UdpSocket {
   struct State {
     uintptr_t sock = static_cast<uintptr_t>(-1);
     uint16_t local_port = 0;
+    std::string mcast_group;
+    uint32_t mcast_iface_addr = 0;
   };
 
   std::shared_ptr<State> state_;
