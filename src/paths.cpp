@@ -10,6 +10,7 @@ namespace {
 
 std::string g_scoped_data_dir;
 bool g_scoped = false;
+std::string g_base_override;
 std::mutex g_data_dir_mutex;
 
 std::string join_path(const std::string& dir, const char* name) {
@@ -18,7 +19,7 @@ std::string join_path(const std::string& dir, const char* name) {
   return dir + '/' + name;
 }
 
-std::string base_data_root() {
+std::string default_os_data_root() {
 #ifdef _WIN32
   if (const char* appdata = std::getenv("APPDATA")) {
     return join_path(appdata, "nyx");
@@ -32,9 +33,19 @@ std::string base_data_root() {
 #endif
 }
 
+std::string base_data_root() {
+  if (!g_base_override.empty()) return g_base_override;
+  return default_os_data_root();
+}
+
 }  // namespace
 
 std::string data_root() { return base_data_root(); }
+
+void set_base_data_root(const std::string& root) {
+  std::lock_guard lock(g_data_dir_mutex);
+  g_base_override = root;
+}
 
 std::string data_dir() {
   std::lock_guard lock(g_data_dir_mutex);

@@ -41,6 +41,12 @@ class UdpSocket {
   bool bind_multicast_listener(const std::string& group, uint16_t port,
                                std::string* err = nullptr);
 
+  /** Allow UDP broadcast (LAN discovery fallback). */
+  bool enable_broadcast(std::string* err = nullptr);
+
+  /** Prefer this IPv4 as IP_MULTICAST_IF (empty = INADDR_ANY). */
+  bool set_multicast_interface(const std::string& ipv4, std::string* err = nullptr);
+
   /** @deprecated используйте bind_multicast_listener */
   bool enable_lan_multicast(std::string* err = nullptr);
 

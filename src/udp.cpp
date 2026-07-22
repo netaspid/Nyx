@@ -180,6 +180,7 @@ bool UdpSocket::bind_multicast_listener(const std::string& group, uint16_t port,
     if (err) *err = "SO_REUSEADDR failed";
     return false;
   }
+  enable_broadcast(nullptr);
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
@@ -193,9 +194,15 @@ bool UdpSocket::bind_multicast_listener(const std::string& group, uint16_t port,
   getsockname(s, reinterpret_cast<sockaddr*>(&addr), &len);
   state_->local_port = ntohs(addr.sin_port);
 
+  in_addr iface{};
+  iface.s_addr = INADDR_ANY;
+  // Prefer explicit LAN IF when set (Wi‑Fi vs VPN/cellular).
+  // Declared in nat.hpp; avoid circular include by resolving here via inet_pton only.
+  // Caller should call set_multicast_interface after bind when override is known.
+
   ip_mreq mreq{};
   mreq.imr_multiaddr.s_addr = inet_addr(group.c_str());
-  mreq.imr_interface.s_addr = INADDR_ANY;
+  mreq.imr_interface = iface;
   if (setsockopt(s, IPPROTO_IP, IP_ADD_MEMBERSHIP, reinterpret_cast<const char*>(&mreq),
                  sizeof(mreq)) != 0) {
     if (err) *err = "IP_ADD_MEMBERSHIP failed";
@@ -205,7 +212,45 @@ bool UdpSocket::bind_multicast_listener(const std::string& group, uint16_t port,
   int loop = 1;
   setsockopt(s, IPPROTO_IP, IP_MULTICAST_LOOP, reinterpret_cast<const char*>(&loop),
              sizeof(loop));
+  unsigned char ttl = 1;
+  setsockopt(s, IPPROTO_IP, IP_MULTICAST_TTL, reinterpret_cast<const char*>(&ttl), sizeof(ttl));
 
+  return true;
+}
+
+bool UdpSocket::enable_broadcast(std::string* err) {
+  if (!state_ || state_->sock == static_cast<uintptr_t>(kInvalidSocket)) {
+    if (err) *err = "invalid socket";
+    return false;
+  }
+  auto s = static_cast<socket_t>(state_->sock);
+  int on = 1;
+  if (setsockopt(s, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&on), sizeof(on)) !=
+      0) {
+    if (err) *err = "SO_BROADCAST failed";
+    return false;
+  }
+  return true;
+}
+
+bool UdpSocket::set_multicast_interface(const std::string& ipv4, std::string* err) {
+  if (!state_ || state_->sock == static_cast<uintptr_t>(kInvalidSocket)) {
+    if (err) *err = "invalid socket";
+    return false;
+  }
+  if (ipv4.empty()) return true;
+  auto s = static_cast<socket_t>(state_->sock);
+  in_addr iface{};
+  if (inet_pton(AF_INET, ipv4.c_str(), &iface) != 1) {
+    if (err) *err = "bad multicast interface IP";
+    return false;
+  }
+  if (setsockopt(s, IPPROTO_IP, IP_MULTICAST_IF, reinterpret_cast<const char*>(&iface),
+                 sizeof(iface)) != 0) {
+    if (err) *err = "IP_MULTICAST_IF failed";
+    return false;
+  }
+  // Re-join membership on that interface is best-effort; many stacks route TX via IF.
   return true;
 }
 

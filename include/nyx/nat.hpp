@@ -15,6 +15,10 @@ namespace nyx {
 /** Лучший локальный IPv4 для LAN (не 127.0.0.1). */
 std::string guess_lan_ipv4();
 
+/** Prefer this IPv4 for LAN advertise / multicast IF (e.g. Android Wi‑Fi). Empty = auto. */
+void set_lan_ipv4_override(const std::string& ipv4);
+std::string lan_ipv4_override();
+
 void hole_punch(UdpSocket& sock, const EndpointHint& hint);
 void hole_punch_burst(UdpSocket& sock, const EndpointHint& hint, int packets = 4);
 
