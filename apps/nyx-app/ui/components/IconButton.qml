@@ -1,11 +1,12 @@
 import QtQuick
 import QtQuick.Controls
 
-/** Круглая кнопка с иконкой (Segoe MDL2 Assets). */
+/** Circular button with SVG icon from qrc:/icons (no Windows-only fonts). */
 AbstractButton {
     id: ctrl
 
-    property string glyph: "\uE946"
+    property string name: "settings"
+    property string glyph: "" // legacy; ignored
     property color iconColor: theme ? theme.textPrimary : "#ffffff"
     property var theme
     property int btnSize: 36
@@ -26,12 +27,13 @@ AbstractButton {
         border.width: ctrl.enabled ? 0 : 1
     }
 
-    contentItem: Text {
-        text: ctrl.glyph
-        font.family: "Segoe MDL2 Assets"
-        font.pixelSize: btnSize * 0.42
-        color: ctrl.enabled ? ctrl.iconColor : (theme ? theme.textMuted : "#888")
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
+    contentItem: Item {
+        NyxIcon {
+            anchors.centerIn: parent
+            name: ctrl.name
+            width: Math.round(ctrl.btnSize * 0.48)
+            height: width
+            opacity: ctrl.enabled ? 1.0 : 0.4
+        }
     }
 }

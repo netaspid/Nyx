@@ -53,9 +53,29 @@
     <file alias="nyx.ico">resources/icons/nyx.ico</file>
     <file alias="nyx-32.png">resources/icons/nyx-32.png</file>
     <file alias="nyx-256.png">resources/icons/nyx-256.png</file>
+    <file alias="nyx-512.png">resources/icons/nyx-512.png</file>
     <file alias="send.svg">resources/icons/send.svg</file>
     <file alias="attach.svg">resources/icons/attach.svg</file>
     <file alias="search.svg">resources/icons/search.svg</file>
     <file alias="settings.svg">resources/icons/settings.svg</file>
+    <file alias="back.svg">resources/icons/back.svg</file>
+    <file alias="refresh.svg">resources/icons/refresh.svg</file>
+    <file alias="delete.svg">resources/icons/delete.svg</file>
+    <file alias="folder.svg">resources/icons/folder.svg</file>
+    <file alias="close.svg">resources/icons/close.svg</file>
+    <file alias="phone.svg">resources/icons/phone.svg</file>
+    <file alias="video.svg">resources/icons/video.svg</file>
+    <file alias="camera-switch.svg">resources/icons/camera-switch.svg</file>
+    <file alias="expand.svg">resources/icons/expand.svg</file>
+    <file alias="collapse.svg">resources/icons/collapse.svg</file>
+    <file alias="people.svg">resources/icons/people.svg</file>
+    <file alias="emoji.svg">resources/icons/emoji.svg</file>
+    <file alias="lock.svg">resources/icons/lock.svg</file>
+    <file alias="chevron.svg">resources/icons/chevron.svg</file>
+    <file alias="copy.svg">resources/icons/copy.svg</file>
+    <file alias="file.svg">resources/icons/file.svg</file>
+    <file alias="image.svg">resources/icons/image.svg</file>
+    <file alias="check.svg">resources/icons/check.svg</file>
+    <file alias="info.svg">resources/icons/info.svg</file>
   </qresource>
 </RCC>
