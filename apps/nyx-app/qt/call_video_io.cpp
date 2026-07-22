@@ -142,10 +142,19 @@ QCameraDevice CallVideoIo::resolveCameraDevice() const {
 
 bool CallVideoIo::openCamera(const QCameraDevice& device) {
   if (device.isNull()) return false;
+  const QString new_id = QString::fromUtf8(device.id());
+  if (capturing_ && camera_ && new_id == camera_id_) return true;
+
+  capturing_ = false;
+  if (session_) {
+    session_->setCamera(nullptr);
+    session_->setVideoSink(nullptr);
+  }
   if (camera_) {
     camera_->stop();
     camera_.reset();
   }
+
   camera_ = std::make_unique<QCamera>(device);
   const QCameraFormat fmt = bestFormat(device);
   if (!fmt.isNull()) camera_->setCameraFormat(fmt);
@@ -153,11 +162,12 @@ bool CallVideoIo::openCamera(const QCameraDevice& device) {
   if (!session_) session_ = std::make_unique<QMediaCaptureSession>();
   if (!sink_) {
     sink_ = new QVideoSink(this);
-    connect(sink_, &QVideoSink::videoFrameChanged, this, &CallVideoIo::onVideoFrame);
+    connect(sink_, &QVideoSink::videoFrameChanged, this, &CallVideoIo::onVideoFrame,
+            Qt::UniqueConnection);
   }
-  session_->setCamera(camera_.get());
   session_->setVideoSink(sink_);
-  camera_id_ = QString::fromUtf8(device.id());
+  session_->setCamera(camera_.get());
+  camera_id_ = new_id;
   preferred_camera_id_ = camera_id_;
   front_camera_ = (device.position() == QCameraDevice::FrontFace);
   const auto cams = QMediaDevices::videoInputs();
@@ -168,14 +178,27 @@ bool CallVideoIo::openCamera(const QCameraDevice& device) {
       break;
     }
   }
+  connect(camera_.get(), &QCamera::errorOccurred, this, [this](QCamera::Error, const QString&) {
+    capturing_ = false;
+    if (session_) {
+      session_->setCamera(nullptr);
+      session_->setVideoSink(nullptr);
+    }
+    if (camera_) {
+      camera_->stop();
+      camera_.reset();
+    }
+    emit cameraChanged();
+  });
   camera_->start();
+  capturing_ = true;
   emit cameraChanged();
   return true;
 }
 
 void CallVideoIo::setPreferredCameraId(const QString& id) {
   preferred_camera_id_ = id.trimmed();
-  if (running_ && !preferred_camera_id_.isEmpty()) {
+  if (running_ && capturing_ && !preferred_camera_id_.isEmpty()) {
     const QCameraDevice d = resolveCameraDevice();
     if (!d.isNull() && QString::fromUtf8(d.id()) != camera_id_) openCamera(d);
   }
@@ -184,31 +207,42 @@ void CallVideoIo::setPreferredCameraId(const QString& id) {
 
 bool CallVideoIo::start() {
   if (running_) return true;
-  if (QMediaDevices::videoInputs().isEmpty()) return false;
-
-  // JPEG path — no AV1 codec required (avoids green-stripe decode artifacts).
-  if (!openCamera(resolveCameraDevice())) return false;
+  running_ = true;
 
   peers_.clear();
   focused_peer_.clear();
   remote_ = QImage();
   local_ = QImage();
   pending_ = QImage();
-  encode_timer_->start();
-  running_ = true;
   frame_id_ = 0;
+  capturing_ = false;
+
+  const QCameraDevice device = resolveCameraDevice();
+  if (!device.isNull()) {
+    if (!openCamera(device)) capturing_ = false;
+  }
+  if (encode_timer_) encode_timer_->start();
   return true;
 }
 
 void CallVideoIo::stop() {
   running_ = false;
+  capturing_ = false;
   if (encode_timer_) encode_timer_->stop();
+  if (session_) {
+    session_->setCamera(nullptr);
+    session_->setVideoSink(nullptr);
+  }
   if (camera_) {
     camera_->stop();
     camera_.reset();
   }
   session_.reset();
-  sink_ = nullptr;
+  if (sink_) {
+    disconnect(sink_, nullptr, this, nullptr);
+    sink_->deleteLater();
+    sink_ = nullptr;
+  }
   pending_ = QImage();
   local_ = QImage();
   remote_ = QImage();
@@ -220,6 +254,7 @@ void CallVideoIo::stop() {
 }
 
 bool CallVideoIo::canSwitchCamera() const {
+  if (!capturing_) return false;
   const auto cams = QMediaDevices::videoInputs();
   if (cams.size() > 1) return true;
   bool has_front = false, has_back = false;
@@ -231,7 +266,7 @@ bool CallVideoIo::canSwitchCamera() const {
 }
 
 bool CallVideoIo::switchCamera() {
-  if (!running_) return false;
+  if (!running_ || !capturing_) return false;
   const auto cams = QMediaDevices::videoInputs();
   if (cams.isEmpty()) return false;
 
@@ -276,7 +311,8 @@ CallVideoIo::PeerDecoder& CallVideoIo::peerDecoder(const QString& peerId) {
 }
 
 void CallVideoIo::onVideoFrame() {
-  if (!running_ || !sink_) return;
+  if (!running_ || !capturing_ || !sink_) return;
+  if (!pending_.isNull()) return;
   const QVideoFrame frame = sink_->videoFrame();
   if (!frame.isValid()) return;
 
@@ -291,14 +327,14 @@ void CallVideoIo::onVideoFrame() {
 }
 
 void CallVideoIo::onEncodeTick() {
-  if (!running_ || !send_fn_ || pending_.isNull()) return;
+  if (!running_ || !capturing_ || !send_fn_ || pending_.isNull()) return;
 
   QByteArray jpeg;
   QBuffer buf(&jpeg);
   if (!buf.open(QIODevice::WriteOnly)) return;
-  // Independent JPEG frames — no inter-frame refs → no green decode garbage on loss.
   if (!pending_.save(&buf, "JPG", 58)) return;
   buf.close();
+  pending_ = QImage();
   if (jpeg.isEmpty()) return;
 
   nyx::ByteBuffer payload(jpeg.begin(), jpeg.end());

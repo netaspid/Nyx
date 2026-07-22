@@ -20,7 +20,12 @@ QImage CallFrameProvider::requestImage(const QString& id, QSize* size,
       img = remotes_.value(id.section(QLatin1Char('/'), 1, 1));
     }
   }
-  if (size) *size = img.size();
+  if (size) *size = img.isNull() ? QSize(1, 1) : img.size();
+  if (img.isNull()) {
+    QImage placeholder(1, 1, QImage::Format_ARGB32);
+    placeholder.fill(Qt::transparent);
+    return placeholder;
+  }
   return img;
 }
 

@@ -226,8 +226,7 @@ Item {
                      || node.callState === "active"
 
             IconButton {
-                visible: root.isVideoActive
-                         && (node.callCanSwitchCamera || Qt.platform.os === "android")
+                visible: root.isVideoActive && node.callCanSwitchCamera
                 theme: root.theme
                 name: "camera-switch"
                 btnSize: root.narrow ? 52 : 48

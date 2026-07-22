@@ -3244,7 +3244,6 @@ void NodeController::refreshLanPeers() {
 
 void NodeController::tickLanDiscovery() {
 #if defined(Q_OS_ANDROID)
-  // VPN / interface changes: refresh Wi‑Fi IPv4 used in beacons.
   const std::string wifi = nyx_android::wifi_ipv4();
   if (!wifi.empty()) nyx::set_lan_ipv4_override(wifi);
 #endif
@@ -3473,20 +3472,25 @@ void NodeController::startCall(bool video) {
     showToast(QStringLiteral("Нет права открывать комнату (нужна роль ведущего)"), true);
     return;
   }
+  if (video && CallVideoIo::listCameraDevices().isEmpty()) {
+    showToast(QStringLiteral("Камера не найдена — аудиозвонок"), false);
+    video = false;
+  }
   struct Ctx {
     NodeController* self;
     bool video;
   };
   auto* ctx = new Ctx{this, video};
+  const bool need_camera = video && !CallVideoIo::listCameraDevices().isEmpty();
   nyx_android::request_call_permissions(
-      video,
+      need_camera,
       [](bool granted, void* p) {
         auto* c = static_cast<Ctx*>(p);
         NodeController* self = c->self;
-        const bool video = c->video;
+        bool video = c->video;
         delete c;
         if (!granted) {
-          self->showToast(QStringLiteral("Нужен доступ к микрофону/камере"), true);
+          self->showToast(QStringLiteral("Нужен доступ к микрофону"), true);
           return;
         }
         if (!self->service_.start_call(video, self->active_chat_key_.toStdString())) {
@@ -3502,14 +3506,15 @@ void NodeController::acceptCall() {
   };
   auto* ctx = new Ctx{this};
   const bool video = callVideo();
+  const bool need_camera = video && !CallVideoIo::listCameraDevices().isEmpty();
   nyx_android::request_call_permissions(
-      video,
+      need_camera,
       [](bool granted, void* p) {
         auto* c = static_cast<Ctx*>(p);
         NodeController* self = c->self;
         delete c;
         if (!granted) {
-          self->showToast(QStringLiteral("Нужен доступ к микрофону/камере"), true);
+          self->showToast(QStringLiteral("Нужен доступ к микрофону"), true);
           return;
         }
         if (!self->service_.accept_call())
@@ -3540,41 +3545,48 @@ void NodeController::syncCallAudio() {
         const nyx::ByteBuffer buf(frag.begin(), frag.end());
         return service_.send_call_media(nyx::CallMediaType::Video, buf);
       });
-      disconnect(&call_video_, nullptr, this, nullptr);
-      connect(&call_video_, &CallVideoIo::remoteFrameChanged, this,
-              [this](const QString& peerId) {
-                const QImage img = call_video_.lastRemoteFrame();
-                if (call_frames_ && !img.isNull()) call_frames_->setRemote(peerId, img);
-                if (call_frames_) call_frames_->setPrimaryRemoteKey(call_video_.focusedPeerId());
-                ++call_frame_epoch_;
-                call_remote_frame_url_ =
-                    QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_frame_epoch_));
-                emit callRemoteFrameChanged();
-                emit callVideoPeersChanged();
-              });
-      connect(&call_video_, &CallVideoIo::localFrameChanged, this, [this]() {
-        const QImage img = call_video_.lastLocalFrame();
-        if (call_frames_ && !img.isNull()) call_frames_->setLocal(img);
-        ++call_frame_epoch_;
-        call_local_frame_url_ =
-            QUrl(QStringLiteral("image://nyxcall/local/%1").arg(call_frame_epoch_));
-        emit callLocalFrameChanged();
-      });
-      connect(&call_video_, &CallVideoIo::videoPeersChanged, this,
-              &NodeController::callVideoPeersChanged);
-      connect(&call_video_, &CallVideoIo::cameraChanged, this, [this]() {
-        saveMediaDevicePrefs();
-        emit callChanged();
-        emit mediaDevicesChanged();
-      });
-      if (!call_video_.start()) {
-        showToast(QStringLiteral("Камера недоступна — аудио без видео"), true);
-      } else {
-        emit callChanged();
+      if (!call_video_slots_wired_) {
+        call_video_slots_wired_ = true;
+        connect(&call_video_, &CallVideoIo::remoteFrameChanged, this,
+                [this](const QString& peerId) {
+                  const QImage img = call_video_.lastRemoteFrame();
+                  if (img.isNull()) return;
+                  if (call_frames_) {
+                    call_frames_->setRemote(peerId, img);
+                    call_frames_->setPrimaryRemoteKey(call_video_.focusedPeerId());
+                  }
+                  ++call_frame_epoch_;
+                  call_remote_frame_url_ =
+                      QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_frame_epoch_));
+                  emit callRemoteFrameChanged();
+                  emit callVideoPeersChanged();
+                });
+        connect(&call_video_, &CallVideoIo::localFrameChanged, this, [this]() {
+          const QImage img = call_video_.lastLocalFrame();
+          if (img.isNull()) return;
+          if (call_frames_) call_frames_->setLocal(img);
+          ++call_frame_epoch_;
+          call_local_frame_url_ =
+              QUrl(QStringLiteral("image://nyxcall/local/%1").arg(call_frame_epoch_));
+          emit callLocalFrameChanged();
+        });
+        connect(&call_video_, &CallVideoIo::videoPeersChanged, this,
+                &NodeController::callVideoPeersChanged);
+        connect(&call_video_, &CallVideoIo::cameraChanged, this, [this]() {
+          saveMediaDevicePrefs();
+          emit mediaDevicesChanged();
+        });
+      }
+      if (!call_video_.running()) {
+        call_video_.start();
+        if (!call_video_.capturing()) {
+          showToast(QStringLiteral("Камера недоступна — только приём видео"), false);
+        }
         emit mediaDevicesChanged();
       }
-    } else {
+    } else if (call_video_slots_wired_ || call_video_.running()) {
       disconnect(&call_video_, nullptr, this, nullptr);
+      call_video_slots_wired_ = false;
       call_video_.stop();
       if (call_frames_) call_frames_->clear();
       call_remote_frame_url_.clear();
@@ -3587,6 +3599,7 @@ void NodeController::syncCallAudio() {
     nyx_android::set_voip_audio_mode(false);
 #endif
     disconnect(&call_video_, nullptr, this, nullptr);
+    call_video_slots_wired_ = false;
     call_audio_.stop();
     call_video_.stop();
     if (call_frames_) call_frames_->clear();
@@ -3603,13 +3616,7 @@ QUrl NodeController::callRemoteFrameUrl() const { return call_remote_frame_url_;
 QUrl NodeController::callLocalFrameUrl() const { return call_local_frame_url_; }
 
 bool NodeController::callCanSwitchCamera() const {
-  if (call_video_.canSwitchCamera()) return true;
-#if defined(Q_OS_ANDROID)
-  // Android may enumerate front/back late; keep switch available during video calls.
-  return callVideo() && CallVideoIo::listCameraDevices().size() >= 1;
-#else
-  return false;
-#endif
+  return call_video_.canSwitchCamera();
 }
 
 QString NodeController::callFocusedPeerId() const { return call_video_.focusedPeerId(); }
@@ -3722,9 +3729,11 @@ void NodeController::setCallFocusedPeer(const QString& peerIdHex) {
   call_video_.setFocusedPeerId(id);
   if (call_frames_) call_frames_->setPrimaryRemoteKey(id);
   const QImage img = call_video_.lastRemoteFrame();
-  if (call_frames_) {
-    if (!img.isNull()) call_frames_->setRemote(id, img);
+  if (img.isNull()) {
+    emit callVideoPeersChanged();
+    return;
   }
+  if (call_frames_) call_frames_->setRemote(id, img);
   ++call_frame_epoch_;
   call_remote_frame_url_ =
       QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_frame_epoch_));
