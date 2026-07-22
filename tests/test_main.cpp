@@ -1432,12 +1432,13 @@ static void test_call_av1_fragment() {
   auto frags = nyx::fragment_av1_frame(7, true, big, nyx::kMaxCallMediaPayload);
   assert(!frags.empty());
   nyx::CallVideoReassembler reasm;
-  std::optional<nyx::ByteBuffer> full;
+  std::optional<nyx::CallVideoReassembler::Assembled> full;
   for (const auto& f : frags) {
     full = reasm.push(f);
   }
-  assert(full && full->size() == big.size());
-  assert(std::equal(full->begin(), full->end(), big.begin()));
+  assert(full && full->data.size() == big.size());
+  assert(full->keyframe);
+  assert(std::equal(full->data.begin(), full->data.end(), big.begin()));
 
   nyx::Av1Encoder enc;
   nyx::Av1Decoder dec;

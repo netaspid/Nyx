@@ -35,13 +35,14 @@ void NodeService::emit_call_changed() {
   if (cb) cb();
 }
 
-void NodeService::emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload) {
+void NodeService::emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
+                                  const nyx::UserId& from) {
   CallMediaCallback cb;
   {
     std::lock_guard lock(cb_mutex_);
     cb = on_call_media_;
   }
-  if (cb) cb(type, payload);
+  if (cb) cb(type, payload, from);
 }
 
 void NodeService::stop_call_mesh() {
@@ -102,10 +103,10 @@ void NodeService::ensure_field_call_mesh() {
     emit_status("не удалось открыть call-mesh сокет");
     return;
   }
-  mesh->set_on_realtime([this](const nyx::UserId&, nyx::ByteBuffer raw) {
+  mesh->set_on_realtime([this](const nyx::UserId& from, nyx::ByteBuffer raw) {
     auto frame = nyx::CallMediaFrame::decode(raw);
     if (!frame) return;
-    emit_call_media(frame->type, frame->payload);
+    emit_call_media(frame->type, frame->payload, from);
   });
 
   {
@@ -430,15 +431,25 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
     bool accepted = false;
     {
       std::lock_guard lock(call_mutex_);
-      if (!call_.idle()) {
+      if (call_.state == nyx::CallState::Active) {
         busy_rej.call_id = inv->call_id;
         busy_rej.reason = nyx::CallRejectReason::Busy;
         send_busy = true;
-      } else if (call_.on_invite(*inv)) {
-        call_session_id_ = session->id;
-        call_title_ = session->title;
-        call_is_host_ = false;
-        accepted = true;
+      } else {
+        // Replace stale Incoming/Outgoing/Ringing/Ended so callback after hangup works.
+        if (!call_.idle()) {
+          stop_call_mesh();
+          call_is_host_ = false;
+          call_.reset();
+          call_session_id_.clear();
+          call_title_.clear();
+        }
+        if (call_.on_invite(*inv)) {
+          call_session_id_ = session->id;
+          call_title_ = session->title;
+          call_is_host_ = false;
+          accepted = true;
+        }
       }
     }
     if (send_busy) {
@@ -519,12 +530,17 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
     {
       std::lock_guard lock(call_mutex_);
       ok = call_.on_hangup(*hang);
+      // Hangup for this session with mismatched/stale call_id — still clear local state.
+      if (!ok && !call_.idle() && call_session_id_ == session->id) {
+        ok = true;
+      }
       if (ok) {
         stop_call_mesh();
         call_is_host_ = false;
         call_.reset();
         call_session_id_.clear();
         call_title_.clear();
+        call_media_seq_ = 0;
       }
     }
     if (ok) {
@@ -636,6 +652,15 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
   nyx::CallInviteMessage inv;
   {
     std::lock_guard lock(call_mutex_);
+    // Ghost Incoming/Ended after lost hangup must not block callback.
+    if (!call_.idle() && call_.state != nyx::CallState::Active) {
+      stop_call_mesh();
+      call_is_host_ = false;
+      call_.reset();
+      call_session_id_.clear();
+      call_title_.clear();
+      call_media_seq_ = 0;
+    }
     if (scope == nyx::CallScope::Field) {
       if (!call_.open_field_room(mode, target)) {
         emit_status("звонок уже идёт");
@@ -653,7 +678,7 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
     inv.mode = mode;
     inv.scope = scope;
     inv.group_or_peer = target;
-    inv.sdp_lite = "nyx-call/1;av1;room";
+    inv.sdp_lite = "nyx-call/1;jpeg;room";
     call_session_id_ = session->id;
     call_title_ = session->title;
   }
@@ -693,14 +718,24 @@ bool NodeService::accept_call() {
     if (!call_.accept(call_.mode)) return false;
     acc.call_id = call_.call_id;
     acc.mode = call_.mode;
-    acc.sdp_lite = "nyx-call/1;av1;room";
+    acc.sdp_lite = "nyx-call/1;jpeg;room";
     sid = call_session_id_;
     scope = call_.scope;
     call_is_host_ = false;
   }
   auto session = find_session(sid);
   if (!session || !send_call_frame_on_session(session, acc.encode())) {
+    {
+      std::lock_guard lock(call_mutex_);
+      stop_call_mesh();
+      call_is_host_ = false;
+      call_.reset();
+      call_session_id_.clear();
+      call_title_.clear();
+      call_media_seq_ = 0;
+    }
     emit_status("не удалось войти в комнату");
+    emit_call_changed();
     return false;
   }
   emit_call_changed();
@@ -759,6 +794,7 @@ bool NodeService::hangup_call() {
     call_.reset();
     call_session_id_.clear();
     call_title_.clear();
+    call_media_seq_ = 0;
   }
   self = load_profile().public_key;
   gone.user_id = self;

@@ -10,15 +10,20 @@ Dialog {
     required property var theme
     required property var node
 
+    readonly property bool fullBleed: Qt.platform.os === "android"
+                                      || (parent && parent.width < 720)
+
     modal: true
     standardButtons: Dialog.NoButton
-    width: Math.min(440, parent ? parent.width - 48 : 440)
-    height: Math.min(640, parent ? parent.height - 80 : 640)
+    width: fullBleed ? (parent ? parent.width : Overlay.overlay.width) : (Math.min(440, parent ? parent.width - 48 : 440))
+    height: fullBleed ? (parent ? parent.height : Overlay.overlay.height) : (Math.min(640, parent ? parent.height - 80 : 640))
     padding: 0
+    x: fullBleed ? 0 : (parent ? Math.round((parent.width - width) / 2) : 0)
+    y: fullBleed ? 0 : (parent ? Math.round((parent.height - height) / 2) : 0)
 
     background: Rectangle {
         color: theme.bgSidebar
-        radius: theme.radiusBtn
+        radius: root.fullBleed ? 0 : theme.radiusBtn
         border.color: theme.border
     }
 
@@ -27,6 +32,8 @@ Dialog {
         title: qsTr("Настройки")
         dialog: root
     }
+
+    onOpened: node.refreshMediaDevices()
 
     contentItem: ColumnLayout {
         width: parent ? parent.width : implicitWidth
@@ -211,6 +218,134 @@ Dialog {
                     theme: root.theme
                     text: qsTr("Копировать id")
                     onClicked: node.copyToClipboard(node.profileIdShort)
+                }
+
+                Label {
+                    text: qsTr("Звонки")
+                    color: theme.textSecondary
+                    font.pixelSize: 12
+                    font.capitalization: Font.AllUppercase
+                    Layout.topMargin: 8
+                }
+
+                Label {
+                    visible: Qt.platform.os !== "android"
+                    Layout.fillWidth: true
+                    text: qsTr("Камера")
+                    color: theme.textMuted
+                    font.pixelSize: 11
+                }
+
+                NyxComboBox {
+                    id: cameraBox
+                    visible: Qt.platform.os !== "android"
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    textRole: "text"
+                    model: node.cameraDeviceList
+                    Component.onCompleted: syncCamera()
+                    onActivated: {
+                        const row = rowAt(currentIndex)
+                        if (row && row.id !== undefined)
+                            node.selectedCameraId = row.id
+                    }
+                    function syncCamera() {
+                        const cur = node.selectedCameraId
+                        const list = node.cameraDeviceList
+                        for (let i = 0; i < list.length; ++i) {
+                            if (list[i].id === cur) {
+                                currentIndex = i
+                                return
+                            }
+                        }
+                        currentIndex = list.length > 0 ? 0 : -1
+                    }
+                    Connections {
+                        target: node
+                        function onMediaDevicesChanged() { cameraBox.syncCamera() }
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Микрофон")
+                    color: theme.textMuted
+                    font.pixelSize: 11
+                }
+
+                NyxComboBox {
+                    id: micBox
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    textRole: "text"
+                    model: node.audioInputDeviceList
+                    Component.onCompleted: syncMic()
+                    onActivated: {
+                        const row = rowAt(currentIndex)
+                        if (row && row.id !== undefined)
+                            node.selectedAudioInputId = row.id
+                    }
+                    function syncMic() {
+                        const cur = node.selectedAudioInputId
+                        const list = node.audioInputDeviceList
+                        for (let i = 0; i < list.length; ++i) {
+                            if (list[i].id === cur) {
+                                currentIndex = i
+                                return
+                            }
+                        }
+                        currentIndex = list.length > 0 ? 0 : -1
+                    }
+                    Connections {
+                        target: node
+                        function onMediaDevicesChanged() { micBox.syncMic() }
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Динамик / выход")
+                    color: theme.textMuted
+                    font.pixelSize: 11
+                }
+
+                NyxComboBox {
+                    id: speakerBox
+                    Layout.fillWidth: true
+                    theme: root.theme
+                    textRole: "text"
+                    model: node.audioOutputDeviceList
+                    Component.onCompleted: syncSpeaker()
+                    onActivated: {
+                        const row = rowAt(currentIndex)
+                        if (row && row.id !== undefined)
+                            node.selectedAudioOutputId = row.id
+                    }
+                    function syncSpeaker() {
+                        const cur = node.selectedAudioOutputId
+                        const list = node.audioOutputDeviceList
+                        for (let i = 0; i < list.length; ++i) {
+                            if (list[i].id === cur) {
+                                currentIndex = i
+                                return
+                            }
+                        }
+                        currentIndex = list.length > 0 ? 0 : -1
+                    }
+                    Connections {
+                        target: node
+                        function onMediaDevicesChanged() { speakerBox.syncSpeaker() }
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: Qt.platform.os === "android"
+                          ? qsTr("Камеру переключайте во время видеозвонка. Устройства звука применяются сразу.")
+                          : qsTr("Выбор сохраняется и применяется в следующих звонках (и сразу, если звонок уже идёт).")
+                    color: theme.textMuted
+                    font.pixelSize: 11
                 }
 
                 Label {

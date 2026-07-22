@@ -1,4 +1,5 @@
 #include "node_controller.hpp"
+#include "android_platform.hpp"
 #include "win_chrome.hpp"
 
 #include "nyx/account_store.hpp"
@@ -14,10 +15,13 @@
 #include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/markdown_format.hpp"
+#include "nyx/nat.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <limits>
 
 #include <QAction>
 #include <QClipboard>
@@ -27,12 +31,15 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QImage>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QTemporaryFile>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QMenu>
 #include <QPainter>
 #include <QPixmap>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStyleHints>
 #include <QStandardPaths>
@@ -94,6 +101,7 @@ bool parse_user_id_hex(const QString& hex, nyx::UserId& out) {
 }  // namespace
 
 NodeController::NodeController(QObject* parent) : QObject(parent) {
+#if !defined(Q_OS_ANDROID)
   if (QSystemTrayIcon::isSystemTrayAvailable()) {
     tray_icon_ = new QSystemTrayIcon(makeTrayIcon(), this);
     tray_icon_->setToolTip(QStringLiteral("Nyx"));
@@ -109,8 +117,10 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
     });
     tray_icon_->show();
   }
+#endif
 
   wireCallbacks();
+  loadMediaDevicePrefs();
 
   refreshAccountList();
   account_gate_error_.clear();
@@ -149,6 +159,9 @@ void NodeController::beginMainSession() {
   refreshContactList();
   loadProfileMeta();
   refreshFileAccessLists();
+#if defined(Q_OS_ANDROID)
+  nyx_android::request_notification_permission();
+#endif
 
   lan_discovery_timer_.setInterval(5000);
   connect(&lan_discovery_timer_, &QTimer::timeout, this, &NodeController::tickLanDiscovery);
@@ -1734,30 +1747,71 @@ void NodeController::refreshFileLists() {
 }
 
 QString NodeController::pickFolder() {
+#if defined(Q_OS_ANDROID)
+  // Scoped storage: user Documents trees are not readable via std::filesystem.
+  // Share roots live under app-private storage so indexing/transfer work.
+  const QString base =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/shares");
+  QDir().mkpath(base);
+  bool ok = false;
+  const QString name = QInputDialog::getText(
+      nullptr, QStringLiteral("Новая папка"),
+      QStringLiteral(
+          "На Android нельзя индексировать системные папки (Documents и т.п.).\n"
+          "Создайте папку в хранилище Nyx и кладите туда файлы для обмена.\n\n"
+          "Имя папки:"),
+      QLineEdit::Normal, QStringLiteral("shared"), &ok);
+  if (!ok) return {};
+  QString clean = name.trimmed();
+  clean.replace(QRegularExpression(QStringLiteral(R"([\\/:*?"<>|])")), QStringLiteral("_"));
+  if (clean.isEmpty()) clean = QStringLiteral("shared");
+  const QString path = QDir(base).filePath(clean);
+  if (!QDir().mkpath(path)) {
+    showToast(QStringLiteral("Не удалось создать папку"), true);
+    return {};
+  }
+  showToast(QStringLiteral("Папка в хранилище приложения: %1").arg(path));
+  return path;
+#else
   const QString dir =
       QFileDialog::getExistingDirectory(nullptr, QStringLiteral("Выберите папку для индекса"),
                                         QDir::homePath());
   return dir;
+#endif
 }
 
 QString NodeController::pickSaveFile(const QString& suggestedFileName) {
-  const QString downloads =
-      QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
-  const QString base = downloads.isEmpty() ? QDir::homePath() : downloads;
   const QString name = suggestedFileName.trimmed().isEmpty()
                            ? QStringLiteral("download")
                            : suggestedFileName.trimmed();
+#if defined(Q_OS_ANDROID)
+  const QString downloads =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/downloads");
+  QDir().mkpath(downloads);
+  return QDir(downloads).filePath(name);
+#else
+  const QString downloads =
+      QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+  const QString base = downloads.isEmpty() ? QDir::homePath() : downloads;
   const QString suggested = QDir(base).filePath(name);
   return QFileDialog::getSaveFileName(nullptr, QStringLiteral("Сохранить файл"), suggested,
                                       QStringLiteral("Все файлы (*.*)"));
+#endif
 }
 
 QString NodeController::pickSaveFolder() {
+#if defined(Q_OS_ANDROID)
+  const QString downloads =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/downloads");
+  QDir().mkpath(downloads);
+  return downloads;
+#else
   const QString downloads =
       QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
   const QString start = downloads.isEmpty() ? QDir::homePath() : downloads;
   return QFileDialog::getExistingDirectory(nullptr, QStringLiteral("Выберите папку для сохранения"),
                                            start);
+#endif
 }
 
 void NodeController::runIndexJob(const QString& path, const QString& scopeGroupId, bool rescan) {
@@ -2257,23 +2311,31 @@ void NodeController::wireCallbacks() {
         [this]() {
           emit callChanged();
           syncCallAudio();
+          syncCallNotifications();
         },
         Qt::QueuedConnection);
   });
-  service_.set_on_call_media([this](nyx::CallMediaType type, const nyx::ByteBuffer& payload) {
-    QByteArray packet(reinterpret_cast<const char*>(payload.data()),
-                      static_cast<int>(payload.size()));
-    QMetaObject::invokeMethod(
-        this,
-        [this, type, packet]() {
-          if (type == nyx::CallMediaType::Opus) {
-            call_audio_.onRemoteOpus(packet);
-          } else if (type == nyx::CallMediaType::Video) {
-            call_video_.onRemoteVideo(packet);
-          }
-        },
-        Qt::QueuedConnection);
-  });
+  service_.set_on_call_media(
+      [this](nyx::CallMediaType type, const nyx::ByteBuffer& payload, const nyx::UserId& from) {
+        QByteArray packet(reinterpret_cast<const char*>(payload.data()),
+                          static_cast<int>(payload.size()));
+        QString peer;
+        const bool from_zero =
+            std::all_of(from.begin(), from.end(), [](uint8_t b) { return b == 0; });
+        if (!from_zero) {
+          peer = QString::fromStdString(nyx::to_hex(from.data(), from.size()));
+        }
+        QMetaObject::invokeMethod(
+            this,
+            [this, type, packet, peer]() {
+              if (type == nyx::CallMediaType::Opus) {
+                call_audio_.onRemoteOpus(packet);
+              } else if (type == nyx::CallMediaType::Video) {
+                call_video_.onRemoteVideo(peer, packet);
+              }
+            },
+            Qt::QueuedConnection);
+      });
 
   service_.set_on_file_progress([this](const std::string& label, int percent) {
     QMetaObject::invokeMethod(
@@ -3047,8 +3109,13 @@ void NodeController::searchMessages(const QString& query) {
 void NodeController::showWindow() { emit showMainWindow(); }
 
 void NodeController::hideToTray() {
+#if defined(Q_OS_ANDROID)
+  // No system tray — keep window; optional minimize is OS-managed.
+  return;
+#else
   if (tray_icon_) tray_icon_->show();
   emit requestCloseToTray();
+#endif
 }
 
 void NodeController::setStatus(const QString& text) {
@@ -3176,6 +3243,11 @@ void NodeController::refreshLanPeers() {
 }
 
 void NodeController::tickLanDiscovery() {
+#if defined(Q_OS_ANDROID)
+  // VPN / interface changes: refresh Wi‑Fi IPv4 used in beacons.
+  const std::string wifi = nyx_android::wifi_ipv4();
+  if (!wifi.empty()) nyx::set_lan_ipv4_override(wifi);
+#endif
   refreshLanPeers();
 }
 
@@ -3401,13 +3473,49 @@ void NodeController::startCall(bool video) {
     showToast(QStringLiteral("Нет права открывать комнату (нужна роль ведущего)"), true);
     return;
   }
-  if (!service_.start_call(video, active_chat_key_.toStdString())) {
-    showToast(QStringLiteral("Не удалось начать звонок"), true);
-  }
+  struct Ctx {
+    NodeController* self;
+    bool video;
+  };
+  auto* ctx = new Ctx{this, video};
+  nyx_android::request_call_permissions(
+      video,
+      [](bool granted, void* p) {
+        auto* c = static_cast<Ctx*>(p);
+        NodeController* self = c->self;
+        const bool video = c->video;
+        delete c;
+        if (!granted) {
+          self->showToast(QStringLiteral("Нужен доступ к микрофону/камере"), true);
+          return;
+        }
+        if (!self->service_.start_call(video, self->active_chat_key_.toStdString())) {
+          self->showToast(QStringLiteral("Не удалось начать звонок"), true);
+        }
+      },
+      ctx);
 }
 
 void NodeController::acceptCall() {
-  if (!service_.accept_call()) showToast(QStringLiteral("Не удалось войти в комнату"), true);
+  struct Ctx {
+    NodeController* self;
+  };
+  auto* ctx = new Ctx{this};
+  const bool video = callVideo();
+  nyx_android::request_call_permissions(
+      video,
+      [](bool granted, void* p) {
+        auto* c = static_cast<Ctx*>(p);
+        NodeController* self = c->self;
+        delete c;
+        if (!granted) {
+          self->showToast(QStringLiteral("Нужен доступ к микрофону/камере"), true);
+          return;
+        }
+        if (!self->service_.accept_call())
+          self->showToast(QStringLiteral("Не удалось войти в комнату"), true);
+      },
+      ctx);
 }
 
 void NodeController::rejectCall() { service_.reject_call(); }
@@ -3418,6 +3526,9 @@ void NodeController::syncCallAudio() {
   const auto st = service_.call_state();
   const bool video = service_.call_mode() == nyx::CallMode::AudioVideo;
   if (st == nyx::CallState::Active) {
+#if defined(Q_OS_ANDROID)
+    nyx_android::set_voip_audio_mode(true);
+#endif
     call_audio_.setSendFn([this](const std::vector<uint8_t>& packet) {
       return service_.send_call_media(nyx::CallMediaType::Opus, packet);
     });
@@ -3425,37 +3536,201 @@ void NodeController::syncCallAudio() {
       showToast(QStringLiteral("Микрофон/динамик недоступны — только сигналинг"), true);
     }
     if (video) {
-      call_video_.setSendFn([this](const QByteArray& jpeg) {
-        const nyx::ByteBuffer buf(jpeg.begin(), jpeg.end());
+      call_video_.setSendFn([this](const QByteArray& frag) {
+        const nyx::ByteBuffer buf(frag.begin(), frag.end());
         return service_.send_call_media(nyx::CallMediaType::Video, buf);
       });
-      disconnect(&call_video_, &CallVideoIo::remoteFrameChanged, this, nullptr);
-      connect(&call_video_, &CallVideoIo::remoteFrameChanged, this, [this]() {
-        const QImage img = call_video_.lastRemoteFrame();
-        if (img.isNull()) return;
-        const QString path =
-            QDir::temp().filePath(QStringLiteral("nyx-call-remote.jpg"));
-        if (img.save(path, "JPG", 80)) {
-          call_remote_frame_url_ = QUrl::fromLocalFile(path);
-          call_remote_frame_url_.setQuery(QString::number(QDateTime::currentMSecsSinceEpoch()));
-          emit callRemoteFrameChanged();
-        }
+      disconnect(&call_video_, nullptr, this, nullptr);
+      connect(&call_video_, &CallVideoIo::remoteFrameChanged, this,
+              [this](const QString& peerId) {
+                const QImage img = call_video_.lastRemoteFrame();
+                if (call_frames_ && !img.isNull()) call_frames_->setRemote(peerId, img);
+                if (call_frames_) call_frames_->setPrimaryRemoteKey(call_video_.focusedPeerId());
+                ++call_frame_epoch_;
+                call_remote_frame_url_ =
+                    QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_frame_epoch_));
+                emit callRemoteFrameChanged();
+                emit callVideoPeersChanged();
+              });
+      connect(&call_video_, &CallVideoIo::localFrameChanged, this, [this]() {
+        const QImage img = call_video_.lastLocalFrame();
+        if (call_frames_ && !img.isNull()) call_frames_->setLocal(img);
+        ++call_frame_epoch_;
+        call_local_frame_url_ =
+            QUrl(QStringLiteral("image://nyxcall/local/%1").arg(call_frame_epoch_));
+        emit callLocalFrameChanged();
+      });
+      connect(&call_video_, &CallVideoIo::videoPeersChanged, this,
+              &NodeController::callVideoPeersChanged);
+      connect(&call_video_, &CallVideoIo::cameraChanged, this, [this]() {
+        saveMediaDevicePrefs();
+        emit callChanged();
+        emit mediaDevicesChanged();
       });
       if (!call_video_.start()) {
         showToast(QStringLiteral("Камера недоступна — аудио без видео"), true);
+      } else {
+        emit callChanged();
+        emit mediaDevicesChanged();
       }
     } else {
+      disconnect(&call_video_, nullptr, this, nullptr);
       call_video_.stop();
+      if (call_frames_) call_frames_->clear();
+      call_remote_frame_url_.clear();
+      call_local_frame_url_.clear();
+      emit callRemoteFrameChanged();
+      emit callLocalFrameChanged();
     }
   } else {
+#if defined(Q_OS_ANDROID)
+    nyx_android::set_voip_audio_mode(false);
+#endif
+    disconnect(&call_video_, nullptr, this, nullptr);
     call_audio_.stop();
     call_video_.stop();
+    if (call_frames_) call_frames_->clear();
     call_remote_frame_url_.clear();
+    call_local_frame_url_.clear();
     emit callRemoteFrameChanged();
+    emit callLocalFrameChanged();
+    emit callVideoPeersChanged();
   }
 }
 
 QUrl NodeController::callRemoteFrameUrl() const { return call_remote_frame_url_; }
+
+QUrl NodeController::callLocalFrameUrl() const { return call_local_frame_url_; }
+
+bool NodeController::callCanSwitchCamera() const {
+  if (call_video_.canSwitchCamera()) return true;
+#if defined(Q_OS_ANDROID)
+  // Android may enumerate front/back late; keep switch available during video calls.
+  return callVideo() && CallVideoIo::listCameraDevices().size() >= 1;
+#else
+  return false;
+#endif
+}
+
+QString NodeController::callFocusedPeerId() const { return call_video_.focusedPeerId(); }
+
+void NodeController::setCallFrameProvider(CallFrameProvider* provider) {
+  call_frames_ = provider;
+}
+
+void NodeController::loadMediaDevicePrefs() {
+  QSettings s;
+  s.beginGroup(QStringLiteral("callMedia"));
+  const QString cam = s.value(QStringLiteral("cameraId")).toString();
+  const QString ain = s.value(QStringLiteral("audioInputId")).toString();
+  const QString aout = s.value(QStringLiteral("audioOutputId")).toString();
+  s.endGroup();
+  if (!cam.isEmpty()) call_video_.setPreferredCameraId(cam);
+  if (!ain.isEmpty()) call_audio_.setPreferredInputId(ain);
+  if (!aout.isEmpty()) call_audio_.setPreferredOutputId(aout);
+}
+
+void NodeController::saveMediaDevicePrefs() const {
+  QSettings s;
+  s.beginGroup(QStringLiteral("callMedia"));
+  s.setValue(QStringLiteral("cameraId"), call_video_.preferredCameraId());
+  s.setValue(QStringLiteral("audioInputId"), call_audio_.preferredInputId());
+  s.setValue(QStringLiteral("audioOutputId"), call_audio_.preferredOutputId());
+  s.endGroup();
+}
+
+void NodeController::refreshMediaDevices() { emit mediaDevicesChanged(); }
+
+QVariantList NodeController::cameraDeviceList() const { return CallVideoIo::listCameraDevices(); }
+
+QVariantList NodeController::audioInputDeviceList() const {
+  return CallAudioIo::listInputDevices();
+}
+
+QVariantList NodeController::audioOutputDeviceList() const {
+  return CallAudioIo::listOutputDevices();
+}
+
+QString NodeController::selectedCameraId() const { return call_video_.preferredCameraId(); }
+
+QString NodeController::selectedAudioInputId() const { return call_audio_.preferredInputId(); }
+
+QString NodeController::selectedAudioOutputId() const {
+  return call_audio_.preferredOutputId();
+}
+
+void NodeController::setSelectedCameraId(const QString& id) {
+  call_video_.setPreferredCameraId(id);
+  saveMediaDevicePrefs();
+  emit mediaDevicesChanged();
+  emit callChanged();
+}
+
+void NodeController::setSelectedAudioInputId(const QString& id) {
+  call_audio_.setPreferredInputId(id);
+  saveMediaDevicePrefs();
+  emit mediaDevicesChanged();
+}
+
+void NodeController::setSelectedAudioOutputId(const QString& id) {
+  call_audio_.setPreferredOutputId(id);
+  saveMediaDevicePrefs();
+  emit mediaDevicesChanged();
+}
+
+QString NodeController::resolveCallPeerName(const QString& peerIdHex) const {
+  const QString uid = peerIdHex.trimmed().toLower();
+  if (uid.isEmpty() || uid == QLatin1String("direct")) return callTitle();
+  for (const QVariant& v : contact_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("userId")).toString().toLower() == uid)
+      return m.value(QStringLiteral("nickname")).toString();
+  }
+  for (const QVariant& v : field_info_members_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("userId")).toString().toLower() == uid)
+      return m.value(QStringLiteral("nickname")).toString();
+  }
+  return uid.left(8);
+}
+
+QVariantList NodeController::callVideoPeers() const {
+  QVariantList out;
+  for (const QString& id : call_video_.videoPeerIds()) {
+    QVariantMap row;
+    row.insert(QStringLiteral("userId"), id);
+    row.insert(QStringLiteral("nickname"), resolveCallPeerName(id));
+    row.insert(QStringLiteral("focused"), id == call_video_.focusedPeerId());
+    out.append(row);
+  }
+  return out;
+}
+
+void NodeController::switchCallCamera() {
+  if (!call_video_.switchCamera()) {
+    showToast(QStringLiteral("Другая камера недоступна"), true);
+    return;
+  }
+  saveMediaDevicePrefs();
+  emit callChanged();
+  emit mediaDevicesChanged();
+}
+
+void NodeController::setCallFocusedPeer(const QString& peerIdHex) {
+  const QString id = peerIdHex.trimmed().toLower();
+  if (id.isEmpty()) return;
+  call_video_.setFocusedPeerId(id);
+  if (call_frames_) call_frames_->setPrimaryRemoteKey(id);
+  const QImage img = call_video_.lastRemoteFrame();
+  if (call_frames_) {
+    if (!img.isNull()) call_frames_->setRemote(id, img);
+  }
+  ++call_frame_epoch_;
+  call_remote_frame_url_ =
+      QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_frame_epoch_));
+  emit callRemoteFrameChanged();
+  emit callVideoPeersChanged();
+}
 
 void NodeController::createGroup(const QString& name, const QString& description,
                                  const QString& direction, const QString& tags,
@@ -3532,9 +3807,30 @@ void NodeController::deleteGroup(const QString& groupIdHex) {
     showToast(QStringLiteral("Поле не выбрано"));
     return;
   }
+  removeConversation(QStringLiteral("group:") + gid);
+}
 
-  if (active_chat_ref_id_.trimmed().toLower() == gid) {
-    service_.stop();
+void NodeController::removeConversation(const QString& key) {
+  const QString sid = key.trimmed();
+  if (sid.isEmpty()) {
+    showToast(QStringLiteral("Чат не выбран"));
+    return;
+  }
+
+  const bool was_active = (active_chat_key_ == sid) ||
+                          (sid.startsWith(QStringLiteral("group:")) &&
+                           active_chat_ref_id_.trimmed().toLower() ==
+                               sid.mid(6).trimmed().toLower()) ||
+                          (sid.startsWith(QStringLiteral("dm:")) &&
+                           active_chat_ref_id_.trimmed().toLower() ==
+                               sid.mid(3).trimmed().toLower());
+
+  if (!service_.remove_conversation(sid.toStdString())) {
+    showToast(QStringLiteral("Не удалось удалить"), true);
+    return;
+  }
+
+  if (was_active) {
     endLiveSession();
     peer_title_.clear();
     active_chat_key_.clear();
@@ -3544,13 +3840,11 @@ void NodeController::deleteGroup(const QString& groupIdHex) {
     emit chatChanged();
   }
 
-  if (!service_.delete_group(gid.toStdString())) {
-    showToast(QStringLiteral("Не удалось удалить поле"));
-    return;
-  }
   refreshGroupList();
+  refreshContactList();
   refreshChatList();
-  showToast(QStringLiteral("Поле удалено"));
+  showToast(sid.startsWith(QStringLiteral("group:")) ? QStringLiteral("Поле удалено из списка")
+                                                     : QStringLiteral("Чат удалён из списка"));
 }
 
 void NodeController::removeFieldMember(const QString& groupIdHex, const QString& userIdHex) {
@@ -3731,8 +4025,10 @@ void NodeController::clearToast() {
 }
 
 void NodeController::setNativeChromeDark(bool dark) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
   if (auto* hints = QGuiApplication::styleHints())
     hints->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+#endif
   nyxApplyNativeChromeDarkAll(dark);
 }
 
@@ -3740,4 +4036,33 @@ void NodeController::setWindowActive(bool active) {
   if (window_active_ == active) return;
   window_active_ = active;
   emit windowActiveChanged();
+  syncCallNotifications();
+}
+
+void NodeController::syncCallNotifications() {
+  const auto st = service_.call_state();
+  const QString title = callTitle();
+  const bool video = callVideo();
+
+#if defined(Q_OS_ANDROID)
+  if (st == nyx::CallState::Incoming) {
+    nyx_android::acquire_call_wake_lock();
+    nyx_android::show_incoming_call_notification(title.toStdString());
+    nyx_android::bring_app_to_foreground();
+  } else if (st == nyx::CallState::Active || st == nyx::CallState::Outgoing ||
+             st == nyx::CallState::Ringing) {
+    if (st == nyx::CallState::Active)
+      nyx_android::show_active_call_notification(title.toStdString(), video);
+  } else {
+    nyx_android::cancel_call_notifications();
+    nyx_android::release_call_wake_lock();
+  }
+#else
+  if (st == nyx::CallState::Incoming && tray_icon_ && !window_active_) {
+    tray_icon_->showMessage(
+        QStringLiteral("Входящий звонок"),
+        title.isEmpty() ? QStringLiteral("Nyx") : title,
+        QSystemTrayIcon::Information, 8000);
+  }
+#endif
 }
