@@ -100,10 +100,8 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
 }  // namespace
 
 bool MdnsLan::setup_socket(UdpSocket& socket, std::string* err) {
-  if (!socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err)) return false;
-  const std::string iface = lan_ipv4_override();
-  if (!iface.empty()) socket.set_multicast_interface(iface, nullptr);
-  return true;
+  return socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err,
+                                        lan_ipv4_override());
 }
 
 bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint16_t port,
@@ -112,9 +110,18 @@ bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint1
   socket.enable_broadcast(nullptr);
   const std::string iface = host_ip.empty() ? lan_ipv4_override() : host_ip;
   if (!iface.empty()) socket.set_multicast_interface(iface, nullptr);
-  // Multicast + broadcast: many phone APs / VPNs drop 239.x but keep broadcast.
   bool ok = socket.send_to(wire, kDiscoveryGroup, kDiscoveryPort);
   ok = socket.send_to(wire, "255.255.255.255", kDiscoveryPort) || ok;
+  if (!iface.empty()) {
+    in_addr addr{};
+    if (inet_pton(AF_INET, iface.c_str(), &addr) == 1) {
+      auto* b = reinterpret_cast<uint8_t*>(&addr.s_addr);
+      b[3] = 255;
+      char directed[32] = {};
+      inet_ntop(AF_INET, &addr, directed, sizeof(directed));
+      ok = socket.send_to(wire, directed, kDiscoveryPort) || ok;
+    }
+  }
   return ok;
 }
 

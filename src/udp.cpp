@@ -1,5 +1,7 @@
 #include "nyx/udp.hpp"
 
+#include "nyx/nat.hpp"
+
 #include <cstring>
 #include <string>
 
@@ -51,6 +53,43 @@ void close_socket(uintptr_t sock) {
 #else
   close(static_cast<socket_t>(sock));
 #endif
+}
+
+in_addr resolve_mcast_iface(const std::string& iface_ipv4) {
+  in_addr iface{};
+  iface.s_addr = INADDR_ANY;
+  std::string ip = iface_ipv4;
+  if (ip.empty()) ip = lan_ipv4_override();
+  if (ip.empty()) {
+    const std::string guessed = guess_lan_ipv4();
+    if (guessed != "127.0.0.1" && guessed != "0.0.0.0") ip = guessed;
+  }
+  if (!ip.empty() && ip != "127.0.0.1" && ip != "0.0.0.0") {
+    inet_pton(AF_INET, ip.c_str(), &iface);
+  }
+  return iface;
+}
+
+bool join_mcast_group(socket_t s, const std::string& group, in_addr iface, std::string* err) {
+  ip_mreq mreq{};
+  mreq.imr_multiaddr.s_addr = inet_addr(group.c_str());
+  mreq.imr_interface = iface;
+  if (setsockopt(s, IPPROTO_IP, IP_ADD_MEMBERSHIP, reinterpret_cast<const char*>(&mreq),
+                 sizeof(mreq)) != 0) {
+    if (err) *err = "IP_ADD_MEMBERSHIP failed";
+    return false;
+  }
+  return true;
+}
+
+bool leave_mcast_group(socket_t s, const std::string& group, uint32_t iface_nbo) {
+  if (group.empty()) return true;
+  ip_mreq mreq{};
+  mreq.imr_multiaddr.s_addr = inet_addr(group.c_str());
+  mreq.imr_interface.s_addr = iface_nbo;
+  setsockopt(s, IPPROTO_IP, IP_DROP_MEMBERSHIP, reinterpret_cast<const char*>(&mreq),
+             sizeof(mreq));
+  return true;
 }
 
 }  // namespace
@@ -167,7 +206,7 @@ std::optional<ByteBuffer> UdpSocket::recv_from(std::string& host, uint16_t& port
 }
 
 bool UdpSocket::bind_multicast_listener(const std::string& group, uint16_t port,
-                                        std::string* err) {
+                                        std::string* err, const std::string& iface_ipv4) {
   if (!state_ || state_->sock == static_cast<uintptr_t>(kInvalidSocket)) {
     if (err) *err = "invalid socket";
     return false;
@@ -194,20 +233,19 @@ bool UdpSocket::bind_multicast_listener(const std::string& group, uint16_t port,
   getsockname(s, reinterpret_cast<sockaddr*>(&addr), &len);
   state_->local_port = ntohs(addr.sin_port);
 
-  in_addr iface{};
-  iface.s_addr = INADDR_ANY;
-  // Prefer explicit LAN IF when set (Wi‑Fi vs VPN/cellular).
-  // Declared in nat.hpp; avoid circular include by resolving here via inet_pton only.
-  // Caller should call set_multicast_interface after bind when override is known.
-
-  ip_mreq mreq{};
-  mreq.imr_multiaddr.s_addr = inet_addr(group.c_str());
-  mreq.imr_interface = iface;
-  if (setsockopt(s, IPPROTO_IP, IP_ADD_MEMBERSHIP, reinterpret_cast<const char*>(&mreq),
-                 sizeof(mreq)) != 0) {
-    if (err) *err = "IP_ADD_MEMBERSHIP failed";
-    return false;
+  const in_addr iface = resolve_mcast_iface(iface_ipv4);
+  if (!join_mcast_group(s, group, iface, err)) {
+    in_addr any{};
+    any.s_addr = INADDR_ANY;
+    if (!join_mcast_group(s, group, any, err)) return false;
+    state_->mcast_iface_addr = any.s_addr;
+  } else {
+    state_->mcast_iface_addr = iface.s_addr;
   }
+  state_->mcast_group = group;
+
+  setsockopt(s, IPPROTO_IP, IP_MULTICAST_IF, reinterpret_cast<const char*>(&iface),
+             sizeof(iface));
 
   int loop = 1;
   setsockopt(s, IPPROTO_IP, IP_MULTICAST_LOOP, reinterpret_cast<const char*>(&loop),
@@ -245,12 +283,25 @@ bool UdpSocket::set_multicast_interface(const std::string& ipv4, std::string* er
     if (err) *err = "bad multicast interface IP";
     return false;
   }
+
+  if (!state_->mcast_group.empty() && state_->mcast_iface_addr != iface.s_addr) {
+    leave_mcast_group(s, state_->mcast_group, state_->mcast_iface_addr);
+    std::string join_err;
+    if (!join_mcast_group(s, state_->mcast_group, iface, &join_err)) {
+      in_addr any{};
+      any.s_addr = INADDR_ANY;
+      if (!join_mcast_group(s, state_->mcast_group, any, err)) return false;
+      state_->mcast_iface_addr = any.s_addr;
+    } else {
+      state_->mcast_iface_addr = iface.s_addr;
+    }
+  }
+
   if (setsockopt(s, IPPROTO_IP, IP_MULTICAST_IF, reinterpret_cast<const char*>(&iface),
                  sizeof(iface)) != 0) {
     if (err) *err = "IP_MULTICAST_IF failed";
     return false;
   }
-  // Re-join membership on that interface is best-effort; many stacks route TX via IF.
   return true;
 }
 
