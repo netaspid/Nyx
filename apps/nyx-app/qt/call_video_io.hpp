@@ -36,6 +36,7 @@ class CallVideoIo : public QObject {
   bool start();
   void stop();
   bool running() const { return running_; }
+  bool capturing() const { return capturing_; }
 
   QImage lastRemoteFrame() const { return remote_; }
   QImage lastLocalFrame() const { return local_; }
@@ -88,6 +89,7 @@ class CallVideoIo : public QObject {
   int camera_index_ = 0;
   bool front_camera_ = false;
   bool running_ = false;
+  bool capturing_ = false;
   uint16_t frame_id_ = 0;
 
   std::unordered_map<std::string, PeerDecoder> peers_;

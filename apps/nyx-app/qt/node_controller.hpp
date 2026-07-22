@@ -559,6 +559,7 @@ class NodeController : public QObject {
   CallAudioIo call_audio_;
   CallVideoIo call_video_;
   CallFrameProvider* call_frames_ = nullptr;  // owned by QQmlEngine
+  bool call_video_slots_wired_ = false;
   QUrl call_remote_frame_url_;
   QUrl call_local_frame_url_;
   int call_frame_epoch_ = 0;
