@@ -57,11 +57,18 @@ std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id, bool keyframe,
   return out;
 }
 
-std::optional<ByteBuffer> CallVideoReassembler::push(const ByteBuffer& frag_payload) {
+std::optional<CallVideoReassembler::Assembled> CallVideoReassembler::push(
+    const ByteBuffer& frag_payload) {
   auto h = CallVideoFragHeader::read(frag_payload.data(), frag_payload.size());
   if (!h) return std::nullopt;
   const auto* body = frag_payload.data() + CallVideoFragHeader::kSize;
   const std::size_t body_len = frag_payload.size() - CallVideoFragHeader::kSize;
+
+  if (active_ && h->frame_id != cur_id_) {
+    // Ignore late fragments from an older frame (uint16 wrap-aware).
+    const uint16_t delta = static_cast<uint16_t>(cur_id_ - h->frame_id);
+    if (delta != 0 && delta < 0x8000) return std::nullopt;
+  }
 
   if (!active_ || h->frame_id != cur_id_ || h->frag_count != expected_) {
     active_ = true;
@@ -83,11 +90,11 @@ std::optional<ByteBuffer> CallVideoReassembler::push(const ByteBuffer& frag_payl
     if (!g) return std::nullopt;
   }
 
-  ByteBuffer full;
-  for (auto& p : parts_) full.insert(full.end(), p.begin(), p.end());
+  Assembled out;
+  out.keyframe = keyframe_;
+  for (auto& p : parts_) out.data.insert(out.data.end(), p.begin(), p.end());
   active_ = false;
-  (void)keyframe_;
-  return full;
+  return out;
 }
 
 Av1Encoder::Av1Encoder() {
@@ -105,18 +112,18 @@ Av1Encoder::Av1Encoder() {
   cfg.g_timebase.den = kCallVideoFps;
   cfg.rc_target_bitrate = kCallVideoTargetKbps;
   cfg.g_threads = 1;
-  cfg.g_error_resilient = 0;
+  cfg.g_error_resilient = 1;
   cfg.g_lag_in_frames = 0;
   cfg.rc_end_usage = AOM_CBR;
   cfg.kf_mode = AOM_KF_AUTO;
-  cfg.kf_max_dist = static_cast<unsigned>(kCallVideoFps * 2);
+  cfg.kf_max_dist = static_cast<unsigned>(kCallVideoFps);  // ~1s
 
   auto* ctx = new aom_codec_ctx_t{};
   if (aom_codec_enc_init(ctx, iface, &cfg, 0) != AOM_CODEC_OK) {
     delete ctx;
     return;
   }
-  aom_codec_control(ctx, AOME_SET_CPUUSED, 8);
+  aom_codec_control(ctx, AOME_SET_CPUUSED, 6);
   aom_codec_control(ctx, AV1E_SET_AQ_MODE, 3);
   aom_codec_control(ctx, AV1E_SET_TILE_COLUMNS, 0);
   aom_codec_control(ctx, AV1E_SET_TILE_ROWS, 0);

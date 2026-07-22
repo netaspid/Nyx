@@ -2,6 +2,7 @@
 
 #include "call_audio_io.hpp"
 #include "call_video_io.hpp"
+#include "call_frame_provider.hpp"
 #include "chat_list_model.hpp"
 #include "lan_peer_model.hpp"
 #include "message_model.hpp"
@@ -69,6 +70,20 @@ class NodeController : public QObject {
   Q_PROPERTY(bool canStartCall READ canStartCall NOTIFY callChanged)
   Q_PROPERTY(bool callIsFieldRoom READ callIsFieldRoom NOTIFY callChanged)
   Q_PROPERTY(QUrl callRemoteFrameUrl READ callRemoteFrameUrl NOTIFY callRemoteFrameChanged)
+  Q_PROPERTY(QUrl callLocalFrameUrl READ callLocalFrameUrl NOTIFY callLocalFrameChanged)
+  Q_PROPERTY(bool callCanSwitchCamera READ callCanSwitchCamera NOTIFY callChanged)
+  Q_PROPERTY(QString callFocusedPeerId READ callFocusedPeerId NOTIFY callVideoPeersChanged)
+  Q_PROPERTY(QVariantList callVideoPeers READ callVideoPeers NOTIFY callVideoPeersChanged)
+  Q_PROPERTY(int callFrameEpoch READ callFrameEpoch NOTIFY callRemoteFrameChanged)
+  Q_PROPERTY(QVariantList cameraDeviceList READ cameraDeviceList NOTIFY mediaDevicesChanged)
+  Q_PROPERTY(QVariantList audioInputDeviceList READ audioInputDeviceList NOTIFY mediaDevicesChanged)
+  Q_PROPERTY(QVariantList audioOutputDeviceList READ audioOutputDeviceList NOTIFY mediaDevicesChanged)
+  Q_PROPERTY(QString selectedCameraId READ selectedCameraId WRITE setSelectedCameraId
+                 NOTIFY mediaDevicesChanged)
+  Q_PROPERTY(QString selectedAudioInputId READ selectedAudioInputId WRITE setSelectedAudioInputId
+                 NOTIFY mediaDevicesChanged)
+  Q_PROPERTY(QString selectedAudioOutputId READ selectedAudioOutputId WRITE setSelectedAudioOutputId
+                 NOTIFY mediaDevicesChanged)
   Q_PROPERTY(bool windowActive READ windowActive WRITE setWindowActive NOTIFY windowActiveChanged)
   Q_PROPERTY(QString fileProgressLabel READ fileProgressLabel NOTIFY fileProgressChanged)
   Q_PROPERTY(int fileProgressPercent READ fileProgressPercent NOTIFY fileProgressChanged)
@@ -320,6 +335,7 @@ class NodeController : public QObject {
   Q_INVOKABLE void openPeerInfo(const QString& userIdHex = {});
   Q_INVOKABLE void openFilesView();
   Q_INVOKABLE void showChatView();
+  Q_INVOKABLE void leaveChat();
   Q_INVOKABLE void openFilesDialog();
   Q_INVOKABLE QString pickFolder();
   /** Диалог «Сохранить как»; suggestedFileName — исходное имя файла. */
@@ -393,12 +409,30 @@ class NodeController : public QObject {
   Q_INVOKABLE void acceptCall();
   Q_INVOKABLE void rejectCall();
   Q_INVOKABLE void hangupCall();
+  Q_INVOKABLE void switchCallCamera();
+  Q_INVOKABLE void setCallFocusedPeer(const QString& peerIdHex);
+  Q_INVOKABLE void refreshMediaDevices();
   QString callState() const;
   QString callTitle() const;
   bool callVideo() const;
   bool canStartCall() const;
   bool callIsFieldRoom() const;
   QUrl callRemoteFrameUrl() const;
+  QUrl callLocalFrameUrl() const;
+  bool callCanSwitchCamera() const;
+  QString callFocusedPeerId() const;
+  QVariantList callVideoPeers() const;
+  int callFrameEpoch() const { return call_frame_epoch_; }
+  void setCallFrameProvider(CallFrameProvider* provider);
+  QVariantList cameraDeviceList() const;
+  QVariantList audioInputDeviceList() const;
+  QVariantList audioOutputDeviceList() const;
+  QString selectedCameraId() const;
+  QString selectedAudioInputId() const;
+  QString selectedAudioOutputId() const;
+  void setSelectedCameraId(const QString& id);
+  void setSelectedAudioInputId(const QString& id);
+  void setSelectedAudioOutputId(const QString& id);
   /** Выбрать фото/видео → скопировать в chat_media → markdown `![…](nyx-media:hash)`. */
   Q_INVOKABLE QString pickChatMediaMarkdown();
   Q_INVOKABLE QString mediaLocalPath(const QString& hashHex) const;
@@ -412,6 +446,8 @@ class NodeController : public QObject {
                                    bool publicListed);
   Q_INVOKABLE QVariantMap contactInfo(const QString& userIdHex) const;
   Q_INVOKABLE void deleteGroup(const QString& groupIdHex);
+  /** Удаляет чат или поле из локального списка (ключ dm:/group:/chat:). */
+  Q_INVOKABLE void removeConversation(const QString& key);
   Q_INVOKABLE void removeFieldMember(const QString& groupIdHex, const QString& userIdHex);
   /** role: "host" | "member" — назначить ведущего звонков в поле. */
   Q_INVOKABLE void setFieldMemberRole(const QString& groupIdHex, const QString& userIdHex,
@@ -447,6 +483,9 @@ class NodeController : public QObject {
   void toastChanged();
   void callChanged();
   void callRemoteFrameChanged();
+  void callLocalFrameChanged();
+  void callVideoPeersChanged();
+  void mediaDevicesChanged();
   void windowActiveChanged();
   void fileProgressChanged();
   void fileIndexProgressChanged();
@@ -472,7 +511,6 @@ class NodeController : public QObject {
   void enterChat(const QString& peerName, const QString& connectionLabel = {},
                  int kind = 0, const QString& refId = {});
   void endLiveSession();
-  void leaveChat();
   void showGroupInView(const QString& groupIdHex);
   void loadStoredHistory(int kind, const QString& refId, const QString& convKey);
   void tickLanDiscovery();
@@ -511,10 +549,19 @@ class NodeController : public QObject {
   QString resolveAccessRootPath(const QString& rootPath) const;
   QVariantList entriesToVariant(const std::vector<nyx::FileEntry>& entries, bool remote) const;
 
+  void syncCallAudio();
+  void syncCallNotifications();
+  QString resolveCallPeerName(const QString& peerIdHex) const;
+  void loadMediaDevicePrefs();
+  void saveMediaDevicePrefs() const;
+
   nyx_app::NodeService service_;
   CallAudioIo call_audio_;
   CallVideoIo call_video_;
+  CallFrameProvider* call_frames_ = nullptr;  // owned by QQmlEngine
   QUrl call_remote_frame_url_;
+  QUrl call_local_frame_url_;
+  int call_frame_epoch_ = 0;
   MessageModel messages_;
   ChatListModel chat_list_;
   LanPeerModel lan_peers_;
@@ -566,7 +613,6 @@ class NodeController : public QObject {
   bool peer_info_open_ = false;
   QString peer_info_user_id_;
   void syncFieldInfoState();
-  void syncCallAudio();
   QVariantList group_list_;
   QVariantList contact_list_;
   int sidebar_mode_ = 0;

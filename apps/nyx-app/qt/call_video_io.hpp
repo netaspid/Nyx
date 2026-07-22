@@ -1,30 +1,33 @@
 #pragma once
 
-/** Видеозвонок: Qt Multimedia → AV1 (libaom) с фрагментацией realtime. */
+/** Видеозвонок: Qt Multimedia → JPEG-кадры (фрагментация realtime). */
 
 #include <QObject>
 #include <QImage>
 #include <QByteArray>
+#include <QString>
+#include <QStringList>
+#include <QVariantList>
 
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <unordered_map>
 
 class QCamera;
 class QMediaCaptureSession;
 class QVideoSink;
 class QTimer;
+class QCameraDevice;
 
 namespace nyx {
-class Av1Encoder;
-class Av1Decoder;
 class CallVideoReassembler;
 }
 
 class CallVideoIo : public QObject {
   Q_OBJECT
  public:
-  using SendFn = std::function<bool(const QByteArray& av1_frag)>;
+  using SendFn = std::function<bool(const QByteArray& frag)>;
 
   explicit CallVideoIo(QObject* parent = nullptr);
   ~CallVideoIo() override;
@@ -33,32 +36,59 @@ class CallVideoIo : public QObject {
   bool start();
   void stop();
   bool running() const { return running_; }
+
   QImage lastRemoteFrame() const { return remote_; }
+  QImage lastLocalFrame() const { return local_; }
+  QString focusedPeerId() const { return focused_peer_; }
+  void setFocusedPeerId(const QString& peerId);
+  QStringList videoPeerIds() const;
+
+  bool canSwitchCamera() const;
+  bool switchCamera();
+
+  QString preferredCameraId() const { return preferred_camera_id_; }
+  void setPreferredCameraId(const QString& id);
+  QString activeCameraId() const { return camera_id_; }
+  static QVariantList listCameraDevices();
 
  signals:
-  void remoteFrameChanged();
-  void localFrameChanged(const QImage& frame);
+  void remoteFrameChanged(const QString& peerId);
+  void localFrameChanged();
+  void videoPeersChanged();
+  void cameraChanged();
 
  public slots:
-  void onRemoteVideo(const QByteArray& frag_payload);
+  void onRemoteVideo(const QString& peerId, const QByteArray& frag_payload);
 
  private slots:
   void onVideoFrame();
   void onEncodeTick();
 
  private:
+  struct PeerDecoder {
+    std::unique_ptr<nyx::CallVideoReassembler> reasm;
+    QImage frame;
+  };
+
+  bool openCamera(const QCameraDevice& device);
+  QCameraDevice resolveCameraDevice() const;
+  PeerDecoder& peerDecoder(const QString& peerId);
+
   SendFn send_fn_;
   std::unique_ptr<QCamera> camera_;
   std::unique_ptr<QMediaCaptureSession> session_;
   QVideoSink* sink_ = nullptr;
   QTimer* encode_timer_ = nullptr;
   QImage pending_;
+  QImage local_;
   QImage remote_;
+  QString focused_peer_;
+  QString camera_id_;
+  QString preferred_camera_id_;
+  int camera_index_ = 0;
+  bool front_camera_ = false;
   bool running_ = false;
   uint16_t frame_id_ = 0;
-  int keyframe_counter_ = 0;
 
-  std::unique_ptr<nyx::Av1Encoder> encoder_;
-  std::unique_ptr<nyx::Av1Decoder> decoder_;
-  std::unique_ptr<nyx::CallVideoReassembler> reasm_;
+  std::unordered_map<std::string, PeerDecoder> peers_;
 };
