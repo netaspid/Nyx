@@ -8,6 +8,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(NYX_BUILD_TESTS "Build unit tests" ON)
 option(NYX_BUILD_GUI "Build nyx-app Qt GUI" ON)
 
+if(ANDROID)
+  set(NYX_BUILD_TESTS OFF CACHE BOOL "Build unit tests" FORCE)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fetch-qt-android.cmake)
+endif()
+
 include(FetchContent)
 FetchContent_Declare(
   noise-c
@@ -33,7 +38,11 @@ set(ENABLE_DOCS OFF CACHE BOOL "" FORCE)
 set(ENABLE_APP OFF CACHE BOOL "" FORCE)
 set(CONFIG_AV1_ENCODER 1 CACHE STRING "" FORCE)
 set(CONFIG_AV1_DECODER 1 CACHE STRING "" FORCE)
-set(AOM_TARGET_CPU "generic" CACHE STRING "" FORCE)
+if(ANDROID)
+  set(AOM_TARGET_CPU "arm64" CACHE STRING "" FORCE)
+else()
+  set(AOM_TARGET_CPU "generic" CACHE STRING "" FORCE)
+endif()
 FetchContent_Declare(
   libaom
   GIT_REPOSITORY https://aomedia.googlesource.com/aom.git
@@ -79,7 +88,7 @@ target_include_directories(noise-c-lib PUBLIC
 )
 target_compile_definitions(noise-c-lib PUBLIC NOISE_STATICLIB ED25519_CUSTOMHASH ED25519_CUSTOMRANDOM)
 
-add_library(nyx 
+add_library(nyx
   src/util.cpp
   src/proto.cpp
   src/crypto.cpp
@@ -155,16 +164,18 @@ target_include_directories(nyx-app-common PUBLIC
 )
 target_link_libraries(nyx-app-common PUBLIC nyx)
 
-add_executable(nyx-node
-  apps/nyx-node/main.cpp
-  apps/nyx-node/cli.cpp
-  apps/nyx-node/cli_console.cpp
-  apps/nyx-node/chat_session.cpp
-  apps/nyx-node/node_session.cpp
-  apps/nyx-node/group_session.cpp
-)
-target_include_directories(nyx-node PRIVATE apps/nyx-node)
-target_link_libraries(nyx-node PRIVATE nyx nyx-app-common)
+if(NOT ANDROID)
+  add_executable(nyx-node
+    apps/nyx-node/main.cpp
+    apps/nyx-node/cli.cpp
+    apps/nyx-node/cli_console.cpp
+    apps/nyx-node/chat_session.cpp
+    apps/nyx-node/node_session.cpp
+    apps/nyx-node/group_session.cpp
+  )
+  target_include_directories(nyx-node PRIVATE apps/nyx-node)
+  target_link_libraries(nyx-node PRIVATE nyx nyx-app-common)
+endif()
 
 add_library(nyx-appcore
   apps/nyx-app/appcore/node_service.cpp
@@ -181,8 +192,10 @@ target_include_directories(nyx-appcore PUBLIC
 )
 target_link_libraries(nyx-appcore PUBLIC nyx nyx-app-common)
 
-add_executable(nyx-rendezvous apps/nyx-rendezvous/main.cpp)
-target_link_libraries(nyx-rendezvous PRIVATE nyx)
+if(NOT ANDROID)
+  add_executable(nyx-rendezvous apps/nyx-rendezvous/main.cpp)
+  target_link_libraries(nyx-rendezvous PRIVATE nyx)
+endif()
 
 if(NYX_BUILD_GUI)
   if(WIN32)
@@ -199,8 +212,10 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
       apps/nyx-app/qt/win_chrome.cpp
+      apps/nyx-app/qt/android_platform.cpp
       apps/nyx-app/qt/call_audio_io.cpp
       apps/nyx-app/qt/call_video_io.cpp
+      apps/nyx-app/qt/call_frame_provider.cpp
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp
@@ -208,8 +223,6 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/resources.qrc
     )
     if(WIN32)
-      # windres+gcc из ProgramData ломается в build/ из‑за чужих libgcc*.dll рядом с exe.
-      # Собираем .res в чистом подкаталоге без Qt-DLL.
       set(NYX_WINRC_DIR "${CMAKE_CURRENT_BINARY_DIR}/_winrc")
       file(MAKE_DIRECTORY "${NYX_WINRC_DIR}")
       configure_file(
@@ -249,7 +262,26 @@ if(NYX_BUILD_GUI)
     if(TARGET Qt6::Svg)
       target_link_libraries(nyx-app PRIVATE Qt6::Svg)
     endif()
-    if(TARGET Qt6::Multimedia)
+    if(ANDROID)
+      if(NOT TARGET Qt6::Multimedia)
+        message(FATAL_ERROR "Qt Multimedia required for Android (calls)")
+      endif()
+      target_link_libraries(nyx-app PRIVATE Qt6::Multimedia)
+      target_compile_definitions(nyx-app PRIVATE NYX_HAS_QT_MULTIMEDIA=1)
+      set_target_properties(nyx-app PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+        QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
+        QT_ANDROID_VERSION_CODE 1
+      )
+      if(TARGET nyx-app_make_apk)
+        add_custom_target(nyx-apk DEPENDS nyx-app_make_apk)
+      elseif(TARGET apk)
+        add_custom_target(nyx-apk DEPENDS apk)
+      else()
+        add_custom_target(nyx-apk DEPENDS nyx-app
+          COMMENT "Build nyx-app; use apk / nyx-app_make_apk after qt finalize")
+      endif()
+    elseif(TARGET Qt6::Multimedia)
       target_link_libraries(nyx-app PRIVATE Qt6::Multimedia)
       target_compile_definitions(nyx-app PRIVATE NYX_HAS_QT_MULTIMEDIA=1)
     endif()
@@ -277,6 +309,19 @@ if(NYX_BUILD_GUI)
           COMMENT "MinGW runtime DLL рядом с nyx-app.exe"
           VERBATIM)
       endif()
+    elseif(UNIX AND NOT APPLE AND NOT ANDROID)
+      get_filename_component(_nyx_qt_install_prefix "${Qt6_DIR}" DIRECTORY)
+      get_filename_component(_nyx_qt_install_prefix "${_nyx_qt_install_prefix}" DIRECTORY)
+      get_filename_component(_nyx_qt_install_prefix "${_nyx_qt_install_prefix}" DIRECTORY)
+
+      add_custom_command(TARGET nyx-app POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+          -DSRC_PREFIX=${_nyx_qt_install_prefix}
+          -DDST_DIR=$<TARGET_FILE_DIR:nyx-app>
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy-qt-runtime-linux.cmake"
+        COMMENT "bundle: Qt runtime (local prefix)"
+        VERBATIM
+      )
     endif()
     message(STATUS "nyx-app: Qt ${Qt6_VERSION} found, GUI will be built")
 
@@ -351,15 +396,85 @@ if(NYX_BUILD_GUI)
         COMMAND ${CMAKE_COMMAND} -E echo "Installer: ${NYX_INSTALLER_OUT}"
         VERBATIM
       )
+    elseif(UNIX AND NOT APPLE AND NOT ANDROID)
+      set(NYX_INSTALLER_DIR "${CMAKE_BINARY_DIR}/_installer")
+      set(NYX_INSTALLER_STAGING "${NYX_INSTALLER_DIR}/staging")
+      set(NYX_INSTALLER_OUT "${CMAKE_BINARY_DIR}/NyxSetup")
+      set(NYX_SETUP_STUB "${NYX_INSTALLER_DIR}/stub")
+      set(NYX_PACK_INSTALLER_EXE "${NYX_INSTALLER_DIR}/pack")
+
+      add_executable(nyx-setup-stub-linux apps/nyx-setup-linux/main.cpp apps/nyx-setup-linux/setup_util.cpp apps/nyx-setup/payload.cpp)
+      target_include_directories(nyx-setup-stub-linux PRIVATE apps/nyx-setup-linux apps/nyx-setup)
+      target_link_libraries(nyx-setup-stub-linux PRIVATE dl)
+      set_target_properties(nyx-setup-stub-linux PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${NYX_INSTALLER_DIR}"
+        OUTPUT_NAME stub
+      )
+
+      add_executable(nyx-uninstall apps/nyx-uninstall-linux/main.cpp apps/nyx-setup-linux/setup_util.cpp apps/nyx-setup/payload.cpp)
+      target_include_directories(nyx-uninstall PRIVATE apps/nyx-setup-linux apps/nyx-setup)
+      target_link_libraries(nyx-uninstall PRIVATE dl)
+
+      add_executable(nyx-installer-pack apps/nyx-setup/pack_installer.cpp)
+      set_target_properties(nyx-installer-pack PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${NYX_INSTALLER_DIR}"
+        OUTPUT_NAME pack
+      )
+
+      configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-pack-installer.sh.in
+        ${NYX_INSTALLER_DIR}/run-pack-installer.sh
+        @ONLY
+        FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+      )
+
+      add_custom_command(
+        OUTPUT ${NYX_INSTALLER_OUT}
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${NYX_INSTALLER_STAGING}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${NYX_INSTALLER_STAGING}
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-app> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-node> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-rendezvous> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nyx-uninstall> ${NYX_INSTALLER_STAGING}/
+        COMMAND ${CMAKE_COMMAND} -E copy
+                ${CMAKE_SOURCE_DIR}/apps/nyx-app/resources/icons/nyx-mark.svg
+                ${NYX_INSTALLER_STAGING}/nyx-icon.svg
+        COMMAND ${CMAKE_COMMAND} -E copy
+                ${CMAKE_SOURCE_DIR}/apps/nyx-setup-linux/nyx-app-wrapper.sh
+                ${NYX_INSTALLER_STAGING}/nyx-app-wrapper.sh
+        COMMAND ${CMAKE_COMMAND} -E copy
+                ${CMAKE_SOURCE_DIR}/apps/nyx-setup-linux/qt.conf
+                ${NYX_INSTALLER_STAGING}/qt.conf
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_FILE_DIR:nyx-app>/platforms ${NYX_INSTALLER_STAGING}/platforms
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_FILE_DIR:nyx-app>/qml ${NYX_INSTALLER_STAGING}/qml
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_FILE_DIR:nyx-app>/multimedia ${NYX_INSTALLER_STAGING}/multimedia
+        COMMAND ${CMAKE_COMMAND} -DSRC=$<TARGET_FILE_DIR:nyx-app> -DDST=${NYX_INSTALLER_STAGING}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy-installer-runtime.cmake
+        COMMAND ${CMAKE_COMMAND} -DROOT=${NYX_INSTALLER_STAGING}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/materialize-lib-symlinks.cmake
+        COMMAND ${NYX_INSTALLER_DIR}/run-pack-installer.sh
+        DEPENDS nyx-app nyx-node nyx-rendezvous nyx-setup-stub-linux nyx-uninstall nyx-installer-pack
+        COMMENT "NyxSetup"
+        VERBATIM
+      )
+
+      add_custom_target(nyx-installer ALL DEPENDS ${NYX_INSTALLER_OUT})
+      add_custom_command(
+        TARGET nyx-installer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Installer: ${NYX_INSTALLER_OUT}"
+        VERBATIM
+      )
     endif()
   else()
-    message(WARNING "Qt6 Quick not found — nyx-app skipped. Set CMAKE_PREFIX_PATH to Qt 6.x mingw_64.")
+    message(WARNING "Qt6 Quick not found — nyx-app skipped. Set CMAKE_PREFIX_PATH to Qt 6.x.")
   endif()
 endif()
 
-if(NYX_BUILD_TESTS)
+if(NYX_BUILD_TESTS AND NOT ANDROID)
   enable_testing()
-  # Release иначе глушит assert — тесты должны падать явно.
   add_executable(nyx-tests tests/test_main.cpp)
   target_link_libraries(nyx-tests PRIVATE nyx)
   if(MSVC)
