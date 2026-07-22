@@ -86,6 +86,7 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
         emit_delivery(session, message_id, status == nyx::DeliveryStatus::Delivered);
       });
   session->group_hub->set_on_event([this](const std::string& text) { emit_status(text); });
+  wire_call_handlers(session);
   sync_live_group_from_session(session);
 
   emit_chat_ready(session, group->name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
@@ -105,6 +106,7 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
     }
     drain_file_download_queue(session);
     session->group_hub->poll();
+    pump_call_realtime(session);
     sync_live_group_from_session(session);
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
@@ -238,6 +240,7 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
     }
     if (cb) cb();
   });
+  wire_call_handlers(session);
 
   if (!session->group_member->join()) {
     emit_status("не удалось войти в эфир");
@@ -320,6 +323,7 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
         }
       }
     }
+    pump_call_realtime(session);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 

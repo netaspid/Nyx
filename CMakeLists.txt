@@ -16,6 +16,37 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(noise-c)
 
+set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+  opus
+  GIT_REPOSITORY https://github.com/xiph/opus.git
+  GIT_TAG v1.5.2
+)
+FetchContent_MakeAvailable(opus)
+
+set(ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TOOLS OFF CACHE BOOL "" FORCE)
+set(ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ENABLE_DOCS OFF CACHE BOOL "" FORCE)
+set(ENABLE_APP OFF CACHE BOOL "" FORCE)
+set(CONFIG_AV1_ENCODER 1 CACHE STRING "" FORCE)
+set(CONFIG_AV1_DECODER 1 CACHE STRING "" FORCE)
+set(AOM_TARGET_CPU "generic" CACHE STRING "" FORCE)
+FetchContent_Declare(
+  libaom
+  GIT_REPOSITORY https://aomedia.googlesource.com/aom.git
+  GIT_TAG v3.9.1
+  GIT_SHALLOW TRUE
+)
+# libaom generate-config scripts need Perl (e.g. Strawberry Perl on Windows).
+find_package(Perl)
+if(NOT PERL_FOUND)
+  message(FATAL_ERROR "Perl is required to build libaom (AV1). Install Strawberry Perl and reconfigure.")
+endif()
+FetchContent_MakeAvailable(libaom)
+
 # noise-c has no upstream CMakeLists — build ref backend (no libsodium)
 file(GLOB NOISE_C_BACKEND_REF ${noise-c_SOURCE_DIR}/src/backend/ref/*.c)
 list(FILTER NOISE_C_BACKEND_REF EXCLUDE REGEX "dh-curve448|dh-newhope")
@@ -64,6 +95,12 @@ add_library(nyx
   src/avatar_store.cpp
   src/avatar_proto.cpp
   src/markdown_format.cpp
+  src/call_proto.cpp
+  src/call_session.cpp
+  src/call_media.cpp
+  src/call_opus.cpp
+  src/call_mesh.cpp
+  src/call_av1.cpp
   src/profile_crypto.cpp
   src/recovery_phrase.cpp
   src/account_store.cpp
@@ -92,8 +129,12 @@ add_library(nyx
   src/rendezvous_server.cpp
   src/session_intent.cpp
 )
-target_include_directories(nyx PUBLIC include)
-target_link_libraries(nyx PUBLIC noise-c-lib)
+target_include_directories(nyx PUBLIC
+  include
+  ${libaom_SOURCE_DIR}
+  ${libaom_BINARY_DIR}
+)
+target_link_libraries(nyx PUBLIC noise-c-lib opus aom)
 
 if(WIN32)
   target_link_libraries(nyx PUBLIC ws2_32 crypt32)
@@ -132,6 +173,7 @@ add_library(nyx-appcore
   apps/nyx-app/appcore/node_service_files.cpp
   apps/nyx-app/appcore/node_service_group.cpp
   apps/nyx-app/appcore/node_service_avatar.cpp
+  apps/nyx-app/appcore/node_service_call.cpp
 )
 target_include_directories(nyx-appcore PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/apps/nyx-app/appcore
@@ -147,7 +189,7 @@ if(NYX_BUILD_GUI)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/detect-qt-mingw.cmake)
   endif()
   set(QT_MIN_VERSION 6.5)
-  find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Quick Qml QuickControls2 LabsSettings Gui Widgets Svg)
+  find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Quick Qml QuickControls2 LabsSettings Gui Widgets Svg Multimedia)
   if(Qt6_FOUND)
     set(CMAKE_AUTOMOC ON)
     set(CMAKE_AUTORCC ON)
@@ -157,6 +199,8 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
       apps/nyx-app/qt/win_chrome.cpp
+      apps/nyx-app/qt/call_audio_io.cpp
+      apps/nyx-app/qt/call_video_io.cpp
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp
@@ -204,6 +248,10 @@ if(NYX_BUILD_GUI)
     )
     if(TARGET Qt6::Svg)
       target_link_libraries(nyx-app PRIVATE Qt6::Svg)
+    endif()
+    if(TARGET Qt6::Multimedia)
+      target_link_libraries(nyx-app PRIVATE Qt6::Multimedia)
+      target_compile_definitions(nyx-app PRIVATE NYX_HAS_QT_MULTIMEDIA=1)
     endif()
     if(WIN32)
       set_target_properties(nyx-app PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -285,12 +333,14 @@ if(NYX_BUILD_GUI)
                 $<TARGET_FILE_DIR:nyx-app>/platforms ${NYX_INSTALLER_STAGING}/platforms
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 $<TARGET_FILE_DIR:nyx-app>/qml ${NYX_INSTALLER_STAGING}/qml
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_FILE_DIR:nyx-app>/multimedia ${NYX_INSTALLER_STAGING}/multimedia
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${CMAKE_SOURCE_DIR}/README.md ${NYX_INSTALLER_STAGING}/README.md
         COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_BINARY_DIR} -DDST=${NYX_INSTALLER_STAGING}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy-installer-dlls.cmake
         COMMAND ${NYX_INSTALLER_DIR}/run-pack-installer.bat
-        DEPENDS nyx-app nyx-setup-stub nyx-uninstall nyx-installer-pack
+        DEPENDS nyx-app nyx-node nyx-rendezvous nyx-setup-stub nyx-uninstall nyx-installer-pack
         COMMENT "NyxSetup.exe"
         VERBATIM
       )
@@ -309,11 +359,22 @@ endif()
 
 if(NYX_BUILD_TESTS)
   enable_testing()
+  # Release иначе глушит assert — тесты должны падать явно.
   add_executable(nyx-tests tests/test_main.cpp)
   target_link_libraries(nyx-tests PRIVATE nyx)
+  if(MSVC)
+    target_compile_options(nyx-tests PRIVATE /UNDEBUG)
+  else()
+    target_compile_options(nyx-tests PRIVATE -UNDEBUG)
+  endif()
   add_test(NAME nyx-tests COMMAND nyx-tests)
 
   add_executable(nyx-appcore-tests tests/test_node_service.cpp)
   target_link_libraries(nyx-appcore-tests PRIVATE nyx-appcore)
+  if(MSVC)
+    target_compile_options(nyx-appcore-tests PRIVATE /UNDEBUG)
+  else()
+    target_compile_options(nyx-appcore-tests PRIVATE -UNDEBUG)
+  endif()
   add_test(NAME nyx-appcore-tests COMMAND nyx-appcore-tests)
 endif()

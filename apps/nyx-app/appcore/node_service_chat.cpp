@@ -125,6 +125,7 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
         emit_delivery(session, message_id, status == nyx::DeliveryStatus::Delivered);
       });
   session->chat->set_on_event([this](const std::string& text) { emit_status(text); });
+  wire_call_handlers(session);
 
   const auto recent = session->chat->history(30);
   for (const auto& stored : recent) {
@@ -143,7 +144,10 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
       [session]() {
         if (session->chat) session->chat->send_bye("пользователь вышел");
       },
-      [this, session]() { drain_file_download_queue(session); },
+      [this, session]() {
+        drain_file_download_queue(session);
+        pump_call_realtime(session);
+      },
       [this, session](const nyx::ByteBuffer& payload) {
         return handle_avatar_bulk(session, payload);
       });

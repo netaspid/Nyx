@@ -21,7 +21,7 @@ cmake -B build -G "MinGW Makefiles"
 cmake --build build -j
 ```
 
-Для пользователей раздавайте `build\NyxSetup.exe` — внутри клиент и зависимости Qt.
+Для пользователей раздавайте `build\NyxSetup.exe` — внутри клиент, MinGW runtime, Qt (в т.ч. Multimedia для звонков), FFmpeg-плагины. Opus и AV1 статически вшиты в бинарник.
 
 Данные приложения: `%APPDATA%\Nyx\`.
 

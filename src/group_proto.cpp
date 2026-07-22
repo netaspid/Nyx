@@ -32,6 +32,9 @@ bool read_member(const ByteBuffer& data, std::size_t& off, GroupMemberRecord& m)
   std::memcpy(m.user_id.data(), data.data() + off, 32);
   off += 32;
   m.role = static_cast<GroupRole>(data[off++]);
+  if (m.role != GroupRole::Owner && m.role != GroupRole::Member && m.role != GroupRole::Host) {
+    m.role = GroupRole::Member;
+  }
   const uint16_t nick_len = read_u16_le(data.data() + off);
   off += 2;
   if (!read_string(data, off, nick_len, kMaxNickLen, m.nickname)) return false;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "call_audio_io.hpp"
+#include "call_video_io.hpp"
 #include "chat_list_model.hpp"
 #include "lan_peer_model.hpp"
 #include "message_model.hpp"
@@ -11,6 +13,7 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -60,6 +63,12 @@ class NodeController : public QObject {
   Q_PROPERTY(int discoveryMode READ discoveryMode WRITE setDiscoveryMode NOTIFY networkSettingsChanged)
   Q_PROPERTY(QString networkStatus READ networkStatus NOTIFY networkSettingsChanged)
   Q_PROPERTY(QString toast READ toast NOTIFY toastChanged)
+  Q_PROPERTY(QString callState READ callState NOTIFY callChanged)
+  Q_PROPERTY(QString callTitle READ callTitle NOTIFY callChanged)
+  Q_PROPERTY(bool callVideo READ callVideo NOTIFY callChanged)
+  Q_PROPERTY(bool canStartCall READ canStartCall NOTIFY callChanged)
+  Q_PROPERTY(bool callIsFieldRoom READ callIsFieldRoom NOTIFY callChanged)
+  Q_PROPERTY(QUrl callRemoteFrameUrl READ callRemoteFrameUrl NOTIFY callRemoteFrameChanged)
   Q_PROPERTY(bool windowActive READ windowActive WRITE setWindowActive NOTIFY windowActiveChanged)
   Q_PROPERTY(QString fileProgressLabel READ fileProgressLabel NOTIFY fileProgressChanged)
   Q_PROPERTY(int fileProgressPercent READ fileProgressPercent NOTIFY fileProgressChanged)
@@ -379,6 +388,17 @@ class NodeController : public QObject {
   Q_INVOKABLE QString sessionStateForKey(const QString& key) const;
   Q_INVOKABLE bool isChatSelectable(const QString& key) const;
   Q_INVOKABLE void sendMessage(const QString& text);
+  /** Старт звонка в активном чате (video=false — только аудио). Сигналинг фаза 0. */
+  Q_INVOKABLE void startCall(bool video = false);
+  Q_INVOKABLE void acceptCall();
+  Q_INVOKABLE void rejectCall();
+  Q_INVOKABLE void hangupCall();
+  QString callState() const;
+  QString callTitle() const;
+  bool callVideo() const;
+  bool canStartCall() const;
+  bool callIsFieldRoom() const;
+  QUrl callRemoteFrameUrl() const;
   /** Выбрать фото/видео → скопировать в chat_media → markdown `![…](nyx-media:hash)`. */
   Q_INVOKABLE QString pickChatMediaMarkdown();
   Q_INVOKABLE QString mediaLocalPath(const QString& hashHex) const;
@@ -393,6 +413,9 @@ class NodeController : public QObject {
   Q_INVOKABLE QVariantMap contactInfo(const QString& userIdHex) const;
   Q_INVOKABLE void deleteGroup(const QString& groupIdHex);
   Q_INVOKABLE void removeFieldMember(const QString& groupIdHex, const QString& userIdHex);
+  /** role: "host" | "member" — назначить ведущего звонков в поле. */
+  Q_INVOKABLE void setFieldMemberRole(const QString& groupIdHex, const QString& userIdHex,
+                                      const QString& role);
   Q_INVOKABLE void startFieldHub(const QString& groupIdHex);
   Q_INVOKABLE void joinField(const QString& inviteHex);
   Q_INVOKABLE void connectActiveField();
@@ -422,6 +445,8 @@ class NodeController : public QObject {
   void networkSettingsChanged();
   void profilePathChanged();
   void toastChanged();
+  void callChanged();
+  void callRemoteFrameChanged();
   void windowActiveChanged();
   void fileProgressChanged();
   void fileIndexProgressChanged();
@@ -487,6 +512,9 @@ class NodeController : public QObject {
   QVariantList entriesToVariant(const std::vector<nyx::FileEntry>& entries, bool remote) const;
 
   nyx_app::NodeService service_;
+  CallAudioIo call_audio_;
+  CallVideoIo call_video_;
+  QUrl call_remote_frame_url_;
   MessageModel messages_;
   ChatListModel chat_list_;
   LanPeerModel lan_peers_;
@@ -538,6 +566,7 @@ class NodeController : public QObject {
   bool peer_info_open_ = false;
   QString peer_info_user_id_;
   void syncFieldInfoState();
+  void syncCallAudio();
   QVariantList group_list_;
   QVariantList contact_list_;
   int sidebar_mode_ = 0;

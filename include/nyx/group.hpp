@@ -18,7 +18,12 @@ namespace nyx {
 enum class GroupRole : uint8_t {
   Owner = 1,
   Member = 2,
+  Host = 3,
 };
+
+inline bool can_start_field_call(GroupRole role) {
+  return role == GroupRole::Owner || role == GroupRole::Host;
+}
 
 /** Участник поля в локальном roster. */
 struct GroupMemberRecord {

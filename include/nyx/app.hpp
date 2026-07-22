@@ -20,6 +20,8 @@ namespace nyx {
 constexpr uint32_t kHelloCapDmInboxToken = 1u << 0;
 /** После optional inbox token — ProfileMeta (bio, interests, availability). */
 constexpr uint32_t kHelloCapProfileMeta = 1u << 1;
+/** Peer поддерживает звонки (CallKind на kChatStream). */
+constexpr uint32_t kHelloCapCalls = 1u << 2;
 
 /** Приветствие после handshake: публичный ключ, nickname, capabilities. */
 struct HelloMessage {

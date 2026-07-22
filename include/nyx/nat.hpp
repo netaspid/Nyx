@@ -15,8 +15,8 @@ namespace nyx {
 /** Лучший локальный IPv4 для LAN (не 127.0.0.1). */
 std::string guess_lan_ipv4();
 
-/** Улучшенный hole punch: серия burst-ов probe-пакетов. */
 void hole_punch(UdpSocket& sock, const EndpointHint& hint);
+void hole_punch_burst(UdpSocket& sock, const EndpointHint& hint, int packets = 4);
 
 /** STUN Binding Request → внешний endpoint (best effort). */
 std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,

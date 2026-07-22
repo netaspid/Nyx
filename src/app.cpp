@@ -117,6 +117,7 @@ bool exchange_hello(Connection& connection, const Profile& profile, HelloMessage
     hello.has_profile_meta = true;
     hello.capabilities |= kHelloCapProfileMeta;
   }
+  hello.capabilities |= kHelloCapCalls;
   if (!connection.send_payload(kChatStream, hello.encode())) return false;
 
   const auto deadline =

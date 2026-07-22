@@ -16,6 +16,8 @@ constexpr uint8_t kProtocolVersion = 1;
 constexpr uint32_t kControlStream = 0;
 constexpr uint32_t kChatStream = 1;
 constexpr uint32_t kBulkStream = 2;
+/** Ненадёжный медиа-поток звонков (PacketType::Realtime, без ARQ). */
+constexpr uint32_t kRealtimeStream = 3;
 constexpr std::size_t kHeaderSize = 18;
 constexpr std::size_t kMaxPayload = 65535;
 constexpr std::size_t kDefaultMtu = 1200;
@@ -31,6 +33,8 @@ enum class PacketType : uint8_t {
   Data = 0x10,
   Ack = 0x11,
   Nack = 0x12,
+  /** Encrypted media datagram без retransmit (kRealtimeStream). */
+  Realtime = 0x13,
   KeepAlive = 0x20,
   RendezvousRegister = 0x30,
   RendezvousLookup = 0x31,

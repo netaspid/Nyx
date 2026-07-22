@@ -1,6 +1,7 @@
 #include "nyx/group_member.hpp"
 
 #include "nyx/app.hpp"
+#include "nyx/call_proto.hpp"
 #include "nyx/group_proto.hpp"
 #include "nyx/util.hpp"
 
@@ -131,6 +132,11 @@ bool GroupMemberService::send_message(const std::string& text, uint64_t* out_id)
   return true;
 }
 
+bool GroupMemberService::send_call_frame(const ByteBuffer& frame) {
+  if (!joined_ || !is_call_frame(frame)) return false;
+  return connection_.send_payload(kChatStream, frame);
+}
+
 void GroupMemberService::handle_payload(const ByteBuffer& payload) {
   if (auto bye = ByeMessage::decode(payload)) {
     joined_ = false;
@@ -142,10 +148,23 @@ void GroupMemberService::handle_payload(const ByteBuffer& payload) {
 
   if (is_group_frame(payload)) {
     if (auto notice = GroupMemberJoinedMessage::decode(payload)) {
-      view_.members.push_back(notice->member);
-      if (on_event_) {
-        on_event_(notice->member.nickname + " присоединился к полю");
+      bool updated = false;
+      for (auto& m : view_.members) {
+        if (m.user_id == notice->member.user_id) {
+          m = notice->member;
+          updated = true;
+          break;
+        }
       }
+      if (!updated) {
+        view_.members.push_back(notice->member);
+        if (on_event_) {
+          on_event_(notice->member.nickname + " присоединился к полю");
+        }
+      } else if (on_event_ && notice->member.role == GroupRole::Host) {
+        on_event_(notice->member.nickname + " — ведущий звонков");
+      }
+      if (on_meta_) on_meta_();
       return;
     }
     if (auto meta = GroupMetaMessage::decode(payload)) {
@@ -157,6 +176,11 @@ void GroupMemberService::handle_payload(const ByteBuffer& payload) {
   }
 
   if (decode_hello_message(payload)) return;
+
+  if (is_call_frame(payload)) {
+    if (on_call_frame_) on_call_frame_(payload);
+    return;
+  }
 
   if (auto ack = AckMessage::decode(payload)) {
     if (pending_acks_.erase(ack->message_id) > 0 && on_delivery_) {

@@ -174,6 +174,13 @@ ApplicationWindow {
         clearFn: function() { app.clearToast() }
     }
 
+    CallOverlay {
+        parent: Overlay.overlay
+        anchors.fill: parent
+        theme: appTheme
+        node: app
+    }
+
     Connections {
         target: app
         function onChatChanged() {

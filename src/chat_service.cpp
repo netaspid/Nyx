@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "nyx/app.hpp"
+#include "nyx/call_proto.hpp"
 #include "nyx/util.hpp"
 
 namespace nyx {
@@ -55,6 +56,11 @@ bool ChatService::send_message(const std::string& text, uint64_t* out_id) {
   return true;
 }
 
+bool ChatService::send_call_frame(const ByteBuffer& frame) {
+  if (!connected_ || !is_call_frame(frame)) return false;
+  return connection_.send_payload(kChatStream, frame);
+}
+
 void ChatService::deliver_incoming(ChatMessage msg) {
   store_.append(to_stored(msg, false));
   if (on_message_) on_message_(msg, false);
@@ -81,6 +87,11 @@ void ChatService::handle_payload(const ByteBuffer& payload) {
   }
 
   if (decode_hello_message(payload)) return;
+
+  if (is_call_frame(payload)) {
+    if (on_call_frame_) on_call_frame_(payload);
+    return;
+  }
 
   if (auto decoded = ChatMessage::decode(payload)) {
     deliver_incoming(std::move(*decoded));

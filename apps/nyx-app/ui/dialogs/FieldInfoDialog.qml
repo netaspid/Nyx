@@ -348,6 +348,8 @@ Dialog {
                             readonly property string userId: String(modelData.userId || "")
                             readonly property string nickname: String(modelData.nickname || "?")
                             readonly property bool memberIsOwner: !!(modelData.isOwner)
+                            readonly property bool memberIsHost: !!(modelData.isHost)
+                            readonly property string memberRole: String(modelData.role || "member")
                             readonly property string idShort: String(modelData.idShort || "")
 
                             Layout.fillWidth: true
@@ -397,6 +399,7 @@ Dialog {
                                         }
                                         Rectangle {
                                             visible: memberRow.isSelf || memberRow.memberIsOwner
+                                                     || memberRow.memberIsHost
                                             radius: 6
                                             color: memberRow.isSelf
                                                    ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.22)
@@ -410,7 +413,11 @@ Dialog {
                                                 anchors.centerIn: parent
                                                 text: memberRow.isSelf
                                                       ? qsTr("вы")
-                                                      : (memberRow.memberIsOwner ? qsTr("создатель") : "")
+                                                      : (memberRow.memberIsOwner
+                                                         ? qsTr("создатель")
+                                                         : (memberRow.memberIsHost
+                                                            ? qsTr("ведущий")
+                                                            : ""))
                                                 color: memberRow.isSelf ? theme.accent : theme.textSecondary
                                                 font.pixelSize: 10
                                             }
@@ -425,6 +432,17 @@ Dialog {
                                 }
 
                                 NyxButtonSecondary {
+                                    id: hostBtn
+                                    visible: root.isOwner && !memberRow.memberIsOwner && !memberRow.isSelf
+                                    theme: root.theme
+                                    text: memberRow.memberIsHost ? qsTr("Снять вед.") : qsTr("Ведущий")
+                                    implicitHeight: 30
+                                    onClicked: node.setFieldMemberRole(
+                                                   root.groupId, memberRow.userId,
+                                                   memberRow.memberIsHost ? "member" : "host")
+                                }
+
+                                NyxButtonSecondary {
                                     id: kickBtn
                                     visible: root.isOwner && !memberRow.memberIsOwner && !memberRow.isSelf
                                     theme: root.theme
@@ -434,7 +452,7 @@ Dialog {
                                 }
 
                                 Label {
-                                    visible: !kickBtn.visible
+                                    visible: !kickBtn.visible && !hostBtn.visible
                                     text: "\uE76C"
                                     font.family: "Segoe MDL2 Assets"
                                     font.pixelSize: 12
@@ -446,7 +464,8 @@ Dialog {
                             MouseArea {
                                 id: memberMa
                                 anchors.fill: parent
-                                anchors.rightMargin: kickBtn.visible ? (kickBtn.width + 20) : 0
+                                anchors.rightMargin: (kickBtn.visible || hostBtn.visible)
+                                                     ? (kickBtn.width + hostBtn.width + 28) : 0
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 z: 2

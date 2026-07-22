@@ -104,6 +104,8 @@ GroupMemberRecord parse_member_object(const std::string& obj) {
   if (auto role = json_get_string(obj, "role")) {
     if (*role == "owner")
       member.role = GroupRole::Owner;
+    else if (*role == "host")
+      member.role = GroupRole::Host;
     else
       member.role = GroupRole::Member;
   }
@@ -111,7 +113,15 @@ GroupMemberRecord parse_member_object(const std::string& obj) {
 }
 
 std::string role_to_string(GroupRole role) {
-  return role == GroupRole::Owner ? "owner" : "member";
+  switch (role) {
+    case GroupRole::Owner:
+      return "owner";
+    case GroupRole::Host:
+      return "host";
+    case GroupRole::Member:
+    default:
+      return "member";
+  }
 }
 
 bool user_id_is_zero(const UserId& id) {

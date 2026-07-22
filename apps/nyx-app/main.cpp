@@ -2,6 +2,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlError>
 #include <QQuickStyle>
 #include <QStyleHints>
 #include <QTimer>
@@ -53,6 +54,11 @@ int main(int argc, char* argv[]) {
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app, []() { QCoreApplication::exit(-1); },
       Qt::QueuedConnection);
+  QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+    for (const QQmlError& w : warnings) {
+      std::fprintf(stderr, "QML: %s\n", w.toString().toLocal8Bit().constData());
+    }
+  });
 
   engine.rootContext()->setContextProperty(QStringLiteral("app"), &node);
   engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));

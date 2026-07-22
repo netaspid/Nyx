@@ -43,6 +43,7 @@
     <file>ui/dialogs/FieldInfoDialog.qml</file>
     <file>ui/dialogs/PeerInfoDialog.qml</file>
     <file>ui/panels/ConnectionDrawer.qml</file>
+    <file>ui/panels/CallOverlay.qml</file>
     <file>ui/dialogs/NetworkSettingsSection.qml</file>
     <file>ui/dialogs/OnboardingDialog.qml</file>
   </qresource>
