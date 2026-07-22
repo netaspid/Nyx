@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../controls"
+import "."
 
 /** Строка файла или папки в браузере. */
 Rectangle {
@@ -36,12 +37,11 @@ Rectangle {
         spacing: 10
         z: 1
 
-        Text {
+        NyxIcon {
             Layout.alignment: Qt.AlignVCenter
-            text: fileGlyph(fileName, fileMime, fileIsDirectory)
-            font.family: "Segoe MDL2 Assets"
-            font.pixelSize: 20
-            color: theme.accent
+            name: fileIconName(fileName, fileMime, fileIsDirectory)
+            width: 20
+            height: 20
         }
 
         ColumnLayout {
@@ -94,18 +94,15 @@ Rectangle {
         }
     }
 
-    function fileGlyph(entryName, mimeType, dir) {
+    function fileIconName(entryName, mimeType, dir) {
         if (dir || mimeType === "application/x-nyx-directory")
-            return "\uE8B7"
+            return "folder"
         const n = entryName.toLowerCase()
-        if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".gif"))
-            return "\uEB9F"
-        if (n.endsWith(".mp4") || n.endsWith(".mkv") || n.endsWith(".avi"))
-            return "\uE714"
-        if (n.endsWith(".zip") || n.endsWith(".rar") || n.endsWith(".7z"))
-            return "\uF012"
-        if (mimeType.indexOf("text") >= 0)
-            return "\uE8A5"
-        return "\uE8A5"
+        if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".gif")
+                || n.endsWith(".webp") || mimeType.indexOf("image") >= 0)
+            return "image"
+        if (n.endsWith(".mp4") || n.endsWith(".mkv") || n.endsWith(".avi") || mimeType.indexOf("video") >= 0)
+            return "video"
+        return "file"
     }
 }

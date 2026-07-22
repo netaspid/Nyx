@@ -127,7 +127,8 @@ class NodeService {
   void set_on_avatars_changed(SessionsChangedCallback cb);
   void set_on_call_changed(CallChangedCallback cb);
   using CallMediaCallback =
-      std::function<void(nyx::CallMediaType type, const nyx::ByteBuffer& payload)>;
+      std::function<void(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
+                         const nyx::UserId& from)>;
   void set_on_call_media(CallMediaCallback cb);
   void set_on_mode(std::function<void(NodeMode)> cb);
   void set_on_session_ended(SessionEndedCallback cb);
@@ -160,6 +161,8 @@ class NodeService {
                          const std::string& direction, const std::string& tags,
                          bool public_listed);
   bool delete_group(const std::string& group_id_hex);
+  /** Удаляет чат/поле из локальных списков: dm:<peer> | group:<gid> | chat:<stem>. */
+  bool remove_conversation(const std::string& chat_key);
   bool remove_group_member(const std::string& group_id_hex, const std::string& user_id_hex);
   bool auto_start_owned_hub() const { return network_config_.auto_start_owned_hub; }
   void set_auto_start_owned_hub(bool enabled);
@@ -395,7 +398,8 @@ class NodeService {
                                   const nyx::ByteBuffer& frame);
   void pump_call_realtime(const std::shared_ptr<NetSession>& session);
   void emit_call_changed();
-  void emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload);
+  void emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
+                       const nyx::UserId& from = {});
   void maybe_send_field_intros();
   void ensure_field_call_mesh();
   void announce_call_endpoint();

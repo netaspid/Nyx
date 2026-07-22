@@ -30,16 +30,15 @@ ColumnLayout {
 
             IconButton {
                 theme: root.theme
-                glyph: "\uE72B"
+                name: "back"
                 ToolTip.text: qsTr("Назад к чату")
                 onClicked: node.showChatView()
             }
 
-            Text {
-                text: "\uE8B7"
-                font.family: "Segoe MDL2 Assets"
-                font.pixelSize: 20
-                color: theme.accent
+            NyxIcon {
+                name: "folder"
+                width: 20
+                height: 20
             }
 
             ColumnLayout {
@@ -80,7 +79,7 @@ ColumnLayout {
 
             IconButton {
                 theme: root.theme
-                glyph: "\uE72C"
+                name: "refresh"
                 enabled: node.fileExchangeReady
                 ToolTip.text: qsTr("Обновить ресурсы")
                 onClicked: node.refreshRemoteFileList()
@@ -365,12 +364,11 @@ ColumnLayout {
                                 contentItem: RowLayout {
                                     id: rowLayout
                                     spacing: 8
-                                    Text {
+                                    NyxIcon {
                                         Layout.alignment: Qt.AlignVCenter
-                                        text: "\uE8B7"
-                                        font.family: "Segoe MDL2 Assets"
-                                        font.pixelSize: 18
-                                        color: theme.accent
+                                        name: "folder"
+                                        width: 18
+                                        height: 18
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
@@ -405,7 +403,7 @@ ColumnLayout {
                                     IconButton {
                                         Layout.alignment: Qt.AlignVCenter
                                         theme: root.theme
-                                        glyph: "\uE74D"
+                                        name: "delete"
                                         visible: modelData.canRemove === true
                                         ToolTip.text: qsTr("Убрать из индекса")
                                         onClicked: node.removeIndexedFolder(modelData.path)
@@ -452,7 +450,7 @@ ColumnLayout {
 
                         IconButton {
                             theme: root.theme
-                            glyph: "\uE74B"
+                            name: "folder"
                             enabled: node.fileBrowsePath.length > 0
                                      || node.fileSelectedShareRoot.length > 0
                             ToolTip.text: node.fileBrowsePath.length > 0
@@ -591,7 +589,7 @@ ColumnLayout {
                                 IconButton {
                                     visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
                                     theme: root.theme
-                                    glyph: "\uE72E"
+                                    name: "lock"
                                     ToolTip.text: qsTr("Права доступа")
                                     onClicked: pathAccessPopup.openForPath(
                                         fileRow.fileRootPath, fileRow.fileFullRelPath, fileRow.fileName)
@@ -607,7 +605,9 @@ ColumnLayout {
                             theme: root.theme
                             emoji: "📁"
                             title: qsTr("Нет папок")
-                            hint: qsTr("Добавьте или перетащите папку")
+                            hint: Qt.platform.os === "android"
+                                  ? qsTr("Создайте папку в хранилище Nyx (системный Documents недоступен)")
+                                  : qsTr("Добавьте или перетащите папку")
                         }
 
                         EmptyState {
@@ -660,7 +660,7 @@ ColumnLayout {
                 spacing: 6
                 IconButton {
                     theme: root.theme
-                    glyph: "\uE74B"
+                    name: "folder"
                     enabled: node.fileResourcesRoot.length > 0
                              || node.fileRemoteBrowsePath.length > 0
                     ToolTip.text: node.fileRemoteBrowsePath.length > 0

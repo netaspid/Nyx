@@ -10,10 +10,13 @@ Drawer {
     required property var node
     required property var avatarColorFn
 
+    readonly property bool fullBleed: Qt.platform.os === "android"
+                                      || (parent && parent.width < 720)
+
     edge: Qt.RightEdge
-    width: Math.min(380, parent.width * 0.92)
+    width: fullBleed ? parent.width : Math.min(380, parent.width * 0.92)
     height: parent.height
-    modal: false
+    modal: fullBleed
     interactive: true
     enabled: node.sessionUnlocked
 
@@ -54,12 +57,12 @@ Drawer {
                 radius: theme.radiusBtn
                 color: closeArea.containsMouse ? (theme.darkMode ? "#c42b1c" : "#e81123")
                                                : "transparent"
-                Text {
+                NyxIcon {
                     anchors.centerIn: parent
-                    text: "\uE8BB"
-                    font.family: "Segoe MDL2 Assets"
-                    font.pixelSize: 12
-                    color: closeArea.containsMouse ? "#ffffff" : theme.textSecondary
+                    name: "close"
+                    width: 16
+                    height: 16
+                    opacity: closeArea.containsMouse ? 1.0 : 0.75
                 }
                 MouseArea {
                     id: closeArea
@@ -327,10 +330,10 @@ Drawer {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     text: connTabs.currentIndex === 0
-                          ? qsTr("Код приглашения постоянный: его можно сохранять и отправлять в мессенджере. Пока вы в приложении, друзья могут подключиться по этому коду.")
+                          ? qsTr("Инвайт идёт через rendezvous (не через Wi‑Fi напрямую). Если в настройках сети 127.0.0.1 — в одной LAN используйте «Рядом в сети» → Связаться. Отключите VPN на телефоне.")
                           : (connTabs.currentIndex === 1
-                             ? qsTr("Личный чат — переписка один на один и обмен файлами. Код берётся у друга во вкладке «Пригласить».")
-                             : qsTr("Поле — групповой чат. Invite выдаёт создатель в разделе «Поля». Без активного hub у создателя войти нельзя."))
+                             ? qsTr("Личный чат — переписка один на один. В одной Wi‑Fi сети надёжнее «Рядом в сети». По коду нужен общий rendezvous у обоих.")
+                             : qsTr("Поле — групповой чат. Invite выдаёт создатель в «Поля». Без активного hub у создателя и общего rendezvous войти нельзя."))
                     color: theme.textMuted
                     font.pixelSize: 11
                 }

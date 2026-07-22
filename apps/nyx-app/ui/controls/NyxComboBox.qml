@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "../components"
 
 ComboBox {
     id: ctrl
@@ -61,13 +62,13 @@ ComboBox {
         elide: Text.ElideRight
     }
 
-    indicator: Text {
+    indicator: NyxIcon {
         x: ctrl.width - width - 10
         y: (ctrl.height - height) / 2
-        text: "\uE70D"
-        font.family: "Segoe MDL2 Assets"
-        font.pixelSize: 10
-        color: theme.textSecondary
+        name: "chevron"
+        width: 12
+        height: 12
+        opacity: 0.7
     }
 
     popup: Popup {

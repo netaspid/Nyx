@@ -152,14 +152,8 @@ Item {
         color: bubbleRoot.outgoing
                ? (theme ? theme.bubbleOut : "#2b5278")
                : (theme ? theme.bubbleIn : "#2a3949")
-        topLeftRadius: theme ? theme.radiusBubble : 16
-        topRightRadius: theme ? theme.radiusBubble : 16
-        bottomLeftRadius: bubbleRoot.outgoing
-                          ? (theme ? theme.radiusBubble : 16)
-                          : (theme ? theme.radiusBubbleTail : 4)
-        bottomRightRadius: bubbleRoot.outgoing
-                           ? (theme ? theme.radiusBubbleTail : 4)
-                           : (theme ? theme.radiusBubble : 16)
+        // Uniform radius: per-corner *Radius needs Qt 6.7+; Android kit is 6.5.3.
+        radius: theme ? theme.radiusBubble : 16
 
         Column {
             id: innerCol

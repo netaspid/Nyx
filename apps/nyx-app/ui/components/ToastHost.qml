@@ -67,12 +67,11 @@ Item {
                            ? (theme.darkMode ? "#5c2b2b" : "#ffebee")
                            : (theme.darkMode ? "#2b5278" : "#e3f2fd")
 
-                    Text {
+                    NyxIcon {
                         anchors.centerIn: parent
-                        text: isError ? "\uE783" : "\uE73E"
-                        font.family: "Segoe MDL2 Assets"
-                        font.pixelSize: 14
-                        color: isError ? "#ffcdd2" : theme.accent
+                        name: isError ? "info" : "check"
+                        width: 14
+                        height: 14
                     }
                 }
 
@@ -93,12 +92,12 @@ Item {
                         if (typeof root.clearFn === "function")
                             root.clearFn()
                     }
-                    Text {
+                    NyxIcon {
                         anchors.centerIn: parent
-                        text: "\uE711"
-                        font.family: "Segoe MDL2 Assets"
-                        font.pixelSize: 12
-                        color: theme.textMuted
+                        name: "close"
+                        width: 12
+                        height: 12
+                        opacity: 0.7
                     }
                 }
             }

@@ -66,12 +66,11 @@ Popup {
                 radius: theme.radiusBtn
                 color: closeArea.containsMouse ? (theme.darkMode ? "#c42b1c" : "#e81123")
                                                : "transparent"
-                Text {
+                NyxIcon {
                     anchors.centerIn: parent
-                    text: "\uE8BB"
-                    font.family: "Segoe MDL2 Assets"
-                    font.pixelSize: 12
-                    color: closeArea.containsMouse ? "#ffffff" : theme.textSecondary
+                    name: "close"
+                    width: 12
+                    height: 12
                 }
                 MouseArea {
                     id: closeArea

@@ -10,8 +10,8 @@ ApplicationWindow {
     id: root
     width: 1100
     height: 740
-    minimumWidth: 720
-    minimumHeight: 560
+    minimumWidth: Qt.platform.os === "android" ? 0 : 720
+    minimumHeight: Qt.platform.os === "android" ? 0 : 560
     visible: true
     title: app.sessionUnlocked
          ? (app.mainViewMode === 1 ? qsTr("Файлы — Nyx")
@@ -21,6 +21,18 @@ ApplicationWindow {
 
     Theme { id: appTheme }
 
+    readonly property bool narrow: width < 720 || Qt.platform.os === "android"
+    readonly property bool showChatList: {
+        if (!narrow) return true
+        if (app.mainViewMode === 1) return false
+        return !app.inChat
+    }
+    readonly property bool showMainContent: {
+        if (!narrow) return true
+        if (app.mainViewMode === 1) return true
+        return app.inChat
+    }
+
     palette.window: appTheme.bgApp
     palette.windowText: appTheme.textPrimary
     palette.base: appTheme.inputBg
@@ -29,7 +41,18 @@ ApplicationWindow {
     palette.highlightedText: appTheme.textPrimary
     palette.placeholderText: appTheme.textMuted
 
-    Component.onCompleted: app.setNativeChromeDark(appTheme.darkMode)
+    Component.onCompleted: {
+        if (contentItem) {
+            contentItem.forceActiveFocus()
+            contentItem.Keys.released.connect(function(event) {
+                if (event.key === Qt.Key_Back || event.key === Qt.Key_Backspace) {
+                    if (root.handleBack())
+                        event.accepted = true
+                }
+            })
+        }
+        app.setNativeChromeDark(appTheme.darkMode)
+    }
     Connections {
         target: appTheme
         function onDarkModeChanged() { app.setNativeChromeDark(appTheme.darkMode) }
@@ -48,6 +71,22 @@ ApplicationWindow {
         return palette[Math.abs(hash) % palette.length]
     }
 
+    function handleBack() {
+        if (app.mainViewMode === 1) {
+            app.showChatView()
+            return true
+        }
+        if (app.connectionPanelOpen) {
+            app.connectionPanelOpen = false
+            return true
+        }
+        if (root.narrow && app.inChat) {
+            app.leaveChat()
+            return true
+        }
+        return false
+    }
+
     onActiveChanged: app.windowActive = active
 
     onClosing: function(close) {
@@ -56,12 +95,7 @@ ApplicationWindow {
 
     Shortcut {
         sequences: ["Esc"]
-        onActivated: {
-            if (app.mainViewMode === 1)
-                app.showChatView()
-            else if (app.connectionPanelOpen)
-                app.connectionPanelOpen = false
-        }
+        onActivated: root.handleBack()
     }
 
     Shortcut {
@@ -85,12 +119,13 @@ ApplicationWindow {
             spacing: 0
 
             ChatListPanel {
-                Layout.preferredWidth: root.width < 860 ? (root.width * 0.42) : 320
+                Layout.preferredWidth: root.narrow ? root.width : (root.width < 860 ? (root.width * 0.42) : 320)
+                Layout.fillWidth: root.narrow
                 Layout.fillHeight: true
                 theme: appTheme
                 node: app
                 avatarColorFn: avatarColor
-                visible: root.width >= 720
+                visible: root.showChatList
                 onSettingsRequested: settingsDialog.open()
             }
 
@@ -98,7 +133,7 @@ ApplicationWindow {
                 Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 color: appTheme.border
-                visible: root.width >= 720
+                visible: !root.narrow && root.showChatList && root.showMainContent
             }
 
             MainContentPanel {
@@ -108,6 +143,7 @@ ApplicationWindow {
                 node: app
                 avatarColorFn: avatarColor
                 formatMsgTimeFn: formatMsgTime
+                visible: root.showMainContent
             }
         }
 
@@ -166,8 +202,8 @@ ApplicationWindow {
         z: 1000
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.rightMargin: 20
-        anchors.bottomMargin: 20
+        anchors.rightMargin: root.narrow ? 12 : 20
+        anchors.bottomMargin: root.narrow ? 12 : 20
         theme: appTheme
         message: app.toast
         isError: app.toastIsError
@@ -179,6 +215,7 @@ ApplicationWindow {
         anchors.fill: parent
         theme: appTheme
         node: app
+        narrow: root.narrow
     }
 
     Connections {

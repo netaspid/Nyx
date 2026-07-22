@@ -64,7 +64,7 @@ Rectangle {
 
             IconButton {
                 theme: root.theme
-                glyph: "\uE713"
+                name: "settings"
                 ToolTip.text: qsTr("Настройки")
                 onClicked: root.settingsRequested()
             }
@@ -127,13 +127,15 @@ Rectangle {
             }
         }
 
-        // Действия: пригласить / файлы
-        RowLayout {
+        // Actions: invite / files (stacked on phone)
+        GridLayout {
             Layout.fillWidth: true
             Layout.leftMargin: theme.spacing
             Layout.rightMargin: theme.spacing
             Layout.bottomMargin: theme.spacing
-            spacing: 8
+            columns: root.width < 420 ? 1 : 2
+            columnSpacing: 8
+            rowSpacing: 8
 
             NyxButton {
                 Layout.fillWidth: true
@@ -142,6 +144,7 @@ Rectangle {
                 onClicked: node.connectionPanelOpen = true
             }
             NyxButtonSecondary {
+                Layout.fillWidth: true
                 theme: root.theme
                 text: qsTr("Файлы")
                 onClicked: node.openFilesView()
@@ -292,8 +295,28 @@ Rectangle {
                     id: friendMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: node.openContact(userId)
+                    onClicked: function(mouse) {
+                        if (mouse.button === Qt.RightButton) {
+                            friendMenu.popup()
+                            return
+                        }
+                        node.openContact(userId)
+                    }
+                    onPressAndHold: friendMenu.popup()
+                }
+
+                Menu {
+                    id: friendMenu
+                    MenuItem {
+                        text: qsTr("Открыть")
+                        onTriggered: node.openContact(userId)
+                    }
+                    MenuItem {
+                        text: qsTr("Удалить из друзей")
+                        onTriggered: node.removeConversation(chatKey.length ? chatKey : ("dm:" + userId))
+                    }
                 }
 
                 visible: listFilter.text.length === 0
@@ -512,6 +535,11 @@ Rectangle {
                                     node.openConversation("group:" + groupId, 1, groupId, name, "")
                                     node.sidebarMode = 0
                                 }
+                            }
+                            NyxButtonSecondary {
+                                theme: root.theme
+                                text: qsTr("Удалить")
+                                onClicked: node.removeConversation("group:" + groupId)
                             }
                         }
                     }

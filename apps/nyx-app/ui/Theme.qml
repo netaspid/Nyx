@@ -15,6 +15,7 @@ QtObject {
     }
 
     readonly property color bgApp: darkMode ? "#17212b" : "#ffffff"
+    readonly property color bgPanel: darkMode ? "#1c2733" : "#f7f8fa"
     readonly property color bgSidebar: darkMode ? "#0e1621" : "#f0f2f5"
     readonly property color bgChat: darkMode ? "#0e1621" : "#e4ddd4"
     readonly property color bgChatHeader: darkMode ? "#17212b" : "#ffffff"
