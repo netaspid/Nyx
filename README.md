@@ -1,32 +1,49 @@
-# Nyx
+<p align="center">
+  <img src="apps/nyx-app/resources/icons/nyx-logo.svg" alt="Nyx" width="120" />
+</p>
 
-P2P-мессенджер: личные чаты, поля (группы), обмен файлами. Связь напрямую между узлами, шифрование Noise. Через интернет нужен небольшой UDP-сервер rendezvous для нахождения адресов.
+<h1 align="center">Nyx</h1>
 
-## Стек
+<p align="center">
+  <strong>Private messaging that stays between you and your peers.</strong>
+</p>
 
-C++17, CMake, Qt 6 (QML) для GUI, [noise-c](https://github.com/rweather/noise-c).
+<p align="center">
+  Direct chats · Fields · Files · Voice &amp; video calls
+</p>
 
-| Бинарник | Назначение |
-|----------|------------|
-| `nyx-app` | Клиент |
-| `nyx-rendezvous` | Bootstrap (UDP) |
-| `nyx-node` | CLI для отладки |
+---
 
-## Установка на Windows
+**Nyx** is a peer-to-peer messenger. Messages, files, and calls travel node to node — not through a company cloud that reads your traffic.
 
-Нужны CMake 3.16+ и Qt 6.5+ (MinGW) в `C:\Qt\...`.
+A small rendezvous helper can introduce peers across the internet. After that, the conversation is yours.
 
-```powershell
-cmake -B build -G "MinGW Makefiles"
-cmake --build build -j
-```
+## Why Nyx
 
-Для пользователей раздавайте `build\NyxSetup.exe` — внутри клиент, MinGW runtime, Qt (в т.ч. Multimedia для звонков), FFmpeg-плагины. Opus и AV1 статически вшиты в бинарник.
+| | |
+| :--- | :--- |
+| **Yours alone** | End-to-end Noise encryption. No accounts farmed for ads. |
+| **Peer to peer** | Chats and media go between nodes. The network is the people using it. |
+| **Built for real use** | DMs, group fields, file exchange, and live calls in one place. |
 
-Данные приложения: `%APPDATA%\Nyx\`.
+## What you get
 
-Администрирование (rendezvous, сеть, типовые сбои): [docs/ADMIN.md](docs/ADMIN.md).
+**Direct messages** — private one-to-one conversations with people you trust.
 
-## Лицензия
+**Fields** — shared spaces for groups: talk, coordinate, keep the thread together.
 
-Copyright © владельцы проекта. Все права защищены, если иное не оговорено отдельным файлом LICENSE.
+**Files** — send what you need without a third-party drive in the middle.
+
+**Calls** — voice and video over a peer mesh, with modern codecs baked in.
+
+## Under the hood
+
+Crafted in C++ with a Qt Quick interface. Crypto via [Noise](https://noiseprotocol.org/). Media with Opus and AV1. Designed to feel light, stay local, and keep the protocol honest.
+
+<p align="center">
+  <img src="apps/nyx-app/resources/icons/nyx-mark.svg" alt="" width="48" />
+</p>
+
+<p align="center">
+  <sub>Copyright © the project owners. All rights reserved.</sub>
+</p>
