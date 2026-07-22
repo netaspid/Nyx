@@ -280,7 +280,14 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
   pool.set_servers(network_config_.rendezvous_servers);
   auto hint = pool.lookup(token);
   if (!hint) {
-    emit_status("собеседник не найден — online и тот же rendezvous?");
+    const auto primary = network_config_.primary_rendezvous();
+    if (primary.host == "127.0.0.1" || primary.host == "localhost") {
+      emit_status(
+          "инвайт не через LAN: нужен общий rendezvous (не 127.0.0.1). "
+          "В одной Wi‑Fi сети используйте «Рядом в сети» → Связаться");
+    } else {
+      emit_status("собеседник не найден — оба online и один и тот же rendezvous?");
+    }
     finish_session(session, SessionState::Offline);
     return;
   }

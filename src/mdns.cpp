@@ -1,6 +1,7 @@
 #include "nyx/mdns.hpp"
 
 #include "nyx/identity.hpp"
+#include "nyx/nat.hpp"
 #include "nyx/util.hpp"
 
 #include <algorithm>
@@ -99,13 +100,22 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
 }  // namespace
 
 bool MdnsLan::setup_socket(UdpSocket& socket, std::string* err) {
-  return socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err);
+  if (!socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err)) return false;
+  const std::string iface = lan_ipv4_override();
+  if (!iface.empty()) socket.set_multicast_interface(iface, nullptr);
+  return true;
 }
 
 bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint16_t port,
                                 const std::string& host_ip) {
   const auto wire = encode_beacon(profile, port, host_ip);
-  return socket.send_to(wire, kDiscoveryGroup, kDiscoveryPort);
+  socket.enable_broadcast(nullptr);
+  const std::string iface = host_ip.empty() ? lan_ipv4_override() : host_ip;
+  if (!iface.empty()) socket.set_multicast_interface(iface, nullptr);
+  // Multicast + broadcast: many phone APs / VPNs drop 239.x but keep broadcast.
+  bool ok = socket.send_to(wire, kDiscoveryGroup, kDiscoveryPort);
+  ok = socket.send_to(wire, "255.255.255.255", kDiscoveryPort) || ok;
+  return ok;
 }
 
 std::optional<LanPeer> MdnsLan::parse_beacon(const ByteBuffer& data,

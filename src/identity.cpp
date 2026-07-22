@@ -5,6 +5,7 @@
 
 #include <crypto/ed25519/ed25519.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -269,6 +270,14 @@ void ContactBook::upsert(Contact contact) {
     }
   }
   contacts_.push_back(std::move(contact));
+}
+
+bool ContactBook::remove(const UserId& user_id) {
+  const auto it = std::remove_if(contacts_.begin(), contacts_.end(),
+                                 [&](const Contact& c) { return c.user_id == user_id; });
+  if (it == contacts_.end()) return false;
+  contacts_.erase(it, contacts_.end());
+  return true;
 }
 
 }  // namespace nyx

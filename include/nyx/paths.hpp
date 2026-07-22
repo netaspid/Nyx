@@ -11,6 +11,9 @@ namespace nyx {
 /** Корень данных Nyx (%APPDATA%/nyx), без учёта активного аккаунта. */
 std::string data_root();
 
+/** Override OS default root (e.g. Android AppDataLocation). Empty clears override. */
+void set_base_data_root(const std::string& root);
+
 /** Каталог данных: корень или каталог активного аккаунта. */
 std::string data_dir();
 

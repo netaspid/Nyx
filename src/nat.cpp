@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <thread>
 
 #ifdef _WIN32
@@ -40,7 +41,26 @@ void write_u32_be_to(ByteBuffer& buf, uint32_t v, std::size_t off) {
 
 }  // namespace
 
+namespace {
+std::string g_lan_ipv4_override;
+std::mutex g_lan_ipv4_mutex;
+}  // namespace
+
+void set_lan_ipv4_override(const std::string& ipv4) {
+  std::lock_guard lock(g_lan_ipv4_mutex);
+  g_lan_ipv4_override = ipv4;
+}
+
+std::string lan_ipv4_override() {
+  std::lock_guard lock(g_lan_ipv4_mutex);
+  return g_lan_ipv4_override;
+}
+
 std::string guess_lan_ipv4() {
+  {
+    const std::string over = lan_ipv4_override();
+    if (!over.empty() && over != "0.0.0.0" && over != "127.0.0.1") return over;
+  }
 #ifdef _WIN32
   SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (s == INVALID_SOCKET) return "127.0.0.1";
