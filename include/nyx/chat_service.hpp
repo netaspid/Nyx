@@ -31,11 +31,15 @@ class ChatService {
   using DeliveryCallback =
       std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
+  using CallFrameCallback = std::function<void(const ByteBuffer& frame)>;
 
   ChatService(Connection& connection, Profile profile, PeerInfo peer);
 
   /** Отправляет ChatMessage, ставит в outbox, сохраняет в историю. */
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
+
+  /** Сигналинг звонка на kChatStream. */
+  bool send_call_frame(const ByteBuffer& frame);
 
   /** Обрабатывает payload с kChatStream. */
   void handle_payload(const ByteBuffer& payload);
@@ -52,6 +56,7 @@ class ChatService {
   void set_on_message(MessageCallback cb) { on_message_ = std::move(cb); }
   void set_on_delivery(DeliveryCallback cb) { on_delivery_ = std::move(cb); }
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
+  void set_on_call_frame(CallFrameCallback cb) { on_call_frame_ = std::move(cb); }
 
   const Profile& profile() const { return profile_; }
   const PeerInfo& peer() const { return peer_; }
@@ -79,6 +84,7 @@ class ChatService {
   MessageCallback on_message_;
   DeliveryCallback on_delivery_;
   EventCallback on_event_;
+  CallFrameCallback on_call_frame_;
 };
 
 }  // namespace nyx

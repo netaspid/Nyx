@@ -195,6 +195,23 @@ Item {
             }
 
             IconButton {
+                visible: node.peerTitle.length > 0 && node.canStartCall
+                theme: root.theme
+                glyph: "\uE717"
+                ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть аудиокомнату")
+                                                       : qsTr("Аудиозвонок")
+                onClicked: node.startCall(false)
+            }
+            IconButton {
+                visible: node.peerTitle.length > 0 && node.canStartCall
+                theme: root.theme
+                glyph: "\uE714"
+                ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть видеокомнату")
+                                                       : qsTr("Видеозвонок")
+                onClicked: node.startCall(true)
+            }
+
+            IconButton {
                 visible: node.inChat || node.sessionStateForKey(node.activeChatKey) === "live"
                          || node.sessionStateForKey(node.activeChatKey) === "connecting"
                 theme: root.theme

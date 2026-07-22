@@ -4,6 +4,7 @@
  *  Hub поля (star): создатель принимает несколько Connection на одном UDP-сокете.
  */
 
+#include "nyx/call_proto.hpp"
 #include "nyx/connection.hpp"
 #include "nyx/group.hpp"
 #include "nyx/identity.hpp"
@@ -48,6 +49,8 @@ class GroupHub {
   using DeliveryCallback =
       std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
+  using CallFrameCallback =
+      std::function<void(const UserId& from, const ByteBuffer& frame)>;
 
   GroupHub(UdpSocket socket, Profile owner, GroupRecord group);
 
@@ -57,15 +60,29 @@ class GroupHub {
   /** Отправка сообщения от owner в групповой чат. */
   bool send_message(const std::string& text);
 
+  bool send_call_frame(const ByteBuffer& frame, const UserId* skip_user = nullptr);
+  void distribute_call_mesh_intros(const CallId& call_id);
+
+  bool send_realtime_all(const ByteBuffer& data);
+  void drain_realtime(const std::function<void(ByteBuffer)>& on_frame);
+  void relay_realtime(const std::function<void(ByteBuffer)>& on_local);
+
   void handle_chat_payload(HubMember& member, const ByteBuffer& payload);
 
   void set_on_message(MessageCallback cb) { on_message_ = std::move(cb); }
   void set_on_delivery(DeliveryCallback cb) { on_delivery_ = std::move(cb); }
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
+  void set_on_call_frame(CallFrameCallback cb) { on_call_frame_ = std::move(cb); }
 
   /** Индекс, scope и ACL для kBulkStream на соединениях участников. */
   void attach_files(FileIndex& index, const GroupId& share_scope,
                     FileAccessStore* access = nullptr);
+
+  /** Обновляет роль участника (не Owner) и рассылает MemberJoined с новой ролью. */
+  bool set_member_role(const UserId& user_id, GroupRole role);
+
+  /** Роль в roster; Owner для создателя. */
+  GroupRole role_of(const UserId& user_id) const;
 
   const GroupRecord& group() const { return group_; }
   GroupRecord& group() { return group_; }
@@ -130,6 +147,7 @@ class GroupHub {
   MessageCallback on_message_;
   DeliveryCallback on_delivery_;
   EventCallback on_event_;
+  CallFrameCallback on_call_frame_;
   /** Исходящие owner-сообщения, ждущие Ack хотя бы от одного участника. */
   std::unordered_set<uint64_t> pending_member_acks_;
 

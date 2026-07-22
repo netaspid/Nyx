@@ -21,6 +21,19 @@ Connection::Connection(UdpSocket socket, std::string peer_host, uint16_t peer_po
       peer_host_(std::move(peer_host)),
       peer_port_(peer_port) {}
 
+Connection::Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port,
+                       Session session)
+    : socket_(std::move(socket)),
+      peer_host_(std::move(peer_host)),
+      peer_port_(peer_port),
+      state_(ConnectionState::Established),
+      session_(std::move(session)) {
+  const auto now = std::chrono::steady_clock::now();
+  last_peer_activity_ = now;
+  last_ping_sent_ = now;
+  peer_alive_ = true;
+}
+
 bool Connection::send_handshake(PacketType type, const ByteBuffer& payload) {
   auto wire = Frame::make(type, 0, 0, payload).encode();
   return socket_.send_to(wire, peer_host_, peer_port_);
@@ -134,11 +147,57 @@ bool Connection::send_payload(uint32_t stream_id, const ByteBuffer& data) {
   return send_stream(stream_id, data);
 }
 
+bool Connection::send_realtime(const ByteBuffer& data) {
+  if (!session_ || state_ != ConnectionState::Established || !peer_alive_) return false;
+  // Бюджет: MTU минус заголовок кадра и Noise tag; оставляем запас.
+  constexpr std::size_t kMaxRealtimePlain = 1100;
+  if (data.size() > kMaxRealtimePlain) return false;
+
+  auto muxed = mux_.send(kRealtimeStream, data);
+  auto encrypted = session_->encrypt(muxed);
+  if (!encrypted) return false;
+
+  auto wire =
+      Frame::make(PacketType::Realtime, kRealtimeStream, realtime_seq_++, std::move(*encrypted))
+          .encode();
+  if (wire.empty()) return false;
+  // Realtime — сразу в сокет, без очереди reliable (минимум задержки).
+  if (!socket_.send_to(wire, peer_host_, peer_port_)) return false;
+  maybe_rekey();
+  return true;
+}
+
+bool Connection::recv_realtime(ByteBuffer& out) {
+  if (realtime_inbox_.empty()) return false;
+  out = std::move(realtime_inbox_.front());
+  realtime_inbox_.pop_front();
+  return true;
+}
+
 void Connection::touch_peer_activity() {
   last_peer_activity_ = std::chrono::steady_clock::now();
 }
 
+bool Connection::handle_realtime_wire(const Frame& frame) {
+  if (!session_ || frame.header.packet_type != PacketType::Realtime) return false;
+  auto plain = session_->decrypt(frame.payload);
+  if (!plain || plain->size() < 4) return false;
+  const uint32_t stream_id = read_u32_le(plain->data());
+  if (stream_id != kRealtimeStream) return false;
+  ByteBuffer payload(plain->begin() + 4, plain->end());
+  constexpr std::size_t kMaxInbox = 64;
+  if (realtime_inbox_.size() >= kMaxInbox) realtime_inbox_.pop_front();
+  realtime_inbox_.push_back(std::move(payload));
+  return true;
+}
+
 void Connection::process_wire(const ByteBuffer& wire) {
+  auto frame = Frame::decode(wire.data(), wire.size());
+  if (frame && frame->header.packet_type == PacketType::Realtime) {
+    if (handle_realtime_wire(*frame)) touch_peer_activity();
+    return;
+  }
+
   reliable_.recv_wire(wire);
   for (auto& ack : reliable_.make_ack_frames(0)) {
     outbound_wires_.push_back(std::move(ack));
@@ -295,6 +354,89 @@ bool Connection::drive() {
   flush_outbound();
   maybe_rekey();
   return true;
+}
+
+namespace {
+
+PacketType pending_hs_reply(HandshakeRole role) {
+  return role == HandshakeRole::Initiator ? PacketType::HandshakeFinish
+                                          : PacketType::HandshakeResp;
+}
+
+}  // namespace
+
+PendingConnection::PendingConnection(UdpSocket socket, std::string peer_host,
+                                     uint16_t peer_port, HandshakeRole role)
+    : socket_(std::move(socket)),
+      peer_host_(std::move(peer_host)),
+      peer_port_(peer_port),
+      hs_(role) {}
+
+bool PendingConnection::send_hs(PacketType type, const ByteBuffer& payload) {
+  auto wire = Frame::make(type, 0, 0, payload).encode();
+  return socket_.send_to(wire, peer_host_, peer_port_);
+}
+
+bool PendingConnection::apply_payload(const ByteBuffer& hs_payload) {
+  if (auto out = hs_.step(&hs_payload)) {
+    if (!send_hs(pending_hs_reply(hs_.role()), *out)) {
+      failed_ = true;
+      return false;
+    }
+  }
+  if (hs_.complete()) complete_ = true;
+  return true;
+}
+
+bool PendingConnection::start(const ByteBuffer* first_wire) {
+  if (started_ || failed_ || complete_) return false;
+  started_ = true;
+
+  if (hs_.role() == HandshakeRole::Initiator) {
+    if (auto out = hs_.step(nullptr)) {
+      if (!send_hs(PacketType::HandshakeInit, *out)) {
+        failed_ = true;
+        return false;
+      }
+    } else {
+      failed_ = true;
+      return false;
+    }
+  }
+
+  if (first_wire && !first_wire->empty()) {
+    auto frame = Frame::decode(first_wire->data(), first_wire->size());
+    if (!frame || frame->header.packet_type != PacketType::HandshakeInit) {
+      failed_ = true;
+      return false;
+    }
+    if (!apply_payload(frame->payload)) return false;
+  }
+  return !failed_;
+}
+
+bool PendingConnection::feed_wire(const ByteBuffer& wire) {
+  if (failed_ || complete_ || !started_) return complete_;
+  auto frame = Frame::decode(wire.data(), wire.size());
+  if (!frame) return false;
+  const auto t = frame->header.packet_type;
+  if (t != PacketType::HandshakeInit && t != PacketType::HandshakeResp &&
+      t != PacketType::HandshakeFinish) {
+    return false;
+  }
+  if (!apply_payload(frame->payload)) return false;
+  return complete_;
+}
+
+std::optional<Connection> PendingConnection::take() {
+  if (!complete_ || failed_) return std::nullopt;
+  auto sess = Session::from_handshake(hs_);
+  if (!sess) {
+    failed_ = true;
+    return std::nullopt;
+  }
+  complete_ = false;  // prevent double-take
+  return Connection(socket_, peer_host_, peer_port_, std::move(*sess));
 }
 
 }  // namespace nyx

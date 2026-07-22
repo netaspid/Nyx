@@ -80,16 +80,20 @@ std::string guess_lan_ipv4() {
 #endif
 }
 
-void hole_punch(UdpSocket& sock, const EndpointHint& hint) {
+void hole_punch_burst(UdpSocket& sock, const EndpointHint& hint, int packets) {
   const ByteBuffer probe = {'D', 'N', 'E', 'T', '-', 'P', 'U', 'N', 'C', 'H'};
   char host[64] = {};
   std::snprintf(host, sizeof(host), "%u.%u.%u.%u", hint.ip[12], hint.ip[13],
                 hint.ip[14], hint.ip[15]);
+  if (packets < 1) packets = 1;
+  for (int i = 0; i < packets; ++i) {
+    sock.send_to(probe, host, hint.port);
+  }
+}
 
+void hole_punch(UdpSocket& sock, const EndpointHint& hint) {
   for (int round = 0; round < 5; ++round) {
-    for (int i = 0; i < 8; ++i) {
-      sock.send_to(probe, host, hint.port);
-    }
+    hole_punch_burst(sock, hint, 8);
     std::this_thread::sleep_for(std::chrono::milliseconds(25));
   }
 }

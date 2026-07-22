@@ -370,10 +370,13 @@ bool verify_installation(const std::wstring& install_dir, std::wstring* err) {
       L"Qt6Gui.dll",
       L"Qt6Qml.dll",
       L"Qt6Quick.dll",
+      L"Qt6Network.dll",
+      L"Qt6Multimedia.dll",
       L"libgcc_s_seh-1.dll",
       L"libstdc++-6.dll",
       L"libwinpthread-1.dll",
       L"platforms\\qwindows.dll",
+      L"multimedia\\windowsmediaplugin.dll",
   };
 
   for (const wchar_t* rel : required) {

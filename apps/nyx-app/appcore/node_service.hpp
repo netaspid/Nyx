@@ -7,6 +7,11 @@
 #include "connection_label.hpp"
 #include "session_types.hpp"
 #include "nyx/app.hpp"
+#include "nyx/avatar_store.hpp"
+#include "nyx/call_proto.hpp"
+#include "nyx/call_session.hpp"
+#include "nyx/call_media.hpp"
+#include "nyx/call_mesh.hpp"
 #include "nyx/chat_service.hpp"
 #include "nyx/connection.hpp"
 #include "nyx/conversation.hpp"
@@ -24,17 +29,17 @@
 #include "nyx/session_intent.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <map>
-#include <unordered_map>
 #include <memory>
-#include <optional>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace nyx_app {
@@ -114,11 +119,16 @@ class NodeService {
       std::function<void(const std::string& path, int files_scanned, bool finished)>;
   using RemoteFilesCallback = std::function<void(const std::vector<nyx::FileEntry>&)>;
   using FileAccessSyncCallback = std::function<void()>;
+  using CallChangedCallback = std::function<void()>;
   void set_on_file_progress(FileProgressCallback cb);
   void set_on_file_index_progress(FileIndexProgressCallback cb);
   void set_on_remote_files(RemoteFilesCallback cb);
   void set_on_file_access_sync(FileAccessSyncCallback cb);
   void set_on_avatars_changed(SessionsChangedCallback cb);
+  void set_on_call_changed(CallChangedCallback cb);
+  using CallMediaCallback =
+      std::function<void(nyx::CallMediaType type, const nyx::ByteBuffer& payload)>;
+  void set_on_call_media(CallMediaCallback cb);
   void set_on_mode(std::function<void(NodeMode)> cb);
   void set_on_session_ended(SessionEndedCallback cb);
   void set_on_sessions_changed(SessionsChangedCallback cb);
@@ -187,6 +197,27 @@ class NodeService {
   /** Отправка в указанную сессию (или в active, если session_id пуст). */
   bool send_message(const std::string& text, const std::string& session_id = {});
   bool send_bye(const std::string& reason);
+
+  /** Звонки: сигналинг по active/указанной сессии. */
+  bool start_call(bool video, const std::string& session_id = {});
+  bool accept_call();
+  bool reject_call();
+  bool hangup_call();
+  /** Можно ли открыть комнату в текущем/указанном поле (Owner/Host). */
+  bool can_start_call(const std::string& session_id = {}) const;
+  /** Назначить роль Host/Member участнику поля (только с хаба-владельца). */
+  bool set_field_member_role(const std::string& group_id_hex, const std::string& user_id_hex,
+                             const std::string& role);
+  nyx::CallState call_state() const;
+  nyx::CallMode call_mode() const;
+  std::string call_session_id() const;
+  std::string call_title() const;
+  std::string call_id_hex() const;
+  bool call_is_field_room() const;
+  bool call_is_host() const;
+  /** Отправка медиа-пакета в активный звонок (kRealtimeStream). */
+  bool send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload);
+
   bool index_folder(const std::string& path, const std::string& scope_group_id_hex = {});
   bool remove_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   bool rescan_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
@@ -357,6 +388,25 @@ class NodeService {
                                 const nyx::HelloMessage& peer);
   bool handle_avatar_bulk(const std::shared_ptr<NetSession>& session,
                           const nyx::ByteBuffer& payload);
+  void wire_call_handlers(const std::shared_ptr<NetSession>& session);
+  void handle_incoming_call_frame(const std::shared_ptr<NetSession>& session,
+                                  const nyx::ByteBuffer& frame);
+  bool send_call_frame_on_session(const std::shared_ptr<NetSession>& session,
+                                  const nyx::ByteBuffer& frame);
+  void pump_call_realtime(const std::shared_ptr<NetSession>& session);
+  void emit_call_changed();
+  void emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload);
+  void maybe_send_field_intros();
+  void ensure_field_call_mesh();
+  void announce_call_endpoint();
+  void stop_call_mesh();
+  void request_call_mesh_start();
+  void request_call_mesh_announce();
+  void queue_mesh_peer(const nyx::CallPeerEndpoint& peer);
+  void flush_pending_mesh_peers();
+  void pump_field_hub_media(const std::shared_ptr<NetSession>& session,
+                            const std::function<void(nyx::ByteBuffer)>& handle_raw);
+  nyx::GroupRole local_field_role(const std::shared_ptr<NetSession>& session) const;
   std::string resolve_share_root_path(const std::string& root_path) const;
   nyx::GroupId scope_from_hex(const std::string& scope_group_id_hex) const;
   void remember_intent_for_session(const std::shared_ptr<NetSession>& session,
@@ -397,9 +447,24 @@ class NodeService {
   RemoteFilesCallback on_remote_files_;
   FileAccessSyncCallback on_file_access_sync_;
   SessionsChangedCallback on_avatars_changed_;
+  CallChangedCallback on_call_changed_;
+  CallMediaCallback on_call_media_;
   std::function<void(NodeMode)> on_mode_;
   SessionEndedCallback on_session_ended_;
   SessionsChangedCallback on_sessions_changed_;
+
+  mutable std::mutex call_mutex_;
+  nyx::CallSession call_;
+  std::string call_session_id_;
+  std::string call_title_;
+  uint32_t call_media_seq_ = 0;
+  std::shared_ptr<nyx::CallMesh> call_mesh_;
+  std::vector<nyx::CallPeerEndpoint> call_mesh_pending_peers_;
+  std::chrono::steady_clock::time_point call_mesh_last_announce_{};
+  int call_mesh_announce_burst_ = 0;
+  bool call_is_host_ = false;
+  std::atomic<bool> call_mesh_need_start_{false};
+  std::atomic<bool> call_mesh_need_announce_{false};
 
   std::string profile_path_;
   std::string nickname_;

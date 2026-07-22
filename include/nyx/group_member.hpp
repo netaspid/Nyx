@@ -40,6 +40,7 @@ class GroupMemberService {
       std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
   using MetaCallback = std::function<void()>;
+  using CallFrameCallback = std::function<void(const ByteBuffer& frame)>;
 
   GroupMemberService(Connection& connection, Profile profile, GroupId group_id,
                      std::string group_name);
@@ -49,6 +50,7 @@ class GroupMemberService {
 
   /** Отправка в поле; false если hub мёртв / не joined. */
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
+  bool send_call_frame(const ByteBuffer& frame);
   void handle_payload(const ByteBuffer& payload);
   /** Keep-alive; при таймауте peer сбрасывает joined. */
   void tick();
@@ -57,10 +59,12 @@ class GroupMemberService {
   void set_on_delivery(DeliveryCallback cb) { on_delivery_ = std::move(cb); }
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_meta(MetaCallback cb) { on_meta_ = std::move(cb); }
+  void set_on_call_frame(CallFrameCallback cb) { on_call_frame_ = std::move(cb); }
 
   const GroupRecordView& view() const { return view_; }
   bool joined() const { return joined_; }
   const ChatId& chat_id() const { return chat_id_; }
+  Connection& connection() { return connection_; }
 
  private:
   ChatMessage make_message(const std::string& text) const;
@@ -82,6 +86,7 @@ class GroupMemberService {
   DeliveryCallback on_delivery_;
   EventCallback on_event_;
   MetaCallback on_meta_;
+  CallFrameCallback on_call_frame_;
   std::unordered_set<uint64_t> pending_acks_;
 };
 
