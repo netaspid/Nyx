@@ -234,18 +234,23 @@ bool UdpSocket::bind_multicast_listener(const std::string& group, uint16_t port,
   state_->local_port = ntohs(addr.sin_port);
 
   const in_addr iface = resolve_mcast_iface(iface_ipv4);
-  if (!join_mcast_group(s, group, iface, err)) {
-    in_addr any{};
-    any.s_addr = INADDR_ANY;
-    if (!join_mcast_group(s, group, any, err)) return false;
-    state_->mcast_iface_addr = any.s_addr;
-  } else {
-    state_->mcast_iface_addr = iface.s_addr;
+  in_addr any{};
+  any.s_addr = INADDR_ANY;
+  // Join on both specific iface and ANY — Android RX often needs the ANY membership.
+  const bool joined_iface = join_mcast_group(s, group, iface, nullptr);
+  const bool joined_any =
+      (iface.s_addr == INADDR_ANY) ? joined_iface : join_mcast_group(s, group, any, nullptr);
+  if (!joined_iface && !joined_any) {
+    if (err) *err = "IP_ADD_MEMBERSHIP failed";
+    return false;
   }
+  state_->mcast_iface_addr = joined_iface ? iface.s_addr : any.s_addr;
   state_->mcast_group = group;
 
-  setsockopt(s, IPPROTO_IP, IP_MULTICAST_IF, reinterpret_cast<const char*>(&iface),
-             sizeof(iface));
+  if (joined_iface) {
+    setsockopt(s, IPPROTO_IP, IP_MULTICAST_IF, reinterpret_cast<const char*>(&iface),
+               sizeof(iface));
+  }
 
   int loop = 1;
   setsockopt(s, IPPROTO_IP, IP_MULTICAST_LOOP, reinterpret_cast<const char*>(&loop),

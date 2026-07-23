@@ -436,12 +436,12 @@ void GroupHub::drain_realtime(const std::function<void(ByteBuffer)>& on_frame) {
   }
 }
 
-void GroupHub::relay_realtime(const std::function<void(ByteBuffer)>& on_local) {
+void GroupHub::relay_realtime(const std::function<void(const UserId& from, ByteBuffer)>& on_local) {
   for (auto& m : members_) {
     if (!m.joined) continue;
     ByteBuffer raw;
     while (m.connection.recv_realtime(raw)) {
-      if (on_local) on_local(raw);
+      if (on_local) on_local(m.user_id, raw);
       for (auto& o : members_) {
         if (!o.joined || o.user_id == m.user_id) continue;
         if (o.connection.state() != ConnectionState::Established) continue;

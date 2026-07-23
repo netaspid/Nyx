@@ -72,6 +72,12 @@ int main(int argc, char* argv[]) {
 #endif
 
   NodeController node;
+#if defined(Q_OS_ANDROID)
+  static NodeController* s_node_for_hangup = &node;
+  nyx_android::set_hangup_handler([]() {
+    if (s_node_for_hangup) s_node_for_hangup->hangupCall();
+  });
+#endif
 
   for (int i = 1; i + 1 < argc; ++i) {
     const QString arg = QString::fromLocal8Bit(argv[i]);

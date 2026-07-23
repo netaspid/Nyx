@@ -140,7 +140,10 @@ void MdnsLan::start_advertising(UdpSocket socket, Profile profile, uint16_t port
   thread_ = std::thread([this, profile = std::move(profile), port,
                          host_ip = std::move(host_ip)]() mutable {
     while (running_.load()) {
-      send_announcement(advert_socket_, profile, port, host_ip);
+      // Prefer live LAN IP (Wi‑Fi may arrive after inbox start).
+      std::string ip = guess_lan_ipv4();
+      if (ip.empty() || ip == "127.0.0.1" || ip == "0.0.0.0") ip = host_ip;
+      send_announcement(advert_socket_, profile, port, ip);
       for (int i = 0; i < 10 && running_.load(); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }

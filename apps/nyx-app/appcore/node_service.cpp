@@ -9,6 +9,7 @@
 #include "nyx/util.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -441,6 +442,12 @@ std::shared_ptr<NodeService::NetSession> NodeService::create_session(const std::
 void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
                                  SessionState final_state) {
   if (!session) return;
+  bool end_call = false;
+  {
+    std::lock_guard lock(call_mutex_);
+    end_call = !call_session_id_.empty() && call_session_id_ == session->id &&
+               !call_.idle();
+  }
   if (final_state == SessionState::Offline && !session->ever_live.load()) {
     if (session->kind == SessionKind::GroupMember) {
       const std::string key = !session->ref_id_hex.empty()
@@ -482,6 +489,8 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
   }
   set_mode(mode());
   emit_session_ended(session->id);
+  // Session transport died — do not leave a zombie Active call ("Аудио не уходит").
+  if (end_call) hangup_call();
 }
 
 void NodeService::stop_session_locked(const std::shared_ptr<NetSession>& session) {
@@ -1170,6 +1179,19 @@ void NodeService::auto_reconnect_all() {
     if (!intent.enabled) continue;
     if (intent.kind != nyx::SessionIntentKind::Direct) continue;
     if (is_session_up(intent.key)) continue;
+
+    // LAN dial-back: lan://host:port
+    if (intent.invite_hex.rfind("lan://", 0) == 0) {
+      const std::string ep = intent.invite_hex.substr(6);
+      const auto colon = ep.rfind(':');
+      if (colon == std::string::npos || colon == 0) continue;
+      const std::string host = ep.substr(0, colon);
+      const int port = std::atoi(ep.substr(colon + 1).c_str());
+      if (host.empty() || port <= 0 || port > 65535) continue;
+      start_connect_peer(host, static_cast<uint16_t>(port));
+      continue;
+    }
+
     if (intent.invite_hex.size() != 64) continue;
 
     bool quiet = false;

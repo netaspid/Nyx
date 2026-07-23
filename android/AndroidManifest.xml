@@ -23,6 +23,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
@@ -73,5 +74,18 @@
                 android:name="android.app.extract_android_style"
                 android:value="minimal" />
         </activity>
+
+        <receiver
+            android:name="org.nyx.app.NyxCallNotify$HangupReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.nyx.app.ACTION_HANGUP" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name="org.nyx.app.NyxKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
