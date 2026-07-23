@@ -20,11 +20,12 @@ AbstractButton {
         color: {
             if (!ctrl.enabled) return theme ? theme.inputBg : "#333"
             if (ctrl.pressed) return theme ? theme.accentPress : "#4674a8"
-            if (ctrl.hovered) return theme ? theme.btnSecondaryHover : "#444"
-            return "transparent"
+            if (ctrl.hovered && Qt.platform.os !== "android")
+                return theme ? theme.btnSecondaryHover : "#444"
+            return theme ? theme.btnSecondary : "#2a2e38"
         }
         border.color: theme ? theme.border : "#555"
-        border.width: ctrl.enabled ? 0 : 1
+        border.width: 1
     }
 
     contentItem: Item {

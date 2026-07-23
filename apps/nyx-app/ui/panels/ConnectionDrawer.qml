@@ -298,7 +298,11 @@ Drawer {
                 visible: lanList.count === 0
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: qsTr("Никого рядом в LAN.\nЗапустите Nyx на другом устройстве в той же сети.")
+                text: {
+                    if (node.discoveryMode === 2)
+                        return qsTr("Режим «Только Интернет»: LAN-поиск выключен.\nВ настройках сети выберите Auto или LAN.")
+                    return qsTr("Никого рядом в LAN.\nОдинаковый Wi‑Fi, без VPN; на обоих — Auto/LAN.\nНа Android нужен доступ к локальной сети.")
+                }
                 color: theme.textMuted
                 font.pixelSize: 11
             }
