@@ -15,6 +15,8 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.util.Log;
 
+import java.util.List;
+
 /** Local high-priority notification for incoming Nyx calls (process must be alive). */
 public final class NyxCallNotify {
     private static final String TAG = "NyxCallNotify";
@@ -157,7 +159,7 @@ public final class NyxCallNotify {
             }
             boolean routed = false;
             if (Build.VERSION.SDK_INT >= 31) {
-                AudioDeviceInfo[] devices = am.getAvailableCommunicationDevices();
+                List<AudioDeviceInfo> devices = am.getAvailableCommunicationDevices();
                 if (devices != null) {
                     final int want = on ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
                                         : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
@@ -170,7 +172,6 @@ public final class NyxCallNotify {
                     }
                 }
                 if (!routed && on) {
-                    // Fallback: some OEMs list speaker only via getDevices().
                     AudioDeviceInfo[] all = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
                     if (all != null) {
                         for (AudioDeviceInfo d : all) {
