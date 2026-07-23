@@ -13,6 +13,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
@@ -69,11 +70,15 @@ class NodeController : public QObject {
   Q_PROPERTY(bool callVideo READ callVideo NOTIFY callChanged)
   Q_PROPERTY(bool canStartCall READ canStartCall NOTIFY callChanged)
   Q_PROPERTY(bool callIsFieldRoom READ callIsFieldRoom NOTIFY callChanged)
+  Q_PROPERTY(bool callMicMuted READ callMicMuted WRITE setCallMicMuted NOTIFY callChanged)
+  Q_PROPERTY(bool callCameraOn READ callCameraOn WRITE setCallCameraOn NOTIFY callChanged)
+  Q_PROPERTY(bool callSpeakerphone READ callSpeakerphone WRITE setCallSpeakerphone NOTIFY callChanged)
   Q_PROPERTY(QUrl callRemoteFrameUrl READ callRemoteFrameUrl NOTIFY callRemoteFrameChanged)
   Q_PROPERTY(QUrl callLocalFrameUrl READ callLocalFrameUrl NOTIFY callLocalFrameChanged)
   Q_PROPERTY(bool callCanSwitchCamera READ callCanSwitchCamera NOTIFY callChanged)
   Q_PROPERTY(QString callFocusedPeerId READ callFocusedPeerId NOTIFY callVideoPeersChanged)
   Q_PROPERTY(QVariantList callVideoPeers READ callVideoPeers NOTIFY callVideoPeersChanged)
+  Q_PROPERTY(QVariantList callRosterPeers READ callRosterPeers NOTIFY callVideoPeersChanged)
   Q_PROPERTY(int callFrameEpoch READ callFrameEpoch NOTIFY callRemoteFrameChanged)
   Q_PROPERTY(QVariantList cameraDeviceList READ cameraDeviceList NOTIFY mediaDevicesChanged)
   Q_PROPERTY(QVariantList audioInputDeviceList READ audioInputDeviceList NOTIFY mediaDevicesChanged)
@@ -411,17 +416,27 @@ class NodeController : public QObject {
   Q_INVOKABLE void hangupCall();
   Q_INVOKABLE void switchCallCamera();
   Q_INVOKABLE void setCallFocusedPeer(const QString& peerIdHex);
+  Q_INVOKABLE void toggleCallMicMuted();
+  Q_INVOKABLE void toggleCallCamera();
+  Q_INVOKABLE void toggleCallSpeakerphone();
   Q_INVOKABLE void refreshMediaDevices();
   QString callState() const;
   QString callTitle() const;
   bool callVideo() const;
   bool canStartCall() const;
   bool callIsFieldRoom() const;
+  bool callMicMuted() const;
+  void setCallMicMuted(bool muted);
+  bool callCameraOn() const;
+  void setCallCameraOn(bool on);
+  bool callSpeakerphone() const;
+  void setCallSpeakerphone(bool on);
   QUrl callRemoteFrameUrl() const;
   QUrl callLocalFrameUrl() const;
   bool callCanSwitchCamera() const;
   QString callFocusedPeerId() const;
   QVariantList callVideoPeers() const;
+  QVariantList callRosterPeers() const;
   int callFrameEpoch() const { return call_frame_epoch_; }
   void setCallFrameProvider(CallFrameProvider* provider);
   QVariantList cameraDeviceList() const;
@@ -556,13 +571,20 @@ class NodeController : public QObject {
   void saveMediaDevicePrefs() const;
 
   nyx_app::NodeService service_;
+  // Thread must outlive call_audio_ (declared first → destroyed last).
+  QThread call_audio_thread_;
   CallAudioIo call_audio_;
+  // Camera must stay on the GUI thread on Android (Camera2); do not moveToThread.
   CallVideoIo call_video_;
   CallFrameProvider* call_frames_ = nullptr;  // owned by QQmlEngine
   bool call_video_slots_wired_ = false;
   QUrl call_remote_frame_url_;
   QUrl call_local_frame_url_;
   int call_frame_epoch_ = 0;
+  bool call_speakerphone_ = true;
+  QString last_call_notify_key_;
+  qint64 last_send_fail_toast_ms_ = 0;
+  qint64 call_media_started_ms_ = 0;
   MessageModel messages_;
   ChatListModel chat_list_;
   LanPeerModel lan_peers_;

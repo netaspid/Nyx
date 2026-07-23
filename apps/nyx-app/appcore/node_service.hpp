@@ -29,6 +29,7 @@
 #include "nyx/session_intent.hpp"
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <deque>
@@ -218,6 +219,10 @@ class NodeService {
   std::string call_id_hex() const;
   bool call_is_field_room() const;
   bool call_is_host() const;
+  bool call_mic_muted() const;
+  void set_call_mic_muted(bool muted);
+  bool call_camera_on() const;
+  void set_call_camera_on(bool on);
   /** Отправка медиа-пакета в активный звонок (kRealtimeStream). */
   bool send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload);
 
@@ -400,6 +405,8 @@ class NodeService {
   void emit_call_changed();
   void emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
                        const nyx::UserId& from = {});
+  /** @return false if this (type,seq) was already emitted (mesh+hub dup). */
+  bool note_inbound_call_media(nyx::CallMediaType type, uint32_t seq);
   void maybe_send_field_intros();
   void ensure_field_call_mesh();
   void announce_call_endpoint();
@@ -408,8 +415,9 @@ class NodeService {
   void request_call_mesh_announce();
   void queue_mesh_peer(const nyx::CallPeerEndpoint& peer);
   void flush_pending_mesh_peers();
-  void pump_field_hub_media(const std::shared_ptr<NetSession>& session,
-                            const std::function<void(nyx::ByteBuffer)>& handle_raw);
+  void pump_field_hub_media(
+      const std::shared_ptr<NetSession>& session,
+      const std::function<void(const nyx::UserId& from, nyx::ByteBuffer)>& handle_raw);
   nyx::GroupRole local_field_role(const std::shared_ptr<NetSession>& session) const;
   std::string resolve_share_root_path(const std::string& root_path) const;
   nyx::GroupId scope_from_hex(const std::string& scope_group_id_hex) const;
@@ -469,6 +477,12 @@ class NodeService {
   bool call_is_host_ = false;
   std::atomic<bool> call_mesh_need_start_{false};
   std::atomic<bool> call_mesh_need_announce_{false};
+  std::chrono::steady_clock::time_point call_inbound_opus_{};
+  std::chrono::steady_clock::time_point call_inbound_video_{};
+  // Dedupe mesh+hub duplicates: last emitted (type, seq) pairs.
+  std::array<uint32_t, 4> call_media_dedupe_seq_{};
+  std::array<uint8_t, 4> call_media_dedupe_type_{};
+  int call_media_dedupe_i_ = 0;
 
   std::string profile_path_;
   std::string nickname_;

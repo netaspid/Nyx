@@ -63,11 +63,14 @@ std::optional<CallVideoReassembler::Assembled> CallVideoReassembler::push(
   if (!h) return std::nullopt;
   const auto* body = frag_payload.data() + CallVideoFragHeader::kSize;
   const std::size_t body_len = frag_payload.size() - CallVideoFragHeader::kSize;
+  const auto now = std::chrono::steady_clock::now();
 
   if (active_ && h->frame_id != cur_id_) {
-    // Ignore late fragments from an older frame (uint16 wrap-aware).
+    // Ignore late fragments from an older frame (uint16 wrap-aware),
+    // unless the current assemble stalled (>120ms) — then accept the new id.
     const uint16_t delta = static_cast<uint16_t>(cur_id_ - h->frame_id);
-    if (delta != 0 && delta < 0x8000) return std::nullopt;
+    const bool stalled = (now - started_) > std::chrono::milliseconds(120);
+    if (delta != 0 && delta < 0x8000 && !stalled) return std::nullopt;
   }
 
   if (!active_ || h->frame_id != cur_id_ || h->frag_count != expected_) {
@@ -77,6 +80,7 @@ std::optional<CallVideoReassembler::Assembled> CallVideoReassembler::push(
     keyframe_ = h->keyframe != 0;
     parts_.assign(expected_, ByteBuffer{});
     got_.assign(expected_, 0);
+    started_ = now;
   }
 
   if (h->frag_index >= parts_.size()) {

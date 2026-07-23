@@ -2,28 +2,38 @@
 
 /** Android-specific helpers: Wi‑Fi multicast lock, LAN IPv4, call permissions, call notify. */
 
+#include <QByteArray>
+#include <QString>
+
+#include <cstdint>
 #include <string>
 
 namespace nyx_android {
 
-/** Hold a WifiManager MulticastLock for LAN discovery (no-op off Android). */
+/** Hold / refresh WifiManager MulticastLock for LAN discovery (no-op off Android). */
 void acquire_multicast_lock();
 void release_multicast_lock();
 
-/** Wi‑Fi IPv4 from WifiManager (empty if not on Wi‑Fi). No-op off Android. */
+/** Wi‑Fi IPv4 from ConnectivityManager LinkProperties (empty if not on Wi‑Fi). */
 std::string wifi_ipv4();
 
 /**
- * Request RECORD_AUDIO and optionally CAMERA, then invoke done(granted).
- * Off Android, calls done(true) immediately.
+ * Request RECORD_AUDIO and optionally CAMERA.
+ * done(mic_ok, cam_ok, ctx) — cam_ok is true when camera was not requested.
+ * Off Android, calls done(true, true).
  */
-void request_call_permissions(bool need_camera, void (*done)(bool granted, void* ctx), void* ctx);
+void request_call_permissions(bool need_camera,
+                              void (*done)(bool mic_ok, bool cam_ok, void* ctx), void* ctx);
 
 /** Request POST_NOTIFICATIONS on API 33+ (no-op / granted elsewhere). */
 void request_notification_permission();
 
-/** VoIP AudioManager mode + speaker routing while call is active. */
+/** VoIP AudioManager mode + AudioFocus while call is active. */
 void set_voip_audio_mode(bool active);
+
+/** Speakerphone on/off (Android). No-op elsewhere. */
+void set_speakerphone(bool on);
+bool speakerphone();
 
 /** Keep CPU awake briefly so background invite can be processed/notified. */
 void acquire_call_wake_lock();
@@ -37,5 +47,41 @@ void cancel_call_notifications();
 
 /** Bring QtActivity to foreground if possible. */
 void bring_app_to_foreground();
+
+/** Quiet FGS so UDP / call invites survive when the activity is backgrounded. */
+void start_keepalive_service();
+void stop_keepalive_service();
+
+/** Push Camera2 preview SurfaceView behind Qt so QML controls stay tappable. */
+void mark_camera_surface_baseline();
+void suppress_camera_surface_overlays();
+
+/**
+ * Native Camera2 + ImageReader (no Activity SurfaceView).
+ * Callbacks are invoked on the Qt GUI thread via QueuedConnection.
+ */
+using NativeCameraJpegFn = void (*)(const QByteArray& jpeg, bool front, void* ctx);
+using NativeCameraErrorFn = void (*)(const QString& message, void* ctx);
+using NativeCameraStartedFn = void (*)(bool front, const QString& camera_id, void* ctx);
+void set_native_camera_callbacks(NativeCameraJpegFn on_jpeg, NativeCameraErrorFn on_error,
+                                 NativeCameraStartedFn on_started, void* ctx);
+void native_camera_start(bool prefer_front);
+void native_camera_stop();
+void native_camera_switch_facing();
+bool native_camera_has_front_and_back();
+
+/** Register hangup callback invoked from native Android hangup UI / notification. */
+void set_hangup_handler(void (*fn)());
+
+/** Show/hide a native DecorView hangup button above any camera SurfaceView. */
+void show_native_hangup_overlay(bool show);
+
+/** Called from JNI on the Qt GUI thread. */
+void invoke_hangup_handler();
+
+/** Android VoIP playback via AudioTrack (VOICE_COMMUNICATION). No-op elsewhere. */
+void voice_playback_start(int sample_rate, int channels);
+void voice_playback_write(const int16_t* samples, int count);
+void voice_playback_stop();
 
 }  // namespace nyx_android

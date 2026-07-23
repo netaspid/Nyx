@@ -65,7 +65,8 @@ class GroupHub {
 
   bool send_realtime_all(const ByteBuffer& data);
   void drain_realtime(const std::function<void(ByteBuffer)>& on_frame);
-  void relay_realtime(const std::function<void(ByteBuffer)>& on_local);
+  /** Relays member realtime to others; on_local(from, raw) for local decode. */
+  void relay_realtime(const std::function<void(const UserId& from, ByteBuffer)>& on_local);
 
   void handle_chat_payload(HubMember& member, const ByteBuffer& payload);
 

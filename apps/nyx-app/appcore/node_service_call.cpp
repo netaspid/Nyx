@@ -45,6 +45,24 @@ void NodeService::emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
   if (cb) cb(type, payload, from);
 }
 
+bool NodeService::note_inbound_call_media(nyx::CallMediaType type, uint32_t seq) {
+  std::lock_guard lock(call_mutex_);
+  for (int i = 0; i < 4; ++i) {
+    if (call_media_dedupe_type_[static_cast<std::size_t>(i)] == static_cast<uint8_t>(type) &&
+        call_media_dedupe_seq_[static_cast<std::size_t>(i)] == seq) {
+      return false;
+    }
+  }
+  call_media_dedupe_type_[static_cast<std::size_t>(call_media_dedupe_i_)] =
+      static_cast<uint8_t>(type);
+  call_media_dedupe_seq_[static_cast<std::size_t>(call_media_dedupe_i_)] = seq;
+  call_media_dedupe_i_ = (call_media_dedupe_i_ + 1) % 4;
+  const auto now = std::chrono::steady_clock::now();
+  if (type == nyx::CallMediaType::Opus) call_inbound_opus_ = now;
+  if (type == nyx::CallMediaType::Video) call_inbound_video_ = now;
+  return true;
+}
+
 void NodeService::stop_call_mesh() {
   call_mesh_need_start_.store(false);
   call_mesh_need_announce_.store(false);
@@ -106,6 +124,7 @@ void NodeService::ensure_field_call_mesh() {
   mesh->set_on_realtime([this](const nyx::UserId& from, nyx::ByteBuffer raw) {
     auto frame = nyx::CallMediaFrame::decode(raw);
     if (!frame) return;
+    if (!note_inbound_call_media(frame->type, frame->seq)) return;
     emit_call_media(frame->type, frame->payload, from);
   });
 
@@ -153,8 +172,9 @@ void NodeService::announce_call_endpoint() {
   }
 }
 
-void NodeService::pump_field_hub_media(const std::shared_ptr<NetSession>& session,
-                                       const std::function<void(nyx::ByteBuffer)>& handle_raw) {
+void NodeService::pump_field_hub_media(
+    const std::shared_ptr<NetSession>& session,
+    const std::function<void(const nyx::UserId& from, nyx::ByteBuffer)>& handle_raw) {
   if (!session) return;
   if (session->group_hub) {
     session->group_hub->relay_realtime(handle_raw);
@@ -162,7 +182,7 @@ void NodeService::pump_field_hub_media(const std::shared_ptr<NetSession>& sessio
   }
   if (session->connection) {
     nyx::ByteBuffer raw;
-    while (session->connection->recv_realtime(raw)) handle_raw(std::move(raw));
+    while (session->connection->recv_realtime(raw)) handle_raw({}, std::move(raw));
   }
 }
 
@@ -172,6 +192,7 @@ bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
   uint32_t seq = 0;
   nyx::CallScope scope = nyx::CallScope::Direct;
   std::shared_ptr<nyx::CallMesh> mesh;
+  bool need_hub_mirror = false;
   {
     std::lock_guard lock(call_mutex_);
     if (call_.state != nyx::CallState::Active) return false;
@@ -179,6 +200,20 @@ bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
     seq = call_media_seq_++;
     scope = call_.scope;
     mesh = call_mesh_;
+    const auto now = std::chrono::steady_clock::now();
+    if (scope == nyx::CallScope::Field) {
+      const bool no_inbound_opus =
+          type == nyx::CallMediaType::Opus &&
+          (call_inbound_opus_.time_since_epoch().count() == 0 ||
+           now - call_inbound_opus_ > std::chrono::seconds(2));
+      const bool no_inbound_video =
+          type == nyx::CallMediaType::Video &&
+          (call_inbound_video_.time_since_epoch().count() == 0 ||
+           now - call_inbound_video_ > std::chrono::seconds(2));
+      const int mesh_n = (mesh && mesh->active()) ? static_cast<int>(mesh->established_count()) : 0;
+      // Dual-path until reverse media is confirmed, or always for small rooms.
+      need_hub_mirror = no_inbound_opus || no_inbound_video || mesh_n <= 4;
+    }
   }
   auto session = find_session(sid);
   if (!session) return false;
@@ -189,22 +224,25 @@ bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
   frame.payload = payload;
   const nyx::ByteBuffer wire = frame.encode();
 
-  if (scope == nyx::CallScope::Direct && session->connection) {
+  if (scope == nyx::CallScope::Direct) {
+    if (!session->connection) return false;
     return session->connection->send_realtime(wire);
   }
   if (scope == nyx::CallScope::Field) {
-    bool sent = false;
+    bool mesh_sent = false;
     if (mesh && mesh->active() && mesh->established_count() > 0) {
       if (type == nyx::CallMediaType::Video)
-        sent = mesh->send_realtime_video(wire);
+        mesh_sent = mesh->send_realtime_video(wire);
       else
-        sent = mesh->send_realtime(wire);
+        mesh_sent = mesh->send_realtime(wire);
     }
-    if (!sent) {
-      if (session->group_hub) sent = session->group_hub->send_realtime_all(wire);
-      else if (session->connection) sent = session->connection->send_realtime(wire);
+    bool hub_sent = false;
+    // Prefer hub mirror whenever mesh is empty — Field audio must not stall.
+    if (!mesh_sent || need_hub_mirror || (mesh && mesh->established_count() == 0)) {
+      if (session->group_hub) hub_sent = session->group_hub->send_realtime_all(wire);
+      else if (session->connection) hub_sent = session->connection->send_realtime(wire);
     }
-    return sent;
+    return mesh_sent || hub_sent;
   }
   return false;
 }
@@ -247,15 +285,16 @@ void NodeService::pump_call_realtime(const std::shared_ptr<NetSession>& session)
     mesh = call_mesh_;
   }
 
-  auto handle_raw = [this](nyx::ByteBuffer raw) {
+  auto handle_raw = [this](const nyx::UserId& from, nyx::ByteBuffer raw) {
     auto frame = nyx::CallMediaFrame::decode(raw);
     if (!frame) return;
-    emit_call_media(frame->type, frame->payload);
+    if (!note_inbound_call_media(frame->type, frame->seq)) return;
+    emit_call_media(frame->type, frame->payload, from);
   };
 
   if (scope == nyx::CallScope::Direct && session->connection) {
     nyx::ByteBuffer raw;
-    while (session->connection->recv_realtime(raw)) handle_raw(std::move(raw));
+    while (session->connection->recv_realtime(raw)) handle_raw({}, std::move(raw));
   }
 
   if (scope == nyx::CallScope::Field) {
@@ -291,7 +330,27 @@ std::string NodeService::call_id_hex() const {
 
 bool NodeService::call_is_field_room() const {
   std::lock_guard lock(call_mutex_);
-  return call_.scope == nyx::CallScope::Field && call_.state == nyx::CallState::Active;
+  return call_.scope == nyx::CallScope::Field && !call_.idle();
+}
+
+bool NodeService::call_mic_muted() const {
+  std::lock_guard lock(call_mutex_);
+  return call_.local_mic_muted;
+}
+
+void NodeService::set_call_mic_muted(bool muted) {
+  std::lock_guard lock(call_mutex_);
+  call_.local_mic_muted = muted;
+}
+
+bool NodeService::call_camera_on() const {
+  std::lock_guard lock(call_mutex_);
+  return call_.local_camera_on;
+}
+
+void NodeService::set_call_camera_on(bool on) {
+  std::lock_guard lock(call_mutex_);
+  call_.local_camera_on = on;
 }
 
 bool NodeService::call_is_host() const {

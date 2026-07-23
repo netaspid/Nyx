@@ -1412,6 +1412,15 @@ static void test_call_media_and_opus() {
   auto d = nyx::CallMediaFrame::decode(f.encode());
   assert(d && d->seq == 42 && d->payload.size() == 4);
 
+  // Realtime budget in Connection::send_realtime is 1100 plain bytes.
+  nyx::CallMediaFrame fat;
+  fat.type = nyx::CallMediaType::Opus;
+  fat.seq = 1;
+  fat.payload.assign(nyx::kMaxCallMediaPayload, 0x7f);
+  const auto fat_wire = fat.encode();
+  assert(fat_wire.size() <= 1100);
+  assert(fat_wire.size() == 1 + 4 + nyx::kMaxCallMediaPayload);
+
   nyx::OpusEncoderWrap enc;
   nyx::OpusDecoderWrap dec;
   assert(enc.ok() && dec.ok());
@@ -1424,6 +1433,12 @@ static void test_call_media_and_opus() {
   assert(packet && !packet->empty());
   auto back = dec.decode(packet->data(), packet->size());
   assert(back && back->size() == static_cast<std::size_t>(nyx::kCallAudioFrameSamples));
+
+  nyx::CallMediaFrame opus_frame;
+  opus_frame.type = nyx::CallMediaType::Opus;
+  opus_frame.seq = 9;
+  opus_frame.payload = *packet;
+  assert(opus_frame.encode().size() <= 1100);
   std::cout << "call media and opus ok\n";
 }
 

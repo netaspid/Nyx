@@ -9,6 +9,7 @@
 #include <QString>
 #include <QVariantList>
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -26,10 +27,19 @@ class CallAudioIo : public QObject {
   explicit CallAudioIo(QObject* parent = nullptr);
   ~CallAudioIo() override;
 
-  void setSendFn(SendFn fn) { send_fn_ = std::move(fn); }
-  bool start();
-  void stop();
-  bool running() const { return running_; }
+  void setSendFn(SendFn fn);
+  /** Thread-safe: marshals onto this object's thread (must not block GUI). */
+  Q_INVOKABLE bool start();
+  Q_INVOKABLE void stop();
+  bool running() const { return running_.load(std::memory_order_acquire); }
+
+  void setMuted(bool muted);
+  bool muted() const { return muted_.load(std::memory_order_acquire); }
+
+  /** True if recent send_fn_ returned false (throttled). */
+  bool takeSendFailure() {
+    return send_failed_.exchange(false);
+  }
 
   QString preferredInputId() const { return preferred_input_id_; }
   QString preferredOutputId() const { return preferred_output_id_; }
@@ -40,6 +50,7 @@ class CallAudioIo : public QObject {
 
  signals:
   void devicesChanged();
+  void startFailed();
 
  public slots:
   void onRemoteOpus(const QByteArray& packet);
@@ -51,6 +62,7 @@ class CallAudioIo : public QObject {
   bool openDevices();
   bool restartIfRunning();
   void pushCapturePcm(const int16_t* samples, int count);
+  bool ensureOnAudioThread(const char* where);
 
   SendFn send_fn_;
   nyx::OpusEncoderWrap encoder_;
@@ -61,11 +73,14 @@ class CallAudioIo : public QObject {
   QIODevice* source_dev_ = nullptr;
   QIODevice* sink_dev_ = nullptr;
   QTimer* timer_ = nullptr;
-  bool running_ = false;
+  std::atomic<bool> running_{false};
+  std::atomic<bool> muted_{false};
+  std::atomic<bool> send_failed_{false};
   int capture_rate_ = nyx::kCallAudioSampleRate;
   int playback_rate_ = nyx::kCallAudioSampleRate;
   std::vector<int16_t> capture_pcm_;   // device-rate capture queue
   std::vector<int16_t> opus_pcm_;      // 48 kHz mono for Opus
   QString preferred_input_id_;
   QString preferred_output_id_;
+  bool use_android_voice_track_ = false;
 };

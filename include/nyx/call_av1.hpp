@@ -6,6 +6,7 @@
 
 #include "nyx/types.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -52,6 +53,7 @@ class CallVideoReassembler {
   std::vector<ByteBuffer> parts_;
   std::vector<uint8_t> got_;
   bool active_ = false;
+  std::chrono::steady_clock::time_point started_{};
 };
 
 class Av1Encoder {

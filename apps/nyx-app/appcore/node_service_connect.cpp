@@ -335,6 +335,16 @@ void NodeService::run_connect_peer(std::shared_ptr<NetSession> session, std::str
   const auto profile = load_profile();
   emit_status("подключение к " + host + ':' + std::to_string(port) + "...");
 
+  // Persist LAN endpoint so auto-reconnect works after app restart (no invite token yet).
+  if (session) {
+    nyx::SessionIntent intent;
+    intent.kind = nyx::SessionIntentKind::Direct;
+    intent.key = session->id;
+    intent.invite_hex = "lan://" + host + ":" + std::to_string(port);
+    intent.enabled = true;
+    enable_session_intent(std::move(intent));
+  }
+
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
     emit_status("не удалось открыть сетевой порт");
@@ -387,7 +397,12 @@ void NodeService::run_browse(int timeout_ms) {
 void NodeService::run_lan_scan(int timeout_ms) {
   nyx::UdpSocket socket;
   std::string err;
-  if (!nyx::MdnsLan::setup_socket(socket, &err)) return;
+  if (!nyx::MdnsLan::setup_socket(socket, &err)) {
+    emit_status(err.empty() ? "LAN: не удалось войти в multicast"
+                            : ("LAN: " + err + " (проверьте Wi‑Fi / VPN)"));
+    // Do not clear existing peers on join failure.
+    return;
+  }
 
   const auto peers = nyx::MdnsLan::browse(socket, timeout_ms);
 
