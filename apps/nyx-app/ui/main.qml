@@ -72,6 +72,16 @@ ApplicationWindow {
     }
 
     function handleBack() {
+        // Active call: Back = hangup (also the escape hatch when camera steals taps).
+        if (app.callState === "incoming") {
+            app.rejectCall()
+            return true
+        }
+        if (app.callState === "outgoing" || app.callState === "ringing"
+                || app.callState === "active") {
+            app.hangupCall()
+            return true
+        }
         if (app.mainViewMode === 1) {
             app.showChatView()
             return true
@@ -211,7 +221,6 @@ ApplicationWindow {
     }
 
     CallOverlay {
-        parent: Overlay.overlay
         anchors.fill: parent
         theme: appTheme
         node: app

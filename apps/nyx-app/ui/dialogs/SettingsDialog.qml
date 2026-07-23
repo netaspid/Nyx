@@ -229,7 +229,6 @@ Dialog {
                 }
 
                 Label {
-                    visible: Qt.platform.os !== "android"
                     Layout.fillWidth: true
                     text: qsTr("Камера")
                     color: theme.textMuted
@@ -238,7 +237,6 @@ Dialog {
 
                 NyxComboBox {
                     id: cameraBox
-                    visible: Qt.platform.os !== "android"
                     Layout.fillWidth: true
                     theme: root.theme
                     textRole: "text"
@@ -303,6 +301,7 @@ Dialog {
                 }
 
                 Label {
+                    visible: Qt.platform.os !== "android"
                     Layout.fillWidth: true
                     text: qsTr("Динамик / выход")
                     color: theme.textMuted
@@ -311,6 +310,7 @@ Dialog {
 
                 NyxComboBox {
                     id: speakerBox
+                    visible: Qt.platform.os !== "android"
                     Layout.fillWidth: true
                     theme: root.theme
                     textRole: "text"
@@ -338,11 +338,25 @@ Dialog {
                     }
                 }
 
+                RowLayout {
+                    visible: Qt.platform.os === "android"
+                    Layout.fillWidth: true
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Громкая связь по умолчанию")
+                        color: theme.textPrimary
+                    }
+                    Switch {
+                        checked: node.callSpeakerphone
+                        onToggled: node.callSpeakerphone = checked
+                    }
+                }
+
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     text: Qt.platform.os === "android"
-                          ? qsTr("Камеру переключайте во время видеозвонка. Устройства звука применяются сразу.")
+                          ? qsTr("Камера и микрофон применяются в звонке. Громкую связь также можно переключить во время звонка.")
                           : qsTr("Выбор сохраняется и применяется в следующих звонках (и сразу, если звонок уже идёт).")
                     color: theme.textMuted
                     font.pixelSize: 11
