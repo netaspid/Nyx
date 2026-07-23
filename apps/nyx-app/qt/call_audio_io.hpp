@@ -10,6 +10,7 @@
 #include <QVariantList>
 
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -83,4 +84,5 @@ class CallAudioIo : public QObject {
   QString preferred_input_id_;
   QString preferred_output_id_;
   bool use_android_voice_track_ = false;
+  std::deque<QByteArray> pending_remote_;
 };

@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.os.Build;
@@ -130,8 +131,8 @@ public final class NyxCallNotify {
                 }
                 am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 am.setMicrophoneMute(false);
-                am.setSpeakerphoneOn(true);
                 NyxCallAudio.boostCallVolumes(ctx);
+                // Route is applied by setSpeakerphone() from Qt after this.
             } else {
                 NyxCallAudio.stopVoicePlayback();
                 NyxCallAudio.stopRingtone();
@@ -150,8 +151,45 @@ public final class NyxCallNotify {
         try {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return;
+            if (am.getMode() != AudioManager.MODE_IN_COMMUNICATION
+                    && am.getMode() != AudioManager.MODE_IN_CALL) {
+                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            }
+            boolean routed = false;
+            if (Build.VERSION.SDK_INT >= 31) {
+                AudioDeviceInfo[] devices = am.getAvailableCommunicationDevices();
+                if (devices != null) {
+                    final int want = on ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                                        : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+                    for (AudioDeviceInfo d : devices) {
+                        if (d.getType() == want) {
+                            routed = am.setCommunicationDevice(d);
+                            Log.i(TAG, "setCommunicationDevice type=" + want + " ok=" + routed);
+                            break;
+                        }
+                    }
+                }
+                if (!routed && on) {
+                    // Fallback: some OEMs list speaker only via getDevices().
+                    AudioDeviceInfo[] all = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+                    if (all != null) {
+                        for (AudioDeviceInfo d : all) {
+                            if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                                routed = am.setCommunicationDevice(d);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             am.setSpeakerphoneOn(on);
-        } catch (Exception ignored) {}
+            NyxCallAudio.boostCallVolumes(ctx);
+            NyxCallAudio.applyPlaybackRoute(ctx, on);
+            Log.i(TAG, "setSpeakerphone on=" + on + " routed=" + routed
+                    + " speakerOn=" + am.isSpeakerphoneOn());
+        } catch (Exception e) {
+            Log.e(TAG, "setSpeakerphone failed", e);
+        }
     }
 
     public static void showIncoming(Context ctx, String title, String body) {
