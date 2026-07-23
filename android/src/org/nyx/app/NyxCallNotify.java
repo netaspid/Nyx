@@ -10,8 +10,6 @@ import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
-import android.media.RingtoneManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.util.Log;
@@ -19,7 +17,7 @@ import android.util.Log;
 /** Local high-priority notification for incoming Nyx calls (process must be alive). */
 public final class NyxCallNotify {
     private static final String TAG = "NyxCallNotify";
-    private static final String CHANNEL_ID = "nyx_calls_v3";
+    private static final String CHANNEL_ID = "nyx_calls_v4";
     private static final int NOTIF_INCOMING = 7101;
     private static final int NOTIF_ACTIVE = 7102;
     private static final int REQ_HANGUP = 7104;
@@ -38,19 +36,15 @@ public final class NyxCallNotify {
         // Channel settings are immutable — bump id when sound/importance must change.
         try { nm.deleteNotificationChannel("nyx_calls"); } catch (Exception ignored) {}
         try { nm.deleteNotificationChannel("nyx_calls_v2"); } catch (Exception ignored) {}
+        try { nm.deleteNotificationChannel("nyx_calls_v3"); } catch (Exception ignored) {}
         NotificationChannel ch = new NotificationChannel(
                 CHANNEL_ID, "Звонки Nyx", NotificationManager.IMPORTANCE_HIGH);
         ch.setDescription("Входящие и активные звонки");
-        ch.enableVibration(true);
-        ch.setVibrationPattern(new long[]{0, 400, 200, 400, 200, 400});
+        // Sound/vibration come from NyxCallAudio only — avoid doubling with the channel.
+        ch.enableVibration(false);
         ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         ch.setBypassDnd(true);
-        Uri ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-        AudioAttributes aa = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-        ch.setSound(ringtone, aa);
+        ch.setSound(null, null);
         nm.createNotificationChannel(ch);
     }
 
@@ -165,7 +159,6 @@ public final class NyxCallNotify {
         NyxCallAudio.boostCallVolumes(ctx);
         NyxCallAudio.startRingtone(ctx);
         PendingIntent pi = openAppIntent(ctx);
-        Uri ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
         Notification.Builder b = builder(ctx)
                 .setContentTitle(title != null && title.length() > 0 ? title : "Nyx")
                 .setContentText(body != null ? body : "Входящий звонок")
@@ -173,12 +166,14 @@ public final class NyxCallNotify {
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .setAutoCancel(false)
-                .setOnlyAlertOnce(false)
+                .setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_CALL)
                 .setPriority(Notification.PRIORITY_MAX)
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setSound(ringtone)
-                .setVibrate(new long[]{0, 400, 200, 400, 200, 400});
+                .setVisibility(Notification.VISIBILITY_PUBLIC);
+        if (Build.VERSION.SDK_INT >= 26) {
+            b.setSound(null);
+            b.setVibrate(null);
+        }
         if (Build.VERSION.SDK_INT >= 21) {
             b.setFullScreenIntent(pi, true);
         }
