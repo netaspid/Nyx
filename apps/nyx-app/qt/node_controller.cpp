@@ -3635,11 +3635,14 @@ void NodeController::syncCallAudio() {
                 });
         connect(&call_video_, &CallVideoIo::localFrameChanged, this, [this]() {
           const QImage img = call_video_.lastLocalFrame();
-          if (img.isNull()) return;
           if (call_frames_) call_frames_->setLocal(img);
           ++call_frame_epoch_;
-          call_local_frame_url_ =
-              QUrl(QStringLiteral("image://nyxcall/local/%1").arg(call_frame_epoch_));
+          if (img.isNull()) {
+            call_local_frame_url_.clear();
+          } else {
+            call_local_frame_url_ =
+                QUrl(QStringLiteral("image://nyxcall/local/%1").arg(call_frame_epoch_));
+          }
           emit callLocalFrameChanged();
         });
         connect(&call_video_, &CallVideoIo::videoPeersChanged, this,
@@ -3858,6 +3861,9 @@ void NodeController::setCallCameraOn(bool on) {
   if (!on) {
     service_.set_call_camera_on(false);
     call_video_.setCameraEnabled(false);
+    if (call_frames_) call_frames_->setLocal(QImage());
+    call_local_frame_url_.clear();
+    emit callLocalFrameChanged();
     emit callChanged();
     return;
   }

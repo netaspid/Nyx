@@ -107,10 +107,11 @@ Item {
             asynchronous: false
         }
 
+        // Name stub when there is no remote video yet / peer camera off (black → still Image).
         Rectangle {
             anchors.fill: parent
             visible: !remoteFs.visible
-            color: "#12151c"
+            color: "#0a0c10"
             Label {
                 anchors.centerIn: parent
                 text: node.callTitle
@@ -131,15 +132,24 @@ Item {
             color: "#1a1e28"
             border.color: "#3d4654"
             border.width: 1
-            visible: node.callLocalFrameUrl.toString().length > 0
+            visible: root.isVideoActive
             clip: true
             z: 3
             Image {
                 anchors.fill: parent
+                visible: node.callCameraOn && node.callLocalFrameUrl.toString().length > 0
                 fillMode: Image.PreserveAspectCrop
                 source: node.callLocalFrameUrl
                 cache: false
                 asynchronous: false
+            }
+            Label {
+                anchors.centerIn: parent
+                visible: !node.callCameraOn || node.callLocalFrameUrl.toString().length === 0
+                text: qsTr("Вы")
+                color: "#8b9bab"
+                font.pixelSize: 14
+                font.weight: Font.DemiBold
             }
         }
 
@@ -344,16 +354,30 @@ Item {
                         color: theme.textMuted
                         font.pixelSize: 12
                     }
-                    Image {
+                    Rectangle {
                         width: 72
                         height: width * 9 / 16
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         anchors.margins: 8
-                        visible: node.callLocalFrameUrl.toString().length > 0
-                        fillMode: Image.PreserveAspectCrop
-                        source: node.callLocalFrameUrl
-                        cache: false
+                        radius: 6
+                        color: "#1a1e28"
+                        visible: root.isVideoActive
+                        clip: true
+                        Image {
+                            anchors.fill: parent
+                            visible: node.callCameraOn && node.callLocalFrameUrl.toString().length > 0
+                            fillMode: Image.PreserveAspectCrop
+                            source: node.callLocalFrameUrl
+                            cache: false
+                        }
+                        Label {
+                            anchors.centerIn: parent
+                            visible: !node.callCameraOn || node.callLocalFrameUrl.toString().length === 0
+                            text: qsTr("Вы")
+                            color: theme.textMuted
+                            font.pixelSize: 11
+                        }
                     }
                 }
             }

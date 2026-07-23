@@ -208,35 +208,41 @@ QString cameraLabel(const QCameraDevice& d) {
   }
 }
 
+QImage makeBlackFrame(int w, int h) {
+  QImage img(std::max(2, w), std::max(2, h), QImage::Format_RGB32);
+  img.fill(Qt::black);
+  return img;
+}
+
 }  // namespace
 
 int CallVideoIo::encodeWidth() {
 #if defined(Q_OS_ANDROID)
-  return 240;
+  return 480;
 #else
-  return 320;
+  return 640;
 #endif
 }
 
 int CallVideoIo::encodeHeight() {
 #if defined(Q_OS_ANDROID)
-  return 136;
+  return 270;
 #else
-  return 180;
+  return 360;
 #endif
 }
 
 int CallVideoIo::encodeFps() {
 #if defined(Q_OS_ANDROID)
-  return 4;
+  return 8;
 #else
-  return 10;
+  return 12;
 #endif
 }
 
 int CallVideoIo::maxJpegBytes() {
-  // Allow a few UDP-sized frags so 240p JPEG is not crushed to noise.
-  constexpr int kMaxFrags = 4;
+  // ~12 KB JPEG across UDP-sized frags — enough for 480p without heavy blocking.
+  constexpr int kMaxFrags = 12;
   return static_cast<int>(kMaxFrags * (nyx::kMaxCallMediaPayload - nyx::CallVideoFragHeader::kSize));
 }
 
@@ -713,6 +719,13 @@ void CallVideoIo::setCameraEnabled(bool on) {
   }
   if (!on) {
     closeCameraHardware();
+    {
+      QMutexLocker lock(&frames_mutex_);
+      local_ = QImage();
+      pending_ = makeBlackFrame(encodeWidth(), encodeHeight());
+      local_dirty_ = true;
+    }
+    emit localFrameChanged();
     emit cameraChanged();
     return;
   }
@@ -806,25 +819,35 @@ void CallVideoIo::onEncodeTick() {
 
   QImage frame;
   bool emit_local = false;
+  const bool cam_on = camera_enabled_.load(std::memory_order_acquire);
   {
     QMutexLocker lock(&frames_mutex_);
-    if (local_dirty_ && !local_.isNull()) {
+    if (local_dirty_) {
       local_dirty_ = false;
       emit_local = true;
     }
-    if (camera_enabled_.load(std::memory_order_acquire) &&
-        capturing_.load(std::memory_order_acquire) && send_fn_ && !pending_.isNull()) {
-      frame = pending_;
-      pending_ = QImage();
+    if (send_fn_) {
+      if (!cam_on) {
+        // Keep telling the peer the camera is off (black), not a frozen last frame.
+        static qint64 s_last_black_ms = 0;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - s_last_black_ms >= 500) {
+          s_last_black_ms = now;
+          frame = makeBlackFrame(encodeWidth(), encodeHeight());
+        }
+      } else if (capturing_.load(std::memory_order_acquire) && !pending_.isNull()) {
+        frame = pending_;
+        pending_ = QImage();
+      }
     }
   }
   if (emit_local) emit localFrameChanged();
   if (frame.isNull() || !send_fn_) return;
 
   QByteArray jpeg;
-  int quality = 36;
+  int quality = cam_on ? 52 : 20;
 #if defined(Q_OS_ANDROID)
-  quality = 28;
+  if (cam_on) quality = 48;
 #endif
   const int budget = maxJpegBytes();
   for (;;) {
@@ -833,18 +856,18 @@ void CallVideoIo::onEncodeTick() {
     if (!buf.open(QIODevice::WriteOnly)) return;
     if (!frame.save(&buf, "JPG", quality)) return;
     buf.close();
-    if (jpeg.size() <= budget || quality <= 12) break;
+    if (jpeg.size() <= budget || quality <= 18) break;
     quality -= 6;
   }
   if (jpeg.isEmpty() || jpeg.size() > budget) {
     QImage small = frame;
-    while (jpeg.size() > budget && (small.width() > 120)) {
+    while (jpeg.size() > budget && (small.width() > 160)) {
       small = small.scaled(small.width() * 3 / 4, small.height() * 3 / 4,
                            Qt::IgnoreAspectRatio, Qt::FastTransformation);
       jpeg.clear();
       QBuffer buf(&jpeg);
       if (!buf.open(QIODevice::WriteOnly)) return;
-      if (!small.save(&buf, "JPG", 18)) return;
+      if (!small.save(&buf, "JPG", 22)) return;
       buf.close();
     }
   }
@@ -860,8 +883,8 @@ void CallVideoIo::onEncodeTick() {
                      static_cast<int>(frag.size()));
     if (send_fn_(bytes)) ++sent;
   }
-  NYX_VIDEO_LOG("encode send fid=%u jpeg=%d frags=%d sent=%d", unsigned(fid), int(jpeg.size()),
-                int(frags.size()), sent);
+  NYX_VIDEO_LOG("encode send fid=%u jpeg=%d frags=%d sent=%d cam=%d", unsigned(fid),
+                int(jpeg.size()), int(frags.size()), sent, cam_on ? 1 : 0);
 }
 
 void CallVideoIo::onRemoteVideo(const QString& peerId, const QByteArray& frag_payload) {

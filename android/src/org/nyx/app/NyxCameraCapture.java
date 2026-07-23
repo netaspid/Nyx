@@ -29,9 +29,9 @@ import java.util.Collections;
  */
 public final class NyxCameraCapture {
     private static final String TAG = "NyxCameraCapture";
-    private static final int TARGET_W = 640;
-    private static final int TARGET_H = 360;
-    private static final long MIN_FRAME_INTERVAL_MS = 330; // ~3 fps
+    private static final int TARGET_W = 960;
+    private static final int TARGET_H = 540;
+    private static final long MIN_FRAME_INTERVAL_MS = 120; // ~8 fps
 
     private static final Object LOCK = new Object();
     private static HandlerThread sThread;
@@ -208,7 +208,7 @@ public final class NyxCameraCapture {
             YuvImage yuv = new YuvImage(nv21, ImageFormat.NV21, w, h, null);
             ByteArrayOutputStream bos = new ByteArrayOutputStream(w * h / 4);
             // Scale via JPEG quality; Qt will cover-crop to encode size.
-            if (!yuv.compressToJpeg(new Rect(0, 0, w, h), 55, bos)) return;
+            if (!yuv.compressToJpeg(new Rect(0, 0, w, h), 72, bos)) return;
             byte[] jpeg = bos.toByteArray();
             nativeOnJpeg(jpeg, w, h, sFront);
         } catch (Throwable t) {
