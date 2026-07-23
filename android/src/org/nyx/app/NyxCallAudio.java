@@ -54,16 +54,22 @@ public final class NyxCallAudio {
                     .setChannelMask(chMask)
                     .build();
             if (Build.VERSION.SDK_INT >= 23) {
-                sTrack = new AudioTrack.Builder()
+                AudioTrack.Builder tb = new AudioTrack.Builder()
                         .setAudioAttributes(aa)
                         .setAudioFormat(fmt)
                         .setBufferSizeInBytes(buf)
-                        .setTransferMode(AudioTrack.MODE_STREAM)
-                        .build();
+                        .setTransferMode(AudioTrack.MODE_STREAM);
+                if (Build.VERSION.SDK_INT >= 26) {
+                    tb.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY);
+                }
+                sTrack = tb.build();
             } else {
                 sTrack = new AudioTrack(aa, fmt, buf, AudioTrack.MODE_STREAM,
                         AudioManager.AUDIO_SESSION_ID_GENERATE);
             }
+            try {
+                sTrack.setVolume(1.0f);
+            } catch (Throwable ignored) {}
             sTrack.play();
             Log.i(TAG, "voice playback started sr=" + sampleRate + " ch=" + channels
                     + " buf=" + buf);
@@ -80,6 +86,29 @@ public final class NyxCallAudio {
         } catch (Throwable t) {
             Log.e(TAG, "writeVoicePlayback failed", t);
             return 0;
+        }
+    }
+
+    /** Prefer speaker or earpiece for the active AudioTrack (API 23+). */
+    public static synchronized void applyPlaybackRoute(Context ctx, boolean speaker) {
+        if (sTrack == null || ctx == null) return;
+        try {
+            if (Build.VERSION.SDK_INT < 23) return;
+            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            AudioDeviceInfo[] outs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+            if (outs == null) return;
+            final int want = speaker ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                                     : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            for (AudioDeviceInfo d : outs) {
+                if (d.getType() == want) {
+                    boolean ok = sTrack.setPreferredDevice(d);
+                    Log.i(TAG, "AudioTrack preferredDevice type=" + want + " ok=" + ok);
+                    return;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "applyPlaybackRoute failed", t);
         }
     }
 

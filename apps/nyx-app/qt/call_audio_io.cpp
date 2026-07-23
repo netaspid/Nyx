@@ -212,6 +212,8 @@ bool CallAudioIo::openDevices() {
   playback_rate_ = nyx::kCallAudioSampleRate;
   nyx_android::voice_playback_start(nyx::kCallAudioSampleRate, 1);
   preferred_output_id_.clear();
+  // Re-apply speaker/earpiece after AudioTrack exists.
+  nyx_android::set_speakerphone(nyx_android::speakerphone());
   NYX_AUDIO_LOG("openDevices ok (android AudioTrack voice) rate_in=%d", capture_rate_);
   return true;
 #else
@@ -279,6 +281,12 @@ bool CallAudioIo::start() {
   opus_pcm_.clear();
   running_.store(true, std::memory_order_release);
   timer_->start();
+  // Drain packets that arrived before the audio thread finished opening devices.
+  while (!pending_remote_.empty()) {
+    const QByteArray pkt = pending_remote_.front();
+    pending_remote_.pop_front();
+    onRemoteOpus(pkt);
+  }
   NYX_AUDIO_LOG("start ok");
   return true;
 }
@@ -307,6 +315,7 @@ void CallAudioIo::stop() {
   sink_dev_ = nullptr;
   capture_pcm_.clear();
   opus_pcm_.clear();
+  pending_remote_.clear();
 }
 
 void CallAudioIo::pushCapturePcm(const int16_t* samples, int count) {
@@ -372,10 +381,18 @@ void CallAudioIo::onRemoteOpus(const QByteArray& packet) {
                               Qt::QueuedConnection);
     return;
   }
-  if (!running_.load(std::memory_order_acquire) || packet.isEmpty()) return;
+  if (packet.isEmpty()) return;
+  if (!running_.load(std::memory_order_acquire)) {
+    pending_remote_.push_back(packet);
+    while (pending_remote_.size() > 80) pending_remote_.pop_front();
+    return;
+  }
   auto pcm = decoder_.decode(reinterpret_cast<const uint8_t*>(packet.constData()),
                              static_cast<std::size_t>(packet.size()));
-  if (!pcm || pcm->empty()) return;
+  if (!pcm || pcm->empty()) {
+    NYX_AUDIO_LOG("onRemoteOpus decode failed bytes=%d", int(packet.size()));
+    return;
+  }
 
   if (use_android_voice_track_) {
     // Always 48 kHz mono into AudioTrack VOICE_COMMUNICATION.

@@ -604,7 +604,7 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
     }
     if (ok) {
       emit_call_changed();
-      emit_status("комната закрыта");
+      emit_status("звонок завершён");
     }
     return;
   }
@@ -641,11 +641,38 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
   }
 
   if (auto gone = nyx::CallPeerGoneMessage::decode(frame)) {
-    std::lock_guard lock(call_mutex_);
-    if (call_mesh_ && call_.call_id == gone->call_id) {
-      call_mesh_->remove_peer(gone->user_id);
+    bool end_call = false;
+    {
+      std::lock_guard lock(call_mutex_);
+      if (call_.call_id != gone->call_id && !call_.idle()) {
+        // Ignore peer-gone for a different call.
+      } else if (!call_.idle()) {
+        if (call_mesh_ && call_.call_id == gone->call_id) {
+          call_mesh_->remove_peer(gone->user_id);
+        }
+        call_.on_peer_leave(gone->call_id);
+        // Direct calls are 1:1 — peer leave means the call is over.
+        // Field: end when mesh is empty (last peer left).
+        const bool direct = call_.scope == nyx::CallScope::Direct;
+        const int mesh_n =
+            (call_mesh_ && call_mesh_->active())
+                ? static_cast<int>(call_mesh_->established_count())
+                : 0;
+        if (direct || mesh_n == 0) {
+          stop_call_mesh();
+          call_is_host_ = false;
+          call_.reset();
+          call_session_id_.clear();
+          call_title_.clear();
+          call_media_seq_ = 0;
+          end_call = true;
+        }
+      }
     }
-    call_.on_peer_leave(gone->call_id);
+    if (end_call) {
+      emit_call_changed();
+      emit_status("звонок завершён");
+    }
     return;
   }
 }
@@ -838,31 +865,43 @@ bool NodeService::hangup_call() {
   bool is_host = false;
   bool field = false;
   nyx::UserId self{};
+  nyx::CallId call_id{};
   {
     std::lock_guard lock(call_mutex_);
     if (call_.idle()) return false;
     hang.call_id = call_.call_id;
     hang.reason = nyx::CallHangupReason::Normal;
     gone.call_id = call_.call_id;
+    call_id = call_.call_id;
     sid = call_session_id_;
     is_host = call_is_host_;
     field = call_.scope == nyx::CallScope::Field;
-    call_.hangup();
-    stop_call_mesh();
-    call_is_host_ = false;
-    call_.reset();
-    call_session_id_.clear();
-    call_title_.clear();
-    call_media_seq_ = 0;
   }
   self = load_profile().public_key;
   gone.user_id = self;
 
+  // Send signaling BEFORE tearing local state down, and retry — call frames are
+  // not in the chat outbox, so a single lost UDP datagram left the peer hanging.
   if (auto session = find_session(sid)) {
-    if (field && !is_host) {
-      send_call_frame_on_session(session, gone.encode());
-    } else {
-      send_call_frame_on_session(session, hang.encode());
+    const nyx::ByteBuffer wire =
+        (field && !is_host) ? gone.encode() : hang.encode();
+    for (int i = 0; i < 3; ++i) {
+      send_call_frame_on_session(session, wire);
+      // Also send Hangup when a Field guest leaves, so peers clear the UI.
+      if (field && !is_host) send_call_frame_on_session(session, hang.encode());
+    }
+  }
+
+  {
+    std::lock_guard lock(call_mutex_);
+    if (!call_.idle() && call_.call_id == call_id) {
+      call_.hangup();
+      stop_call_mesh();
+      call_is_host_ = false;
+      call_.reset();
+      call_session_id_.clear();
+      call_title_.clear();
+      call_media_seq_ = 0;
     }
   }
   emit_call_changed();
