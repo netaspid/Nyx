@@ -61,11 +61,11 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
 
     nyx::RendezvousPool pool(std::move(listen_socket));
     pool.set_servers(network_config_.rendezvous_servers);
+    bool rv_ok = true;
     if (network_config_.mode != nyx::DiscoveryMode::LanOnly) {
-      if (!pool.register_token(token)) {
-        emit_status("rendezvous не отвечает — inbox не зарегистрирован");
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        continue;
+      rv_ok = pool.register_token(token);
+      if (!rv_ok) {
+        emit_status("rendezvous не отвечает — LAN discovery всё равно активен");
       }
     }
 
@@ -74,9 +74,18 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
     if (network_config_.mode != nyx::DiscoveryMode::Internet) {
       session->mdns->start_advertising(pool.socket(), profile, pool.socket().local_port(),
                                        lan_ip);
+      emit_status(std::string("DM inbox + LAN ") + lan_ip + ':' +
+                  std::to_string(pool.socket().local_port()) +
+                  (rv_ok ? "" : " (без rendezvous)"));
+    } else {
+      emit_status("DM inbox слушает (token готов)");
     }
 
-    emit_status("DM inbox слушает (token готов)");
+    if (!rv_ok && network_config_.mode == nyx::DiscoveryMode::Internet) {
+      session->mdns.reset();
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+      continue;
+    }
 
     const auto refresh_interval =
         std::chrono::seconds(network_config_.register_refresh_sec);
@@ -88,9 +97,19 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
     bool accepted = false;
     while (session->running.load()) {
       const auto now = std::chrono::steady_clock::now();
-      if (network_config_.mode != nyx::DiscoveryMode::LanOnly &&
+      if (network_config_.mode != nyx::DiscoveryMode::LanOnly && rv_ok &&
           now - last_register >= refresh_interval) {
-        pool.register_token(token);
+        if (!pool.register_token(token)) {
+          rv_ok = false;
+          emit_status("rendezvous потерян — LAN discovery продолжается");
+        }
+        last_register = now;
+      } else if (network_config_.mode != nyx::DiscoveryMode::LanOnly && !rv_ok &&
+                 now - last_register >= refresh_interval) {
+        if (pool.register_token(token)) {
+          rv_ok = true;
+          emit_status("rendezvous снова доступен");
+        }
         last_register = now;
       }
       auto packet = pool.socket().recv_from(peer_host, peer_port, 500);
@@ -167,14 +186,14 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
 
   nyx::RendezvousPool pool(std::move(listen_socket));
   pool.set_servers(network_config_.rendezvous_servers);
+  bool rv_ok = true;
   if (network_config_.mode != nyx::DiscoveryMode::LanOnly) {
-    if (!pool.register_token(token)) {
-      emit_status("rendezvous не отвечает — проверьте адрес (" + rendezvous_list_string() +
-                  ")");
-      finish_session(session, SessionState::Offline);
-      return;
+    rv_ok = pool.register_token(token);
+    if (!rv_ok) {
+      emit_status("rendezvous не отвечает — LAN advertise без регистрации");
+    } else {
+      emit_status("rendezvous: " + rendezvous_list_string());
     }
-    emit_status("rendezvous: " + rendezvous_list_string());
   }
 
   const std::string token_hex = nyx::to_hex(token.data(), token.size());
@@ -197,6 +216,11 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     session->mdns.reset();
   }
 
+  if (!rv_ok && network_config_.mode == nyx::DiscoveryMode::Internet) {
+    finish_session(session, SessionState::Offline);
+    return;
+  }
+
   emit_status("ожидание подключения (UDP :" +
               std::to_string(pool.socket().local_port()) + ")...");
 
@@ -211,7 +235,7 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     const auto now = std::chrono::steady_clock::now();
     if (network_config_.mode != nyx::DiscoveryMode::LanOnly &&
         now - last_register >= refresh_interval) {
-      pool.register_token(token);
+      if (pool.register_token(token)) rv_ok = true;
       last_register = now;
     }
     auto packet = pool.socket().recv_from(peer_host, peer_port, 500);
@@ -280,7 +304,14 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
   pool.set_servers(network_config_.rendezvous_servers);
   auto hint = pool.lookup(token);
   if (!hint) {
-    emit_status("собеседник не найден — online и тот же rendezvous?");
+    const auto primary = network_config_.primary_rendezvous();
+    if (primary.host == "127.0.0.1" || primary.host == "localhost") {
+      emit_status(
+          "инвайт не через LAN: нужен общий rendezvous (не 127.0.0.1). "
+          "В одной Wi‑Fi сети используйте «Рядом в сети» → Связаться");
+    } else {
+      emit_status("собеседник не найден — оба online и один и тот же rendezvous?");
+    }
     finish_session(session, SessionState::Offline);
     return;
   }
@@ -303,6 +334,16 @@ void NodeService::run_connect_peer(std::shared_ptr<NetSession> session, std::str
                                    uint16_t port) {
   const auto profile = load_profile();
   emit_status("подключение к " + host + ':' + std::to_string(port) + "...");
+
+  // Persist LAN endpoint so auto-reconnect works after app restart (no invite token yet).
+  if (session) {
+    nyx::SessionIntent intent;
+    intent.kind = nyx::SessionIntentKind::Direct;
+    intent.key = session->id;
+    intent.invite_hex = "lan://" + host + ":" + std::to_string(port);
+    intent.enabled = true;
+    enable_session_intent(std::move(intent));
+  }
 
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
@@ -356,7 +397,12 @@ void NodeService::run_browse(int timeout_ms) {
 void NodeService::run_lan_scan(int timeout_ms) {
   nyx::UdpSocket socket;
   std::string err;
-  if (!nyx::MdnsLan::setup_socket(socket, &err)) return;
+  if (!nyx::MdnsLan::setup_socket(socket, &err)) {
+    emit_status(err.empty() ? "LAN: не удалось войти в multicast"
+                            : ("LAN: " + err + " (проверьте Wi‑Fi / VPN)"));
+    // Do not clear existing peers on join failure.
+    return;
+  }
 
   const auto peers = nyx::MdnsLan::browse(socket, timeout_ms);
 

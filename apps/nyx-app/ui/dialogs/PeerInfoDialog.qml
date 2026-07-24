@@ -11,10 +11,16 @@ Dialog {
     required property var node
     required property var avatarColorFn
 
+    readonly property bool fullBleed: Qt.platform.os === "android"
+                                      || (parent && parent.width < 720)
+
     modal: true
     standardButtons: Dialog.NoButton
-    width: Math.min(400, parent ? parent.width - 48 : 400)
+    width: fullBleed ? (parent ? parent.width : Overlay.overlay.width) : (Math.min(400, parent ? parent.width - 48 : 400))
+    height: fullBleed ? (parent ? parent.height : Overlay.overlay.height) : implicitHeight
     padding: theme.spacing
+    x: fullBleed ? 0 : (parent ? Math.round((parent.width - width) / 2) : 0)
+    y: fullBleed ? 0 : (parent ? Math.round((parent.height - height) / 2) : 0)
 
     property var info: ({})
     readonly property bool isSelf: !!(info.isSelf)
@@ -26,7 +32,7 @@ Dialog {
 
     background: Rectangle {
         color: theme.bgSidebar
-        radius: theme.radiusBtn
+        radius: root.fullBleed ? 0 : theme.radiusBtn
         border.color: theme.border
     }
 

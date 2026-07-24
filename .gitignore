@@ -1,5 +1,7 @@
 # --- сборка CMake ---
 /build/
+/build-android/
+/build-desktop-check/
 /out/
 /dist/
 cmake-build-*/
@@ -11,8 +13,6 @@ Makefile
 compile_commands.json
 install_manifest.txt
 Testing/
-.cursor/
-
 # FetchContent / автоген Qt
 _deps/
 *_autogen/
@@ -70,11 +70,6 @@ scratch_test.cpp
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Cursor: локальное состояние агента, правила проекта оставляем
-.cursor/*
-!.cursor/rules/
-!.cursor/rules/**
 
 # временные и бэкапы
 *~

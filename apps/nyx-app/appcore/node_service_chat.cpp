@@ -104,6 +104,10 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
   if (peer_hello.has_dm_inbox_token) {
     invite_for_intent =
         nyx::to_hex(peer_hello.dm_inbox_token.data(), peer_hello.dm_inbox_token.size());
+  } else if (via == ConnectionVia::LanDirect && !peer_host.empty()) {
+    // Keep LAN dial-back after process restart until a DM inbox token is known.
+    invite_for_intent =
+        "lan://" + peer_host + ":" + std::to_string(session->connection->peer_port());
   }
   remember_intent_for_session(session, invite_for_intent);
 

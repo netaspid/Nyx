@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "."
 
-/** Шапка модалки в стиле окна Windows: заголовок + кнопка X. */
+/** Modal header: title + SVG close (no Segoe fonts). */
 Item {
     id: root
     required property var theme
@@ -37,12 +37,12 @@ Item {
             color: closeArea.containsMouse ? (theme.darkMode ? "#c42b1c" : "#e81123")
                                            : "transparent"
 
-            Text {
+            NyxIcon {
                 anchors.centerIn: parent
-                text: "\uE8BB"
-                font.family: "Segoe MDL2 Assets"
-                font.pixelSize: 12
-                color: closeArea.containsMouse ? "#ffffff" : theme.textSecondary
+                name: "close"
+                width: 16
+                height: 16
+                opacity: closeArea.containsMouse ? 1.0 : 0.75
             }
 
             MouseArea {

@@ -103,6 +103,14 @@ Item {
             anchors.margins: theme.spacing
             spacing: 12
 
+            IconButton {
+                visible: Qt.platform.os === "android" && node.peerTitle.length > 0
+                theme: root.theme
+                name: "back"
+                ToolTip.text: qsTr("Назад")
+                onClicked: node.leaveChat()
+            }
+
             AvatarBadge {
                 visible: node.peerTitle.length > 0
                 size: 40
@@ -180,7 +188,7 @@ Item {
             IconButton {
                 visible: node.activeChatKind === 1 && node.peerTitle.length > 0
                 theme: root.theme
-                glyph: "\uE716"
+                name: "people"
                 ToolTip.text: qsTr("Участники поля")
                 onClicked: root.openChatMeta()
             }
@@ -197,7 +205,7 @@ Item {
             IconButton {
                 visible: node.peerTitle.length > 0 && node.canStartCall
                 theme: root.theme
-                glyph: "\uE717"
+                name: "phone"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть аудиокомнату")
                                                        : qsTr("Аудиозвонок")
                 onClicked: node.startCall(false)
@@ -205,7 +213,7 @@ Item {
             IconButton {
                 visible: node.peerTitle.length > 0 && node.canStartCall
                 theme: root.theme
-                glyph: "\uE714"
+                name: "video"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть видеокомнату")
                                                        : qsTr("Видеозвонок")
                 onClicked: node.startCall(true)
@@ -215,7 +223,7 @@ Item {
                 visible: node.inChat || node.sessionStateForKey(node.activeChatKey) === "live"
                          || node.sessionStateForKey(node.activeChatKey) === "connecting"
                 theme: root.theme
-                glyph: "\uE711"
+                name: "close"
                 ToolTip.text: qsTr("Отключиться")
                 onClicked: node.disconnectChat(node.activeChatKey)
             }
@@ -415,7 +423,7 @@ Item {
 
                             IconButton {
                                 theme: root.theme
-                                glyph: "\uE16C"
+                                name: "attach"
                                 btnSize: 36
                                 enabled: node.inChat || node.sessionUnlocked
                                 ToolTip.text: qsTr("Файлы")
@@ -426,7 +434,7 @@ Item {
                             IconButton {
                                 id: emojiBtn
                                 theme: root.theme
-                                glyph: "\uE76E"
+                                name: "emoji"
                                 btnSize: 36
                                 enabled: node.canSendMessage
                                 ToolTip.text: qsTr("Смайлики")
@@ -566,14 +574,12 @@ Item {
                           : theme.btnSecondary
                     border.color: theme.border
                     border.width: (node.canSendMessage && msgField.text.trim().length > 0) ? 0 : 1
-                    Text {
+                    NyxIcon {
                         anchors.centerIn: parent
-                        text: "\uE724"
-                        font.family: "Segoe MDL2 Assets"
-                        font.pixelSize: 18
-                        color: (node.canSendMessage && msgField.text.trim().length > 0)
-                               ? "#ffffff"
-                               : theme.textMuted
+                        name: "send"
+                        width: 18
+                        height: 18
+                        opacity: (node.canSendMessage && msgField.text.trim().length > 0) ? 1.0 : 0.45
                     }
                     MouseArea {
                         id: sendMouse

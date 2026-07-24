@@ -1,0 +1,3 @@
+#!/bin/sh
+set -e
+"@NYX_PACK_INSTALLER_EXE@" --stub "@NYX_SETUP_STUB@" --srcdir "@NYX_INSTALLER_STAGING@" --out "@NYX_INSTALLER_OUT@"

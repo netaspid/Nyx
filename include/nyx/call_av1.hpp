@@ -6,16 +6,17 @@
 
 #include "nyx/types.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
 namespace nyx {
 
-constexpr int kCallVideoWidth = 320;
-constexpr int kCallVideoHeight = 180;
-constexpr int kCallVideoFps = 10;
-constexpr int kCallVideoTargetKbps = 200;
+constexpr int kCallVideoWidth = 640;
+constexpr int kCallVideoHeight = 360;
+constexpr int kCallVideoFps = 12;
+constexpr int kCallVideoTargetKbps = 900;
 
 /** Фрагмент видеокадра в CallMediaType::Video payload. */
 struct CallVideoFragHeader {
@@ -25,6 +26,8 @@ struct CallVideoFragHeader {
   uint8_t keyframe = 0;
 
   static constexpr std::size_t kSize = 5;
+  static constexpr uint8_t kKeyframe = 0x01;
+  static constexpr uint8_t kParity = 0x02;
   void write(ByteBuffer& out) const;
   static std::optional<CallVideoFragHeader> read(const uint8_t* data, std::size_t len);
 };
@@ -37,8 +40,13 @@ std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id, bool keyframe,
 /** Сборка фрагментов одного frame_id. */
 class CallVideoReassembler {
  public:
+  struct Assembled {
+    ByteBuffer data;
+    bool keyframe = false;
+  };
+
   /** @return полный кадр когда все фрагменты собраны. */
-  std::optional<ByteBuffer> push(const ByteBuffer& frag_payload);
+  std::optional<Assembled> push(const ByteBuffer& frag_payload);
 
  private:
   uint16_t cur_id_ = 0;
@@ -46,7 +54,10 @@ class CallVideoReassembler {
   bool keyframe_ = false;
   std::vector<ByteBuffer> parts_;
   std::vector<uint8_t> got_;
+  ByteBuffer parity_;
+  std::size_t total_size_ = 0;
   bool active_ = false;
+  std::chrono::steady_clock::time_point started_{};
 };
 
 class Av1Encoder {

@@ -69,6 +69,8 @@ class ContactBook {
   bool save() const;
 
   void upsert(Contact contact);
+  /** Удаляет контакт по user_id. @return true если запись была. */
+  bool remove(const UserId& user_id);
   const std::vector<Contact>& contacts() const { return contacts_; }
 
  private:

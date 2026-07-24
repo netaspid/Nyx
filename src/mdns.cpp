@@ -1,6 +1,7 @@
 #include "nyx/mdns.hpp"
 
 #include "nyx/identity.hpp"
+#include "nyx/nat.hpp"
 #include "nyx/util.hpp"
 
 #include <algorithm>
@@ -99,13 +100,29 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
 }  // namespace
 
 bool MdnsLan::setup_socket(UdpSocket& socket, std::string* err) {
-  return socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err);
+  return socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err,
+                                        lan_ipv4_override());
 }
 
 bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint16_t port,
                                 const std::string& host_ip) {
   const auto wire = encode_beacon(profile, port, host_ip);
-  return socket.send_to(wire, kDiscoveryGroup, kDiscoveryPort);
+  socket.enable_broadcast(nullptr);
+  const std::string iface = host_ip.empty() ? lan_ipv4_override() : host_ip;
+  if (!iface.empty()) socket.set_multicast_interface(iface, nullptr);
+  bool ok = socket.send_to(wire, kDiscoveryGroup, kDiscoveryPort);
+  ok = socket.send_to(wire, "255.255.255.255", kDiscoveryPort) || ok;
+  if (!iface.empty()) {
+    in_addr addr{};
+    if (inet_pton(AF_INET, iface.c_str(), &addr) == 1) {
+      auto* b = reinterpret_cast<uint8_t*>(&addr.s_addr);
+      b[3] = 255;
+      char directed[32] = {};
+      inet_ntop(AF_INET, &addr, directed, sizeof(directed));
+      ok = socket.send_to(wire, directed, kDiscoveryPort) || ok;
+    }
+  }
+  return ok;
 }
 
 std::optional<LanPeer> MdnsLan::parse_beacon(const ByteBuffer& data,
@@ -123,7 +140,10 @@ void MdnsLan::start_advertising(UdpSocket socket, Profile profile, uint16_t port
   thread_ = std::thread([this, profile = std::move(profile), port,
                          host_ip = std::move(host_ip)]() mutable {
     while (running_.load()) {
-      send_announcement(advert_socket_, profile, port, host_ip);
+      // Prefer live LAN IP (Wi‑Fi may arrive after inbox start).
+      std::string ip = guess_lan_ipv4();
+      if (ip.empty() || ip == "127.0.0.1" || ip == "0.0.0.0") ip = host_ip;
+      send_announcement(advert_socket_, profile, port, ip);
       for (int i = 0; i < 10 && running_.load(); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }

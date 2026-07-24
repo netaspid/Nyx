@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../controls"
+import "."
 
 /** Диалог прав: роль на объект и переопределения для участников. */
 Popup {
@@ -16,13 +17,17 @@ Popup {
 
     parent: Overlay.overlay
 
+    readonly property bool fullBleed: Qt.platform.os === "android"
+                                      || (Overlay.overlay && Overlay.overlay.width < 720)
+
     modal: true
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: theme.spacing
-    width: Math.min(540, parent ? parent.width - 48 : 540)
-    implicitHeight: contentCol.implicitHeight + padding * 2
-    anchors.centerIn: Overlay.overlay
+    width: fullBleed ? Overlay.overlay.width : Math.min(540, parent ? parent.width - 48 : 540)
+    height: fullBleed ? Overlay.overlay.height : (contentCol.implicitHeight + padding * 2)
+    x: fullBleed ? 0 : Math.round((Overlay.overlay.width - width) / 2)
+    y: fullBleed ? 0 : Math.round((Overlay.overlay.height - height) / 2)
 
     function openForPath(rootPath, relativePath, title) {
         mode = "path"
@@ -80,12 +85,11 @@ Popup {
                 radius: theme.radiusBtn
                 color: accessCloseArea.containsMouse ? (theme.darkMode ? "#c42b1c" : "#e81123")
                                                      : "transparent"
-                Text {
+                NyxIcon {
                     anchors.centerIn: parent
-                    text: "\uE8BB"
-                    font.family: "Segoe MDL2 Assets"
-                    font.pixelSize: 12
-                    color: accessCloseArea.containsMouse ? "#ffffff" : theme.textSecondary
+                    name: "close"
+                    width: 12
+                    height: 12
                 }
                 MouseArea {
                     id: accessCloseArea

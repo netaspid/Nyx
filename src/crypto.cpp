@@ -108,7 +108,9 @@ Session::Session(void* send_cipher, void* recv_cipher, std::array<uint8_t, 32> b
       recv_(recv_cipher),
       binding_hash_(binding_hash),
       role_(role),
-      started_at_(std::chrono::steady_clock::now()) {}
+      started_at_(std::chrono::steady_clock::now()) {
+  init_realtime_keys(0);
+}
 
 Session::~Session() {
   destroy_cs(static_cast<NoiseCS*>(send_));
@@ -118,6 +120,8 @@ Session::~Session() {
 Session::Session(Session&& other) noexcept
     : send_(other.send_),
       recv_(other.recv_),
+      realtime_send_key_(other.realtime_send_key_),
+      realtime_recv_key_(other.realtime_recv_key_),
       binding_hash_(other.binding_hash_),
       role_(other.role_),
       rekey_epoch_(other.rekey_epoch_),
@@ -133,6 +137,8 @@ Session& Session::operator=(Session&& other) noexcept {
     destroy_cs(static_cast<NoiseCS*>(recv_));
     send_ = other.send_;
     recv_ = other.recv_;
+    realtime_send_key_ = other.realtime_send_key_;
+    realtime_recv_key_ = other.realtime_recv_key_;
     binding_hash_ = other.binding_hash_;
     role_ = other.role_;
     rekey_epoch_ = other.rekey_epoch_;
@@ -164,6 +170,17 @@ std::optional<Session> Session::from_handshake(HandshakeDriver& hs) {
 
 void Session::note_transfer(std::size_t bytes) { bytes_transferred_ += bytes; }
 
+bool Session::init_realtime_keys(std::uint64_t epoch) {
+  if (role_ == HandshakeRole::Initiator) {
+    derive_session_key(binding_hash_, epoch, "nyx-rt-tx", realtime_send_key_.data());
+    derive_session_key(binding_hash_, epoch, "nyx-rt-rx", realtime_recv_key_.data());
+  } else {
+    derive_session_key(binding_hash_, epoch, "nyx-rt-rx", realtime_send_key_.data());
+    derive_session_key(binding_hash_, epoch, "nyx-rt-tx", realtime_recv_key_.data());
+  }
+  return true;
+}
+
 bool Session::needs_rekey() const {
   const std::uint64_t limit =
       g_rekey_byte_limit > 0 ? g_rekey_byte_limit : kSessionRekeyBytes;
@@ -187,6 +204,7 @@ bool Session::perform_rekey(std::uint64_t epoch) {
 
   if (!init_cipher_key(send_, send_key, sizeof(send_key))) return false;
   if (!init_cipher_key(recv_, recv_key, sizeof(recv_key))) return false;
+  if (!init_realtime_keys(epoch)) return false;
 
   rekey_epoch_ = epoch;
   bytes_transferred_ = 0;
@@ -238,6 +256,74 @@ std::optional<ByteBuffer> Session::decrypt(const ByteBuffer& cipher, std::string
     if (err) *err = "decrypt failed";
     return std::nullopt;
   }
+  out.resize(buf.size);
+  note_transfer(cipher.size());
+  return out;
+}
+
+std::optional<ByteBuffer> Session::encrypt_realtime(std::uint64_t nonce,
+                                                    const ByteBuffer& plain,
+                                                    std::string* err) {
+  if (plain.size() > 65535 - 16) {
+    if (err) *err = "realtime plaintext too large";
+    return std::nullopt;
+  }
+  NoiseCS* cs = nullptr;
+  if (noise_cipherstate_new_by_name(&cs, "ChaChaPoly") != NOISE_ERROR_NONE ||
+      !init_cipher_key(cs, realtime_send_key_.data(), realtime_send_key_.size())) {
+    destroy_cs(cs);
+    if (err) *err = "realtime cipher init failed";
+    return std::nullopt;
+  }
+  if (noise_cipherstate_set_nonce(cs, nonce) != NOISE_ERROR_NONE) {
+    destroy_cs(cs);
+    if (err) *err = "realtime nonce failed";
+    return std::nullopt;
+  }
+  ByteBuffer out(plain.size() + 16);
+  NoiseBuffer buf;
+  noise_buffer_set_inout(buf, out.data(), plain.size(), out.size());
+  std::memcpy(buf.data, plain.data(), plain.size());
+  if (noise_cipherstate_encrypt(cs, &buf) != NOISE_ERROR_NONE) {
+    destroy_cs(cs);
+    if (err) *err = "realtime encrypt failed";
+    return std::nullopt;
+  }
+  destroy_cs(cs);
+  out.resize(buf.size);
+  note_transfer(out.size());
+  return out;
+}
+
+std::optional<ByteBuffer> Session::decrypt_realtime(std::uint64_t nonce,
+                                                    const ByteBuffer& cipher,
+                                                    std::string* err) {
+  if (cipher.size() > 65535) {
+    if (err) *err = "realtime ciphertext too large";
+    return std::nullopt;
+  }
+  NoiseCS* cs = nullptr;
+  if (noise_cipherstate_new_by_name(&cs, "ChaChaPoly") != NOISE_ERROR_NONE ||
+      !init_cipher_key(cs, realtime_recv_key_.data(), realtime_recv_key_.size())) {
+    destroy_cs(cs);
+    if (err) *err = "realtime cipher init failed";
+    return std::nullopt;
+  }
+  if (noise_cipherstate_set_nonce(cs, nonce) != NOISE_ERROR_NONE) {
+    destroy_cs(cs);
+    if (err) *err = "realtime nonce failed";
+    return std::nullopt;
+  }
+  ByteBuffer out(cipher.size());
+  NoiseBuffer buf;
+  noise_buffer_set_inout(buf, out.data(), cipher.size(), out.size());
+  std::memcpy(buf.data, cipher.data(), cipher.size());
+  if (noise_cipherstate_decrypt(cs, &buf) != NOISE_ERROR_NONE) {
+    destroy_cs(cs);
+    if (err) *err = "realtime decrypt failed";
+    return std::nullopt;
+  }
+  destroy_cs(cs);
   out.resize(buf.size);
   note_transfer(cipher.size());
   return out;
