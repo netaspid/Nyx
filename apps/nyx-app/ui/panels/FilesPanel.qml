@@ -12,6 +12,17 @@ ColumnLayout {
     spacing: 0
 
     readonly property int sectionCount: node.fileScopeGroupId.length > 0 ? 3 : 2
+    property string localSearchQuery: ""
+    property string remoteSearchQuery: ""
+
+    function matchesSearch(entry, query) {
+        const q = String(query || "").trim().toLowerCase()
+        if (!q.length) return true
+        const name = String(entry.name || "").toLowerCase()
+        const owner = String(entry.ownerLabel || "").toLowerCase()
+        const path = String(entry.fullRelPath || entry.navPath || "").toLowerCase()
+        return name.indexOf(q) >= 0 || owner.indexOf(q) >= 0 || path.indexOf(q) >= 0
+    }
 
     function clampSection() {
         if (sectionTabRow.currentIndex >= sectionCount)
@@ -194,6 +205,87 @@ ColumnLayout {
         }
     }
 
+    Rectangle {
+        Layout.fillWidth: true
+        Layout.leftMargin: theme.spacing
+        Layout.rightMargin: theme.spacing
+        Layout.preferredHeight: visible
+                                ? Math.min(156, 28 + node.transferQueue.length * 48)
+                                : 0
+        visible: node.transferQueue.length > 0
+        radius: theme.radiusBtn
+        color: theme.inputBg
+        border.color: theme.border
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 4
+            Label {
+                text: qsTr("Очередь передач")
+                color: theme.textSecondary
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 3
+                model: node.transferQueue
+                delegate: RowLayout {
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 42
+                    Label {
+                        Layout.fillWidth: true
+                        text: {
+                            const dir = modelData.direction === "upload"
+                                        ? qsTr("↑") : qsTr("↓")
+                            let status = qsTr("ожидание")
+                            if (modelData.state === "active")
+                                status = modelData.progress + "%"
+                            else if (modelData.state === "paused")
+                                status = qsTr("пауза")
+                            else if (modelData.state === "failed")
+                                status = (modelData.error &&
+                                          modelData.error.indexOf("источник") >= 0)
+                                         ? qsTr("нет источников")
+                                         : qsTr("ошибка")
+                            return dir + " " + modelData.name + " · " + status
+                        }
+                        color: modelData.state === "failed"
+                               ? "#ef5350" : theme.textPrimary
+                        elide: Text.ElideMiddle
+                        font.pixelSize: 11
+                    }
+                    ToolButton {
+                        visible: modelData.direction !== "upload"
+                        text: modelData.paused ? "▶" : "Ⅱ"
+                        onClicked: node.pauseFileTransfer(modelData.hash,
+                                                         !modelData.paused)
+                    }
+                    ToolButton {
+                        visible: modelData.state === "failed"
+                                 && modelData.direction !== "upload"
+                        text: "↻"
+                        onClicked: node.retryFileTransfer(modelData.hash)
+                    }
+                    ToolButton {
+                        visible: modelData.direction !== "upload"
+                        text: "↑"
+                        onClicked: node.moveFileTransfer(modelData.hash, -1)
+                    }
+                    ToolButton {
+                        visible: modelData.direction !== "upload"
+                        text: "×"
+                        onClicked: node.cancelFileTransfer(modelData.hash)
+                    }
+                }
+            }
+        }
+    }
+
     // --- содержимое: только одна страница через Loader ---
     Item {
         Layout.fillWidth: true
@@ -246,12 +338,14 @@ ColumnLayout {
         property string path: ""
         property string displayName: ""
         property bool canRemove: true
-        MenuItem {
+        NyxMenuItem {
+            theme: root.theme
             visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
             text: qsTr("Права на папку…")
             onTriggered: pathAccessPopup.openForShareRoot(rootPathMenu.path, rootPathMenu.displayName)
         }
-        MenuItem {
+        NyxMenuItem {
+            theme: root.theme
             visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
             text: qsTr("Роли участников поля…")
             onTriggered: pathAccessPopup.openForField()
@@ -259,11 +353,13 @@ ColumnLayout {
         MenuSeparator {
             visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
         }
-        MenuItem {
+        NyxMenuItem {
+            theme: root.theme
             text: qsTr("Переиндексировать")
             onTriggered: node.rescanIndexedFolder(rootPathMenu.path)
         }
-        MenuItem {
+        NyxMenuItem {
+            theme: root.theme
             text: qsTr("Убрать из индекса")
             enabled: rootPathMenu.canRemove
             onTriggered: node.removeIndexedFolder(rootPathMenu.path)
@@ -423,8 +519,17 @@ ColumnLayout {
                             Layout.fillWidth: true
                             theme: root.theme
                             enabled: node.canAddShareFolder
-                            text: qsTr("Добавить папку…")
+                            text: Qt.platform.os === "android"
+                                  ? qsTr("Папка для обмена…")
+                                  : qsTr("Добавить папку…")
                             onClicked: node.addIndexedFolder("")
+                        }
+                        NyxButtonSecondary {
+                            Layout.fillWidth: true
+                            theme: root.theme
+                            enabled: node.canAddShareFolder
+                            text: qsTr("Импортировать файлы…")
+                            onClicked: node.importFiles()
                         }
                     }
                 }
@@ -437,9 +542,21 @@ ColumnLayout {
                     Label {
                         Layout.fillWidth: true
                         visible: node.fileSelectedShareRoot.length === 0
+                                 && node.localFileList.length === 0
                         wrapMode: Text.WordWrap
-                        text: qsTr("Выберите папку слева или добавьте новую.")
+                        text: Qt.platform.os === "android"
+                              ? qsTr("Импортируйте файлы или соберите папку для обмена — они появятся здесь и в ресурсах поля.")
+                              : qsTr("Выберите папку слева или добавьте новую.")
                         color: theme.textMuted
+                        font.pixelSize: 11
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        visible: node.fileSelectedShareRoot.length === 0
+                                 && node.localFileList.length > 0
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Локальные объекты Nyx (импорт и скачанные файлы)")
+                        color: theme.textSecondary
                         font.pixelSize: 11
                     }
 
@@ -541,6 +658,14 @@ ColumnLayout {
                         font.pixelSize: 11
                     }
 
+                    NyxTextField {
+                        Layout.fillWidth: true
+                        theme: root.theme
+                        placeholderText: qsTr("Поиск файлов и папок…")
+                        text: root.localSearchQuery
+                        onTextChanged: root.localSearchQuery = text
+                    }
+
                     Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -554,7 +679,8 @@ ColumnLayout {
                             delegate: Item {
                                 required property var modelData
                                 width: ListView.view ? ListView.view.width : parent.width
-                                height: fileRow.height
+                                height: visible ? fileRow.height : 0
+                                visible: root.matchesSearch(modelData, root.localSearchQuery)
 
                                 FileListRow {
                                     id: fileRow
@@ -564,6 +690,7 @@ ColumnLayout {
                                     fileName: modelData.name || ""
                                     fileHash: modelData.hash || ""
                                     fileSizeLabel: modelData.sizeLabel || ""
+                                    fileSize: modelData.size || 0
                                     fileMime: modelData.mime || ""
                                     fileIsRemote: modelData.isRemote === true
                                     fileIsDirectory: modelData.isDirectory === true
@@ -571,9 +698,34 @@ ColumnLayout {
                                     fileNavPath: modelData.navPath || ""
                                     fileRootPath: modelData.rootPath || ""
                                     fileFullRelPath: modelData.fullRelPath || modelData.navPath || ""
+                                    fileOwnerLabel: modelData.ownerLabel || ""
                                     onAccessContextMenuRequested: root.openPathAccess(
                                         fileRow.fileRootPath, fileRow.fileFullRelPath, fileRow.fileName)
                                     NyxButtonSecondary {
+                                    visible: true
+                                    theme: root.theme
+                                    text: qsTr("В чат")
+                                    onClicked: {
+                                        if (fileRow.fileIsDirectory) {
+                                            node.linkFolderToChat(
+                                                fileRow.fileHash, fileRow.fileName,
+                                                fileRow.fileRootPath, fileRow.fileFullRelPath,
+                                                fileRow.fileSize)
+                                        } else {
+                                            node.linkFileToChat(
+                                                fileRow.fileHash, fileRow.fileName,
+                                                fileRow.fileMime, fileRow.fileSize)
+                                        }
+                                    }
+                                }
+                                NyxButtonSecondary {
+                                    visible: !fileRow.fileIsDirectory
+                                    theme: root.theme
+                                    text: qsTr("Открыть")
+                                    onClicked: node.openFileByHash(
+                                        fileRow.fileHash, fileRow.fileName, fileRow.fileMime)
+                                }
+                                NyxButtonSecondary {
                                     // Только личка 1:1: передать файл собеседнику по каналу обмена.
                                     // В поле каталог уже общий через «Ресурсы» — кнопка путает.
                                     visible: node.fileScopeGroupId.length === 0
@@ -585,6 +737,15 @@ ColumnLayout {
                                     ToolTip.visible: hovered
                                     ToolTip.text: qsTr("Отправить этот файл собеседнику в текущем чате (не в поле)")
                                     onClicked: node.sendFileByHash(fileRow.fileHash)
+                                }
+                                NyxButtonSecondary {
+                                    visible: Qt.platform.os === "android"
+                                             && !fileRow.fileIsDirectory
+                                    theme: root.theme
+                                    text: qsTr("Экспорт")
+                                    onClicked: node.exportFile(
+                                        fileRow.fileHash, fileRow.fileName,
+                                        fileRow.fileMime)
                                 }
                                 IconButton {
                                     visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
@@ -606,7 +767,7 @@ ColumnLayout {
                             emoji: "📁"
                             title: qsTr("Нет папок")
                             hint: Qt.platform.os === "android"
-                                  ? qsTr("Создайте папку в хранилище Nyx (системный Documents недоступен)")
+                                  ? qsTr("Импортируйте файлы из Documents, Downloads или облачного хранилища")
                                   : qsTr("Добавьте или перетащите папку")
                         }
 
@@ -703,6 +864,14 @@ ColumnLayout {
                 font.pixelSize: 11
             }
 
+            NyxTextField {
+                Layout.fillWidth: true
+                theme: root.theme
+                placeholderText: qsTr("Поиск по имени или владельцу…")
+                text: root.remoteSearchQuery
+                onTextChanged: root.remoteSearchQuery = text
+            }
+
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -717,7 +886,8 @@ ColumnLayout {
                     delegate: Item {
                         required property var modelData
                         width: ListView.view ? ListView.view.width : parent.width
-                        height: fileRow.height
+                        height: visible ? fileRow.height : 0
+                        visible: root.matchesSearch(modelData, root.remoteSearchQuery)
 
                         FileListRow {
                             id: fileRow
@@ -727,6 +897,7 @@ ColumnLayout {
                             fileName: modelData.name || ""
                             fileHash: modelData.hash || ""
                             fileSizeLabel: modelData.sizeLabel || ""
+                            fileSize: modelData.size || 0
                             fileMime: modelData.mime || ""
                             fileIsRemote: modelData.isRemote === true
                             fileIsDirectory: modelData.isDirectory === true
@@ -734,6 +905,24 @@ ColumnLayout {
                             fileNavPath: modelData.navPath || ""
                             fileRootPath: modelData.rootPath || ""
                             fileFullRelPath: modelData.fullRelPath || modelData.navPath || ""
+                            fileOwnerLabel: modelData.ownerLabel || ""
+                            NyxButtonSecondary {
+                                visible: true
+                                theme: root.theme
+                                text: qsTr("В чат")
+                                onClicked: {
+                                    if (fileRow.fileIsDirectory) {
+                                        node.linkFolderToChat(
+                                            fileRow.fileHash, fileRow.fileName,
+                                            fileRow.fileRootPath, fileRow.fileFullRelPath,
+                                            fileRow.fileSize)
+                                    } else {
+                                        node.linkFileToChat(
+                                            fileRow.fileHash, fileRow.fileName,
+                                            fileRow.fileMime, fileRow.fileSize)
+                                    }
+                                }
+                            }
                             NyxButtonSecondary {
                                 visible: fileRow.fileIsDirectory && modelData.canDownload === true
                                 theme: root.theme

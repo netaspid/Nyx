@@ -11,12 +11,14 @@ Rectangle {
     property string fileName: ""
     property string fileHash: ""
     property string fileSizeLabel: ""
+    property var fileSize: 0
     property string fileMime: ""
     property bool fileIsRemote: false
     property bool fileIsDirectory: false
     property string fileNavPath: ""
     property string fileRootPath: ""
     property string fileFullRelPath: ""
+    property string fileOwnerLabel: ""
     property var node
     /** ПКМ по строке — назначение прав (только в поле). */
     signal accessContextMenuRequested()
@@ -58,12 +60,21 @@ Rectangle {
                 Layout.fillWidth: true
             }
             Text {
-                text: fileIsDirectory ? fileSizeLabel : (fileSizeLabel + " · " + fileMime)
+                text: {
+                    let bits = []
+                    if (fileOwnerLabel.length)
+                        bits.push(fileOwnerLabel)
+                    if (fileIsDirectory)
+                        bits.push(fileSizeLabel)
+                    else
+                        bits.push(fileSizeLabel + " · " + fileMime)
+                    return bits.filter(function(s) { return s && s.length }).join(" · ")
+                }
                 color: theme.textMuted
                 font.pixelSize: 10
                 elide: Text.ElideRight
                 Layout.fillWidth: true
-                visible: fileSizeLabel.length > 0
+                visible: fileSizeLabel.length > 0 || fileOwnerLabel.length > 0
             }
         }
 
@@ -82,15 +93,19 @@ Rectangle {
         width: Math.max(0, parent.width - actionsLayout.width - 16)
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        cursorShape: fileIsDirectory ? Qt.PointingHandCursor : Qt.ArrowCursor
+        cursorShape: Qt.PointingHandCursor
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
                 if (node && node.fileScopeGroupId.length > 0 && node.canManageFileRoles)
                     root.accessContextMenuRequested()
                 return
             }
-            if (fileIsDirectory && node)
+            if (fileIsDirectory && node) {
                 node.browseIntoFolder(fileNavPath, fileRootPath)
+                return
+            }
+            if (node && fileHash.length)
+                node.openFileByHash(fileHash, fileName, fileMime)
         }
     }
 

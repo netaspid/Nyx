@@ -44,6 +44,7 @@ public final class NyxCameraCapture {
     private static boolean sOpening = false;
     private static long sLastFrameMs = 0;
     private static Context sAppCtx;
+    private static int sGeneration = 0;
 
     private NyxCameraCapture() {}
 
@@ -51,11 +52,18 @@ public final class NyxCameraCapture {
         if (ctx == null) return;
         final Context app = ctx.getApplicationContext();
         ensureThread();
-        sHandler.post(() -> openLocked(app, preferFront));
+        final int generation;
+        synchronized (LOCK) {
+            generation = ++sGeneration;
+        }
+        sHandler.post(() -> openLocked(app, preferFront, generation));
     }
 
     public static void stop() {
         ensureThread();
+        synchronized (LOCK) {
+            ++sGeneration;
+        }
         sHandler.post(NyxCameraCapture::closeLocked);
     }
 
@@ -65,7 +73,11 @@ public final class NyxCameraCapture {
             final boolean next = !sFront;
             final Context ctx = sAppCtx;
             closeLocked();
-            if (ctx != null) openLocked(ctx, next);
+            final int generation;
+            synchronized (LOCK) {
+                generation = ++sGeneration;
+            }
+            if (ctx != null) openLocked(ctx, next, generation);
         });
     }
 
@@ -97,7 +109,10 @@ public final class NyxCameraCapture {
         }
     }
 
-    private static void openLocked(Context app, boolean preferFront) {
+    private static void openLocked(Context app, boolean preferFront, int generation) {
+        synchronized (LOCK) {
+            if (generation != sGeneration) return;
+        }
         closeLocked();
         sAppCtx = app;
         sFront = preferFront;
@@ -120,6 +135,12 @@ public final class NyxCameraCapture {
             cm.openCamera(id, new CameraDevice.StateCallback() {
                 @Override
                 public void onOpened(CameraDevice camera) {
+                    synchronized (LOCK) {
+                        if (generation != sGeneration) {
+                            camera.close();
+                            return;
+                        }
+                    }
                     sCamera = camera;
                     sOpening = false;
                     try {
@@ -134,6 +155,7 @@ public final class NyxCameraCapture {
 
                 @Override
                 public void onDisconnected(CameraDevice camera) {
+                    camera.close();
                     Log.w(TAG, "disconnected");
                     closeLocked();
                     nativeOnError("disconnected");
@@ -141,6 +163,7 @@ public final class NyxCameraCapture {
 
                 @Override
                 public void onError(CameraDevice camera, int error) {
+                    camera.close();
                     Log.e(TAG, "camera error " + error);
                     closeLocked();
                     nativeOnError("camera error " + error);

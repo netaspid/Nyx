@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtMultimedia
 import "../components"
 import "../controls"
 import "../js/MarkdownFormat.js" as Md
@@ -18,6 +19,8 @@ Item {
     /** Не сбрасывать тулбар/превью при клике по кнопкам композера (Aa, эмодзи…). */
     property bool composerToolsSticky: false
     property string composerChatKey: ""
+    property string contextMessageText: ""
+    readonly property bool narrowHeader: width < 600 || Qt.platform.os === "android"
 
 
     function openChatMeta() {
@@ -112,7 +115,7 @@ Item {
             }
 
             AvatarBadge {
-                visible: node.peerTitle.length > 0
+                visible: node.peerTitle.length > 0 && !root.narrowHeader
                 size: 40
                 label: node.peerTitle
                 baseColor: avatarColorFn(node.peerTitle)
@@ -187,6 +190,7 @@ Item {
 
             IconButton {
                 visible: node.activeChatKind === 1 && node.peerTitle.length > 0
+                         && !root.narrowHeader
                 theme: root.theme
                 name: "people"
                 ToolTip.text: qsTr("Участники поля")
@@ -197,13 +201,15 @@ Item {
                 id: msgSearch
                 Layout.preferredWidth: 140
                 visible: node.peerTitle.length > 0 && node.messages.count > 0
+                         && !root.narrowHeader
                 theme: root.theme
                 placeholderText: qsTr("Поиск")
                 onTextChanged: node.searchMessages(text)
             }
 
             IconButton {
-                visible: node.peerTitle.length > 0 && node.canStartCall
+                visible: node.peerTitle.length > 0
+                         && (node.canStartCall || node.activeChatKind === 1)
                 theme: root.theme
                 name: "phone"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть аудиокомнату")
@@ -211,7 +217,8 @@ Item {
                 onClicked: node.startCall(false)
             }
             IconButton {
-                visible: node.peerTitle.length > 0 && node.canStartCall
+                visible: node.peerTitle.length > 0
+                         && (node.canStartCall || node.activeChatKind === 1)
                 theme: root.theme
                 name: "video"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть видеокомнату")
@@ -264,8 +271,29 @@ Item {
                 listWidth: msgList.width
                 theme: root.theme
                 node: root.node
+                onContextRequested: function(plainText, sceneX, sceneY) {
+                    root.contextMessageText = plainText
+                    messageContextMenu.x = Math.min(sceneX,
+                                                    Overlay.overlay.width - messageContextMenu.width - 8)
+                    messageContextMenu.y = Math.min(sceneY,
+                                                    Overlay.overlay.height - messageContextMenu.height - 8)
+                    messageContextMenu.open()
+                }
             }
             onCountChanged: Qt.callLater(function() { msgList.positionViewAtEnd() })
+        }
+    }
+
+    NyxMenu {
+        id: messageContextMenu
+        theme: root.theme
+        parent: Overlay.overlay
+
+        NyxMenuItem {
+            theme: root.theme
+            text: qsTr("Скопировать как текст")
+            enabled: root.contextMessageText.length > 0
+            onTriggered: node.copyToClipboard(root.contextMessageText)
         }
     }
 
@@ -399,6 +427,7 @@ Item {
                                         id: composerPreviewBody
                                         width: previewFlick.width
                                         theme: root.theme
+                                        node: root.node
                                         sourceText: msgField.text
                                     }
                                 }
@@ -429,6 +458,33 @@ Item {
                                 ToolTip.text: qsTr("Файлы")
                                 onPressed: root.holdComposerToolsBriefly()
                                 onClicked: node.openFilesView()
+                            }
+
+                            IconButton {
+                                theme: root.theme
+                                name: "image"
+                                btnSize: 36
+                                enabled: node.canSendMessage
+                                ToolTip.text: qsTr("Камера: фото или видео")
+                                onPressed: root.holdComposerToolsBriefly()
+                                onClicked: root.openMediaCapture()
+                            }
+
+                            IconButton {
+                                id: voiceBtn
+                                theme: root.theme
+                                name: "mic"
+                                btnSize: 36
+                                enabled: node.canSendMessage && !voiceRecorder.recording
+                                ToolTip.text: voiceRecorder.recording
+                                              ? qsTr("Отпустите, чтобы отправить")
+                                              : qsTr("Удерживайте для аудиосообщения")
+                                onPressed: {
+                                    root.holdComposerToolsBriefly()
+                                    voiceRecorder.start()
+                                }
+                                onReleased: voiceRecorder.finish(true)
+                                onCanceled: voiceRecorder.finish(false)
                             }
 
                             IconButton {
@@ -639,6 +695,15 @@ Item {
                 return
             root.composerChatKey = key
             root.resetComposerTools()
+        }
+        function onFileLinkReady(markdown) {
+            if (!markdown || !markdown.length)
+                return
+            if (msgField.text.length && !msgField.text.endsWith("\n"))
+                msgField.text += "\n"
+            msgField.text += markdown + "\n"
+            msgField.forceActiveFocus()
+            root.composerPreview = true
         }
     }
 
@@ -861,6 +926,14 @@ Item {
         codeLangDialog.open()
     }
 
+    function applyCopyBlock() {
+        root.holdComposerToolsBriefly()
+        root.fenceSelStart = msgField.selectionStart
+        root.fenceSelEnd = msgField.selectionEnd
+        root.fenceSelected = msgField.selectedText
+        root.insertFenceWithLang("copy")
+    }
+
     function insertFenceWithLang(lang) {
         const tag = String(lang || "").trim()
         const open = tag.length ? ("```" + tag + "\n") : "```\n"
@@ -894,6 +967,7 @@ Item {
         else if (action === "spoiler") wrapSelection("||")
         else if (action === "code") wrapSelection("`")
         else if (action === "fence") applyFence()
+        else if (action === "copyblock") applyCopyBlock()
         else if (action === "quote") applyQuote()
         else if (action === "h1") applyLinePrefix("# ")
         else if (action === "h2") applyLinePrefix("## ")
@@ -1003,5 +1077,133 @@ Item {
         root.composerPreview = false
         root.hideMarkdownToolbar()
         if (mentionPopup.opened) mentionPopup.close()
+    }
+
+    function openMediaCapture() {
+        // Lazy: Camera/MediaRecorder crash on Android if created at ChatView load.
+        mediaCaptureLoader.active = true
+        Qt.callLater(function() {
+            if (mediaCaptureLoader.item)
+                mediaCaptureLoader.item.open()
+        })
+    }
+
+    Loader {
+        id: mediaCaptureLoader
+        active: false
+        asynchronous: false
+        parent: Overlay.overlay
+        sourceComponent: ChatMediaCapture {
+            theme: root.theme
+            node: root.node
+            parent: Overlay.overlay
+            onClosed: mediaCaptureLoader.active = false
+        }
+    }
+
+    // Hold-to-record voice notes — CaptureSession created only on first press.
+    QtObject {
+        id: voiceRecorder
+        property bool recording: false
+        property bool acceptOnStop: false
+        property string pendingPath: ""
+        property real startedAt: 0
+        property var sessionItem: null
+
+        function ensureEngine() {
+            if (sessionItem)
+                return sessionItem
+            sessionItem = voiceEngineComp.createObject(root)
+            return sessionItem
+        }
+
+        function start() {
+            if (recording || !node.canSendMessage) return
+            const eng = ensureEngine()
+            if (!eng) return
+            const dest = node.chatCaptureStagingPath("m4a")
+            pendingPath = dest
+            startedAt = Date.now()
+            acceptOnStop = false
+            recording = true
+            eng.start(dest)
+        }
+
+        function finish(sendIt) {
+            if (!recording) return
+            acceptOnStop = !!sendIt
+            if (sessionItem)
+                sessionItem.stop()
+        }
+
+        function onStopped(path) {
+            const wasAccept = acceptOnStop
+            recording = false
+            acceptOnStop = false
+            const elapsed = Date.now() - startedAt
+            const usePath = (path && path.length) ? path : pendingPath
+            if (!wasAccept || elapsed < 400)
+                return
+            if (usePath && usePath.length)
+                node.sendCapturedMedia(usePath, "audio/mp4", "voice.m4a")
+        }
+
+        function onFailed() {
+            recording = false
+            acceptOnStop = false
+        }
+    }
+
+    Component {
+        id: voiceEngineComp
+        Item {
+            id: eng
+            function start(dest) {
+                try {
+                    recorder.outputLocation = "file://" + dest
+                    recorder.record()
+                } catch (e) {
+                    voiceRecorder.onFailed()
+                }
+            }
+            function stop() {
+                try { recorder.stop() } catch (e) { voiceRecorder.onFailed() }
+            }
+            CaptureSession {
+                audioInput: AudioInput {}
+                recorder: recorder
+            }
+            MediaRecorder {
+                id: recorder
+                onRecorderStateChanged: {
+                    if (recorder.recorderState !== MediaRecorder.StoppedState)
+                        return
+                    const path = recorder.actualLocation
+                                   ? recorder.actualLocation.toLocalFile()
+                                   : ""
+                    voiceRecorder.onStopped(path)
+                }
+                onErrorOccurred: function() { voiceRecorder.onFailed() }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 88
+        visible: voiceRecorder.recording
+        z: 50
+        width: recLabel.implicitWidth + 28
+        height: 36
+        radius: 18
+        color: "#e53935"
+        Label {
+            id: recLabel
+            anchors.centerIn: parent
+            text: qsTr("Запись… отпустите, чтобы отправить")
+            color: "#ffffff"
+            font.pixelSize: 12
+        }
     }
 }

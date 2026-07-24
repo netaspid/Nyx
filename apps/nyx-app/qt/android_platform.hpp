@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace nyx_android {
 
@@ -95,5 +96,18 @@ void voice_capture_stop();
 
 /** Short audible beep for settings speaker check (Android MEDIA stream). */
 void play_test_tone(int sample_rate = 48000, int duration_ms = 700);
+
+struct StorageDocument {
+  QString uri;
+  QString name;
+  QString mime;
+  qint64 size = -1;
+};
+StorageDocument storage_document_info(const QString& uri);
+bool copy_content_uri(const QString& uri, const QString& destination);
+bool export_file(const QString& path, const QString& display_name,
+                 const QString& mime);
+/** Open local file with system viewer via FileProvider (Android). */
+bool open_file(const QString& path, const QString& mime);
 
 }  // namespace nyx_android

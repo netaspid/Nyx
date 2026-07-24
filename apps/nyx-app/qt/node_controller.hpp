@@ -68,7 +68,7 @@ class NodeController : public QObject {
   Q_PROPERTY(QString callState READ callState NOTIFY callChanged)
   Q_PROPERTY(QString callTitle READ callTitle NOTIFY callChanged)
   Q_PROPERTY(bool callVideo READ callVideo NOTIFY callChanged)
-  Q_PROPERTY(bool canStartCall READ canStartCall NOTIFY callChanged)
+  Q_PROPERTY(bool canStartCall READ canStartCall NOTIFY chatChanged)
   Q_PROPERTY(bool callIsFieldRoom READ callIsFieldRoom NOTIFY callChanged)
   Q_PROPERTY(bool callMicMuted READ callMicMuted WRITE setCallMicMuted NOTIFY callChanged)
   Q_PROPERTY(bool callCameraOn READ callCameraOn WRITE setCallCameraOn NOTIFY callChanged)
@@ -97,6 +97,11 @@ class NodeController : public QObject {
   Q_PROPERTY(bool fileProgressVisible READ fileProgressVisible NOTIFY fileProgressChanged)
   Q_PROPERTY(QVariantList localFileList READ localFileList NOTIFY filesChanged)
   Q_PROPERTY(QVariantList remoteFileList READ remoteFileList NOTIFY filesChanged)
+  Q_PROPERTY(QVariantList transferQueue READ transferQueue NOTIFY filesChanged)
+  Q_PROPERTY(bool inAppMediaOpen READ inAppMediaOpen NOTIFY inAppMediaChanged)
+  Q_PROPERTY(QString inAppMediaPath READ inAppMediaPath NOTIFY inAppMediaChanged)
+  Q_PROPERTY(QString inAppMediaMime READ inAppMediaMime NOTIFY inAppMediaChanged)
+  Q_PROPERTY(QString inAppMediaTitle READ inAppMediaTitle NOTIFY inAppMediaChanged)
   Q_PROPERTY(QVariantList fileShareRoots READ fileShareRoots NOTIFY filesChanged)
   Q_PROPERTY(QString fileSelectedShareRoot READ fileSelectedShareRoot WRITE setFileSelectedShareRoot
                  NOTIFY filesChanged)
@@ -230,6 +235,11 @@ class NodeController : public QObject {
   bool fileProgressVisible() const { return file_progress_visible_; }
   QVariantList localFileList() const { return local_file_list_; }
   QVariantList remoteFileList() const { return remote_file_list_; }
+  bool inAppMediaOpen() const { return in_app_media_open_; }
+  QString inAppMediaPath() const { return in_app_media_path_; }
+  QString inAppMediaMime() const { return in_app_media_mime_; }
+  QString inAppMediaTitle() const { return in_app_media_title_; }
+  QVariantList transferQueue() const { return transfer_queue_; }
   QVariantList fileShareRoots() const { return file_share_roots_; }
   QString fileSelectedShareRoot() const { return file_selected_share_root_; }
   QString fileBrowsePath() const { return file_browse_path_; }
@@ -455,11 +465,60 @@ class NodeController : public QObject {
   void setSelectedCameraId(const QString& id);
   void setSelectedAudioInputId(const QString& id);
   void setSelectedAudioOutputId(const QString& id);
-  /** Выбрать фото/видео → скопировать в chat_media → markdown `![…](nyx-media:hash)`. */
+  /** Выбрать фото/видео → библиотека + markdown `![…](nyx-media:hash)`. */
   Q_INVOKABLE QString pickChatMediaMarkdown();
+  /** Import captured/recorded media into library+chat_media and send to active chat. */
+  Q_INVOKABLE bool sendCapturedMedia(const QString& localPath,
+                                     const QString& mimeHint = {},
+                                     const QString& displayName = {});
+  /** Import without auto-send; returns markdown (nyx-file:…). */
+  Q_INVOKABLE QString importChatMediaMarkdown(const QString& localPath,
+                                              const QString& mimeHint = {},
+                                              const QString& displayName = {});
+  /** Staging path for camera/voice capture under AppData. */
+  Q_INVOKABLE QString chatCaptureStagingPath(const QString& extension) const;
+  /** Resolve nickname for a user id hex (self / contact / field member). */
+  Q_INVOKABLE QString userDisplayName(const QString& userIdHex) const;
+  /** Open built-in in-app media player overlay. */
+  Q_INVOKABLE void openInAppMedia(const QString& path, const QString& mime = {},
+                                  const QString& title = {});
+  Q_INVOKABLE void closeInAppMedia();
   Q_INVOKABLE QString mediaLocalPath(const QString& hashHex) const;
   Q_INVOKABLE void ensureMediaAvailable(const QString& hashHex);
   Q_INVOKABLE bool isImageMedia(const QString& hashHex) const;
+  Q_INVOKABLE QString fileLocalPath(const QString& hashHex) const;
+  Q_INVOKABLE void ensureFileAvailable(const QString& hashHex,
+                                       const QString& fileName);
+  Q_INVOKABLE QString fileTextPreview(const QString& hashHex) const;
+  /** Open local path with system viewer (FileProvider on Android). */
+  Q_INVOKABLE bool openLocalFile(const QString& path, const QString& mime = {});
+  /** Ensure cached, then open. Downloads if needed. */
+  Q_INVOKABLE void openFileByHash(const QString& hashHex,
+                                  const QString& fileName = {},
+                                  const QString& mime = {});
+  Q_INVOKABLE void linkFileToChat(const QString& hashHex,
+                                  const QString& fileName,
+                                  const QString& mime,
+                                  qulonglong size);
+  /** Link a directory marker into chat (open in Resources / download folder). */
+  Q_INVOKABLE void linkFolderToChat(const QString& hashHex,
+                                    const QString& folderName,
+                                    const QString& rootPath,
+                                    const QString& relativePath,
+                                    qulonglong size);
+  /** Jump Files → Resources and browse to the folder described by hash/paths. */
+  Q_INVOKABLE void openFolderInResources(const QString& hashHex,
+                                         const QString& rootPath = {},
+                                         const QString& relativePath = {});
+  Q_INVOKABLE int fileSyncState(const QString& hashHex) const;
+  Q_INVOKABLE void pauseFileTransfer(const QString& hashHex, bool paused);
+  Q_INVOKABLE void cancelFileTransfer(const QString& hashHex);
+  Q_INVOKABLE void retryFileTransfer(const QString& hashHex);
+  Q_INVOKABLE void moveFileTransfer(const QString& hashHex, int delta);
+  Q_INVOKABLE void importFiles();
+  Q_INVOKABLE void exportFile(const QString& hashHex,
+                              const QString& fileName,
+                              const QString& mime);
   Q_INVOKABLE void createGroup(const QString& name, const QString& description = {},
                                const QString& direction = {}, const QString& tags = {},
                                bool publicListed = false);
@@ -512,8 +571,10 @@ class NodeController : public QObject {
   void audioTestChanged();
   void windowActiveChanged();
   void fileProgressChanged();
+  void fileLinkReady(const QString& markdown);
   void fileIndexProgressChanged();
   void filesChanged();
+  void inAppMediaChanged();
   void mainViewModeChanged();
   void fileAccessChanged();
   void connectionPanelOpenChanged();
@@ -594,6 +655,10 @@ class NodeController : public QObject {
   bool call_speakerphone_ = true;
   QString last_call_notify_key_;
   bool answering_call_ = false;
+  bool resume_call_camera_ = false;
+  QString suspended_call_id_;
+  QString manual_call_focus_;
+  qint64 manual_call_focus_until_ms_ = 0;
   qint64 last_send_fail_toast_ms_ = 0;
   qint64 call_media_started_ms_ = 0;
   MessageModel messages_;
@@ -672,6 +737,11 @@ class NodeController : public QObject {
   QVariantList file_remote_browse_crumbs_;
   QVariantList local_file_list_;
   QVariantList remote_file_list_;
+  QVariantList transfer_queue_;
+  bool in_app_media_open_ = false;
+  QString in_app_media_path_;
+  QString in_app_media_mime_;
+  QString in_app_media_title_;
   int files_section_ = 0;
   bool file_index_progress_visible_ = false;
   int file_index_progress_percent_ = 0;

@@ -4,6 +4,8 @@
     <file>ui/Theme.qml</file>
     <file>ui/components/AvatarBadge.qml</file>
     <file>ui/components/ChatBubble.qml</file>
+    <file>ui/components/ChatMediaPlayer.qml</file>
+    <file>ui/components/ChatMediaCapture.qml</file>
     <file>ui/components/ChatListItem.qml</file>
     <file>ui/components/NyxLogo.qml</file>
     <file>ui/components/NyxIcon.qml</file>
@@ -36,6 +38,7 @@
     <file>ui/components/ToastHost.qml</file>
     <file>ui/controls/NyxComboBox.qml</file>
     <file>ui/controls/NyxMenu.qml</file>
+    <file>ui/controls/NyxMenuItem.qml</file>
     <file>ui/controls/NyxSegmentTabButton.qml</file>
     <file>ui/AccountGate.qml</file>
     <file>ui/dialogs/SettingsDialog.qml</file>

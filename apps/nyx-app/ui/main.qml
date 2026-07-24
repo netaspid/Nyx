@@ -73,6 +73,10 @@ ApplicationWindow {
 
     function handleBack() {
         // Active call: Back = hangup (also the escape hatch when camera steals taps).
+        if (app.inAppMediaOpen) {
+            app.closeInAppMedia()
+            return true
+        }
         if (app.callState === "incoming") {
             app.rejectCall()
             return true
@@ -225,6 +229,17 @@ ApplicationWindow {
         theme: appTheme
         node: app
         narrow: root.narrow
+    }
+
+    Loader {
+        id: mediaPlayerLoader
+        anchors.fill: parent
+        active: app.inAppMediaOpen
+        sourceComponent: ChatMediaPlayer {
+            anchors.fill: parent
+            theme: appTheme
+            node: app
+        }
     }
 
     Connections {

@@ -1,6 +1,7 @@
 #include "android_platform.hpp"
 
 #include <QtGlobal>
+#include <QStringList>
 
 #if defined(Q_OS_ANDROID)
 
@@ -479,6 +480,65 @@ bool native_camera_has_front_and_back() {
                                                 ctx.object<jobject>());
 }
 
+StorageDocument storage_document_info(const QString& uri) {
+  StorageDocument info;
+  info.uri = uri;
+  const QJniObject ctx = android_context();
+  if (!ctx.isValid()) return info;
+  const QJniObject uri_arg = QJniObject::fromString(uri);
+  const QJniObject encoded = QJniObject::callStaticObjectMethod(
+      "org/nyx/app/NyxStorageBridge", "describe",
+      "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;",
+      ctx.object<jobject>(), uri_arg.object<jstring>());
+  if (!encoded.isValid()) return info;
+  const QStringList fields =
+      encoded.toString().split(QChar(0x1f), Qt::KeepEmptyParts);
+  if (!fields.isEmpty()) info.name = fields.value(0);
+  info.mime = fields.value(1);
+  bool size_ok = false;
+  info.size = fields.value(2).toLongLong(&size_ok);
+  if (!size_ok) info.size = -1;
+  return info;
+}
+
+bool copy_content_uri(const QString& uri, const QString& destination) {
+  const QJniObject ctx = android_context();
+  if (!ctx.isValid()) return false;
+  const QJniObject uri_arg = QJniObject::fromString(uri);
+  const QJniObject dest_arg = QJniObject::fromString(destination);
+  return QJniObject::callStaticMethod<jboolean>(
+      "org/nyx/app/NyxStorageBridge", "copyToFile",
+      "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z",
+      ctx.object<jobject>(), uri_arg.object<jstring>(),
+      dest_arg.object<jstring>());
+}
+
+bool export_file(const QString& path, const QString& display_name,
+                 const QString& mime) {
+  const QJniObject ctx = android_context();
+  if (!ctx.isValid()) return false;
+  const QJniObject path_arg = QJniObject::fromString(path);
+  const QJniObject name_arg = QJniObject::fromString(display_name);
+  const QJniObject mime_arg = QJniObject::fromString(mime);
+  return QJniObject::callStaticMethod<jboolean>(
+      "org/nyx/app/NyxStorageBridge", "exportToDownloads",
+      "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z",
+      ctx.object<jobject>(), path_arg.object<jstring>(),
+      name_arg.object<jstring>(), mime_arg.object<jstring>());
+}
+
+bool open_file(const QString& path, const QString& mime) {
+  const QJniObject ctx = android_context();
+  if (!ctx.isValid()) return false;
+  const QJniObject path_arg = QJniObject::fromString(path);
+  const QJniObject mime_arg = QJniObject::fromString(mime);
+  return QJniObject::callStaticMethod<jboolean>(
+      "org/nyx/app/NyxStorageBridge", "openFile",
+      "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z",
+      ctx.object<jobject>(), path_arg.object<jstring>(),
+      mime_arg.object<jstring>());
+}
+
 }  // namespace nyx_android
 
 #include <QMetaObject>
@@ -604,6 +664,16 @@ bool voice_capture_start(int, int) { return false; }
 int voice_capture_read(int16_t*, int) { return 0; }
 void voice_capture_stop() {}
 void play_test_tone(int, int) {}
+StorageDocument storage_document_info(const QString& uri) {
+  StorageDocument info;
+  info.uri = uri;
+  return info;
+}
+bool copy_content_uri(const QString&, const QString&) { return false; }
+bool export_file(const QString&, const QString&, const QString&) {
+  return false;
+}
+bool open_file(const QString&, const QString&) { return false; }
 
 }  // namespace nyx_android
 
