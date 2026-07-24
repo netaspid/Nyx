@@ -73,6 +73,65 @@ std::optional<FileRequest> FileRequest::decode(const ByteBuffer& data) {
   return req;
 }
 
+ByteBuffer FileCapabilities::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::Capabilities));
+  out.push_back(version);
+  write_u32_le(out, flags);
+  out.push_back(max_parallel);
+  return out;
+}
+
+std::optional<FileCapabilities> FileCapabilities::decode(
+    const ByteBuffer& data) {
+  if (data.size() < 7 ||
+      data[0] != static_cast<uint8_t>(FileKind::Capabilities)) {
+    return std::nullopt;
+  }
+  FileCapabilities caps;
+  caps.version = data[1];
+  caps.flags = read_u32_le(data.data() + 2);
+  caps.max_parallel = data[6];
+  return caps;
+}
+
+ByteBuffer FileRangeRequest::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::RangeRequest));
+  out.insert(out.end(), hash.begin(), hash.end());
+  write_u64_le(out, offset);
+  return out;
+}
+
+std::optional<FileRangeRequest> FileRangeRequest::decode(
+    const ByteBuffer& data) {
+  if (data.size() < 41 ||
+      data[0] != static_cast<uint8_t>(FileKind::RangeRequest)) {
+    return std::nullopt;
+  }
+  FileRangeRequest request;
+  std::memcpy(request.hash.data(), data.data() + 1, request.hash.size());
+  request.offset = read_u64_le(data.data() + 33);
+  return request;
+}
+
+ByteBuffer FileCancel::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(FileKind::Cancel));
+  out.insert(out.end(), hash.begin(), hash.end());
+  return out;
+}
+
+std::optional<FileCancel> FileCancel::decode(const ByteBuffer& data) {
+  if (data.size() < 33 ||
+      data[0] != static_cast<uint8_t>(FileKind::Cancel)) {
+    return std::nullopt;
+  }
+  FileCancel cancel;
+  std::memcpy(cancel.hash.data(), data.data() + 1, cancel.hash.size());
+  return cancel;
+}
+
 ByteBuffer FileChunk::encode() const {
   ByteBuffer out;
   out.reserve(1 + 32 + 8 + 4 + data.size());
@@ -256,7 +315,8 @@ std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& dat
 }
 
 ByteBuffer encode_index_push(const std::vector<FileEntry>& entries,
-                             const std::vector<std::string>& root_paths) {
+                             const std::vector<std::string>& root_paths,
+                             uint64_t revision) {
   ByteBuffer out = encode_list_response(entries);
   if (out.empty()) return out;
   out[0] = static_cast<uint8_t>(FileKind::IndexPush);
@@ -265,6 +325,7 @@ ByteBuffer encode_index_push(const std::vector<FileEntry>& entries,
     write_u16_le(out, static_cast<uint16_t>(path.size()));
     out.insert(out.end(), path.begin(), path.end());
   }
+  write_u64_le(out, revision);
   return out;
 }
 
@@ -304,6 +365,9 @@ std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data) {
     if (off + len > data.size()) break;
     payload.root_paths.emplace_back(reinterpret_cast<const char*>(data.data() + off), len);
     off += len;
+  }
+  if (off + 8 <= data.size()) {
+    payload.revision = read_u64_le(data.data() + off);
   }
   return payload;
 }

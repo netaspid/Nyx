@@ -36,6 +36,8 @@ struct FileEntry {
   std::string relative_path;
   std::string mime;
   GroupId share_group{};
+  /** Owner of chat-imported / captured media (zero = unknown / legacy flat). */
+  UserId owner_id{};
 
   std::string absolute_path() const;
   std::string display_name() const { return relative_path; }
@@ -86,12 +88,14 @@ class FileIndex {
                                                 const std::string& share_root_path,
                                                 const std::string& parent_rel) const;
 
-  /** Содержимое уровня по абсолютному пути share root (без фильтра scope). */
+  /** Level listing for a share root; when scope_group is set, only that scope. */
   std::vector<FileEntry> listing_at_root(const std::string& share_root_path,
-                                         const std::string& parent_rel) const;
+                                         const std::string& parent_rel,
+                                         const GroupId* scope_group = nullptr) const;
 
   /** Число проиндексированных файлов в корне. */
   int count_in_root(const std::string& root_path) const;
+  int count_in_root(const std::string& root_path, const GroupId& scope_group) const;
 
   /** Пересканировать существующий корень. */
   bool rescan_root(const std::string& root_path, const GroupId* group_id = nullptr,
@@ -102,6 +106,27 @@ class FileIndex {
 
   std::optional<FileEntry> find_by_hash(const FileHash& hash) const;
   std::optional<FileEntry> find_by_hash_hex(const std::string& hex) const;
+  /** Copies a verified object into the managed content-addressed store.
+   *  When owner_id is set, file is stored under library/<scope>/<owner_hex>/. */
+  std::optional<FileEntry> adopt_file(const std::string& source_path,
+                                      const FileHash& expected_hash,
+                                      const std::string& display_name,
+                                      const std::string& mime,
+                                      const GroupId& scope_group,
+                                      const UserId* owner_id = nullptr);
+  std::optional<FileEntry> import_file(const std::string& source_path,
+                                       const std::string& display_name,
+                                       const std::string& mime,
+                                       const GroupId& scope_group,
+                                       const UserId* owner_id = nullptr);
+
+  /** App-managed library root for scope (imports + adopted downloads). */
+  static std::string library_root_path(const GroupId& scope_group);
+  /** Per-owner directory under the library ShareRoot (empty owner → library root). */
+  static std::string library_owner_dir(const GroupId& scope_group,
+                                       const UserId& owner_id);
+  /** Ensures ShareRoot exists so library files appear in Field resources. */
+  bool ensure_library_root(const GroupId& scope_group);
 
   /** find + проверка share policy для сессии. */
   std::optional<FileEntry> find_for_session(const FileHash& hash,

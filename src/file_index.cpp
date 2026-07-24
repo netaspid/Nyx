@@ -12,6 +12,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <vector>
 
 namespace nyx {
 
@@ -59,6 +60,31 @@ uint64_t json_get_u64(const std::string& json, const char* key) {
 
 bool group_id_is_zero(const GroupId& id) {
   return std::all_of(id.begin(), id.end(), [](uint8_t b) { return b == 0; });
+}
+
+bool user_id_is_zero(const UserId& id) {
+  return std::all_of(id.begin(), id.end(), [](uint8_t b) { return b == 0; });
+}
+
+bool owner_id_from_hex(const std::string& hex, UserId& out) {
+  std::vector<uint8_t> bytes;
+  if (!from_hex(hex, bytes) || bytes.size() != out.size()) return false;
+  std::memcpy(out.data(), bytes.data(), out.size());
+  return true;
+}
+
+/** First path segment is owner hex when it looks like a 64-char user id. */
+bool infer_owner_from_rel(const std::string& relative_path, UserId& out) {
+  std::string posix = relative_path;
+  for (char& c : posix) {
+    if (c == '\\') c = '/';
+  }
+  const auto slash = posix.find('/');
+  // Owner dirs always contain at least one file under them.
+  if (slash == std::string::npos) return false;
+  const std::string head = posix.substr(0, slash);
+  if (head.size() != 64) return false;
+  return owner_id_from_hex(head, out);
 }
 
 bool entry_visible_in_session(const FileEntry& entry, const GroupId& session_group) {
@@ -247,7 +273,11 @@ std::vector<FileEntry> FileIndex::listing_level_for_root(const GroupId& session_
 }
 
 std::vector<FileEntry> FileIndex::listing_at_root(const std::string& share_root_path,
-                                                  const std::string& parent_rel) const {
+                                                  const std::string& parent_rel,
+                                                  const GroupId* scope_group) const {
+  if (scope_group) {
+    return listing_level_for_root(*scope_group, share_root_path, parent_rel);
+  }
   const std::string norm = normalize_utf8_path(share_root_path);
   std::lock_guard lock(mutex_);
   std::vector<FileEntry> in_root;
@@ -279,6 +309,16 @@ std::string FileIndex::guess_mime(const std::string& path) {
   if (ext == "json") return "application/json";
   if (ext == "png") return "image/png";
   if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+  if (ext == "gif") return "image/gif";
+  if (ext == "webp") return "image/webp";
+  if (ext == "mp3") return "audio/mpeg";
+  if (ext == "ogg" || ext == "oga") return "audio/ogg";
+  if (ext == "wav") return "audio/wav";
+  if (ext == "m4a") return "audio/mp4";
+  if (ext == "mp4") return "video/mp4";
+  if (ext == "webm") return "video/webm";
+  if (ext == "mkv") return "video/x-matroska";
+  if (ext == "mov") return "video/quicktime";
   if (ext == "zip") return "application/zip";
   if (ext == "pdf") return "application/pdf";
   return "application/octet-stream";
@@ -326,6 +366,7 @@ bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
       // file_time_type::time_since_epoch() на Windows может бросать — не используем.
       entry.mtime_ms = 0;
       entry.mime = guess_mime(abs);
+      infer_owner_from_rel(entry.relative_path, entry.owner_id);
       const std::string rel_for_progress = entry.relative_path;
       entries_.push_back(std::move(entry));
       ++scanned;
@@ -360,7 +401,8 @@ bool FileIndex::add_root(const std::string& root_path, const GroupId* group_id,
 
   entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
                                 [&](const FileEntry& e) {
-                                  return normalize_utf8_path(e.root_path) == norm;
+                                  return normalize_utf8_path(e.root_path) == norm &&
+                                         e.share_group == sr.group_id;
                                 }),
                   entries_.end());
   return scan_directory(sr, std::move(progress)) && save();
@@ -381,7 +423,8 @@ bool FileIndex::remove_root(const std::string& root_path, const GroupId* group_i
   share_roots_.erase(root_it, share_roots_.end());
   entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
                                 [&](const FileEntry& e) {
-                                  return normalize_utf8_path(e.root_path) == norm;
+                                  return normalize_utf8_path(e.root_path) == norm &&
+                                         e.share_group == gid;
                                 }),
                   entries_.end());
   return save();
@@ -419,6 +462,18 @@ int FileIndex::count_in_root(const std::string& root_path) const {
   return count;
 }
 
+int FileIndex::count_in_root(const std::string& root_path,
+                             const GroupId& scope_group) const {
+  const std::string norm = normalize_utf8_path(root_path);
+  std::lock_guard lock(mutex_);
+  int count = 0;
+  for (const auto& e : entries_) {
+    if (e.is_directory()) continue;
+    if (normalize_utf8_path(e.root_path) == norm && e.share_group == scope_group) ++count;
+  }
+  return count;
+}
+
 FileEntry FileIndex::make_directory_marker(const ShareRoot& root, int file_count,
                                            const std::string& label_prefix) {
   FileEntry marker;
@@ -428,7 +483,8 @@ FileEntry FileIndex::make_directory_marker(const ShareRoot& root, int file_count
   marker.relative_path = label_prefix + (fname.empty() ? root.path : fname);
   marker.mime = "application/x-nyx-directory";
   marker.size = static_cast<uint64_t>(file_count >= 0 ? file_count : 0);
-  const std::string key = "nyx-dir:" + root.path;
+  const std::string key =
+      "nyx-dir:" + group_id_hex(root.group_id) + ":" + root.path;
   marker.hash = hash_bytes(reinterpret_cast<const uint8_t*>(key.data()), key.size());
   return marker;
 }
@@ -437,7 +493,8 @@ std::vector<FileEntry> FileIndex::listing_for_session(const GroupId& session_gro
   std::lock_guard lock(mutex_);
   std::vector<FileEntry> out = entries_for_session(session_group);
   for (const auto& root : roots_for_session(session_group)) {
-    out.insert(out.begin(), make_directory_marker(root, count_in_root(root.path)));
+    out.insert(out.begin(),
+               make_directory_marker(root, count_in_root(root.path, root.group_id)));
   }
   return out;
 }
@@ -460,7 +517,8 @@ bool FileIndex::rescan_root(const std::string& root_path, const GroupId* group_i
 
   entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
                                 [&](const FileEntry& e) {
-                                  return normalize_utf8_path(e.root_path) == norm;
+                                  return normalize_utf8_path(e.root_path) == norm &&
+                                         e.share_group == gid;
                                 }),
                   entries_.end());
   return scan_directory(*found, std::move(progress)) && save();
@@ -468,10 +526,12 @@ bool FileIndex::rescan_root(const std::string& root_path, const GroupId* group_i
 
 std::optional<FileEntry> FileIndex::find_for_session(const FileHash& hash,
                                                      const GroupId& session_group) const {
-  auto entry = find_by_hash(hash);
-  if (!entry || entry->is_directory()) return std::nullopt;
-  if (!entry_visible_in_session(*entry, session_group)) return std::nullopt;
-  return entry;
+  std::lock_guard lock(mutex_);
+  for (const auto& entry : entries_) {
+    if (entry.hash != hash || entry.is_directory()) continue;
+    if (entry_visible_in_session(entry, session_group)) return entry;
+  }
+  return std::nullopt;
 }
 
 bool FileIndex::load() {
@@ -486,6 +546,9 @@ bool FileIndex::load() {
   const std::string json = ss.str();
   if (json.empty()) return true;
 
+  // schema_version is informational; missing field means legacy v0/v1 index.
+  (void)json_get_u64(json, "schema_version");
+
   const auto roots_key = json.find("\"roots\"");
   if (roots_key != std::string::npos) {
     const auto arr_start = json.find('[', roots_key);
@@ -499,7 +562,16 @@ bool FileIndex::load() {
         if (auto gid = json_get_string(obj, "group")) {
           group_id_from_hex(*gid, sr.group_id);
         }
-        if (!sr.path.empty()) share_roots_.push_back(std::move(sr));
+        std::error_code ec;
+        // Stale roots (missing on disk) are dropped; orphan entries follow below.
+        if (!sr.path.empty() && std::filesystem::is_directory(path_from_utf8(sr.path), ec)) {
+          const bool duplicate = std::any_of(
+              share_roots_.begin(), share_roots_.end(), [&](const ShareRoot& existing) {
+                return normalize_utf8_path(existing.path) == sr.path &&
+                       existing.group_id == sr.group_id;
+              });
+          if (!duplicate) share_roots_.push_back(std::move(sr));
+        }
       }
     }
   }
@@ -525,6 +597,13 @@ bool FileIndex::load() {
         }
         if (auto rel = json_get_string(obj, "rel")) entry.relative_path = *rel;
         if (auto mime = json_get_string(obj, "mime")) entry.mime = *mime;
+        if (auto owner = json_get_string(obj, "owner")) {
+          owner_id_from_hex(*owner, entry.owner_id);
+        } else {
+          infer_owner_from_rel(entry.relative_path, entry.owner_id);
+        }
+        const bool had_group =
+            json_get_string(obj, "group").has_value();
         if (auto gid = json_get_string(obj, "group")) {
           group_id_from_hex(*gid, entry.share_group);
         } else {
@@ -535,11 +614,36 @@ bool FileIndex::load() {
             }
           }
         }
-        entries_.push_back(std::move(entry));
+        const bool has_root = std::any_of(
+            share_roots_.begin(), share_roots_.end(), [&](const ShareRoot& root) {
+              return normalize_utf8_path(root.path) == entry.root_path &&
+                     root.group_id == entry.share_group;
+            });
+        const std::string managed_prefix =
+            normalize_utf8_path(data_dir() + "/objects") + "/";
+        const bool is_managed =
+            entry.root_path.rfind(managed_prefix, 0) == 0;
+        std::error_code ec;
+        if ((has_root || is_managed) &&
+            std::filesystem::is_regular_file(
+                path_from_utf8(entry.absolute_path()), ec)) {
+          entries_.push_back(entry);
+          if (!had_group && has_root) {
+            for (const auto& root : share_roots_) {
+              if (normalize_utf8_path(root.path) != entry.root_path ||
+                  root.group_id == entry.share_group) {
+                continue;
+              }
+              FileEntry migrated = entry;
+              migrated.share_group = root.group_id;
+              entries_.push_back(std::move(migrated));
+            }
+          }
+        }
       }
     }
   }
-  return true;
+  return save();
 }
 
 bool FileIndex::save() const {
@@ -547,7 +651,8 @@ bool FileIndex::save() const {
   ensure_data_dir();
   std::ofstream file(path_from_utf8(index_path()), std::ios::binary | std::ios::trunc);
   if (!file) return false;
-  file << "{\"roots\":[";
+  // schema_version 2: roots keyed by (path, group); managed objects under objects/.
+  file << "{\"schema_version\":2,\"roots\":[";
   for (std::size_t i = 0; i < share_roots_.size(); ++i) {
     if (i > 0) file << ',';
     const auto& r = share_roots_[i];
@@ -561,7 +666,12 @@ bool FileIndex::save() const {
     file << "{\"hash\":\"" << hash_hex(e.hash) << "\",\"size\":" << e.size
          << ",\"mtime\":" << e.mtime_ms << ",\"root\":\"" << json_escape(e.root_path)
          << "\",\"rel\":\"" << json_escape(e.relative_path) << "\",\"mime\":\""
-         << json_escape(e.mime) << "\",\"group\":\"" << group_id_hex(e.share_group) << "\"}";
+         << json_escape(e.mime) << "\",\"group\":\"" << group_id_hex(e.share_group)
+         << "\"";
+    if (!user_id_is_zero(e.owner_id)) {
+      file << ",\"owner\":\"" << to_hex(e.owner_id.data(), e.owner_id.size()) << "\"";
+    }
+    file << "}";
   }
   file << "]}\n";
   return static_cast<bool>(file);
@@ -579,6 +689,151 @@ std::optional<FileEntry> FileIndex::find_by_hash_hex(const std::string& hex) con
   FileHash hash{};
   if (!hash_from_hex(hex, hash)) return std::nullopt;
   return find_by_hash(hash);
+}
+
+std::string FileIndex::library_root_path(const GroupId& scope_group) {
+  // Human-readable share-root leaf for Files / Field Resources.
+  const std::string leaf =
+      group_id_is_zero(scope_group)
+          ? std::string("Импорт")
+          : (std::string("Импорт-") + group_id_hex(scope_group).substr(0, 8));
+  return normalize_utf8_path(data_dir() + "/library/" + leaf);
+}
+
+std::string FileIndex::library_owner_dir(const GroupId& scope_group,
+                                         const UserId& owner_id) {
+  const std::string root = library_root_path(scope_group);
+  if (user_id_is_zero(owner_id)) return root;
+  return path_to_utf8(path_from_utf8(root) /
+                      path_from_utf8(to_hex(owner_id.data(), owner_id.size())));
+}
+
+bool FileIndex::ensure_library_root(const GroupId& scope_group) {
+  const std::string path = library_root_path(scope_group);
+  std::error_code ec;
+  std::filesystem::create_directories(path_from_utf8(path), ec);
+  if (ec) return false;
+
+  std::lock_guard lock(mutex_);
+  for (const auto& existing : share_roots_) {
+    if (normalize_utf8_path(existing.path) == path &&
+        existing.group_id == scope_group) {
+      return true;
+    }
+  }
+  ShareRoot sr;
+  sr.path = path;
+  sr.group_id = scope_group;
+  share_roots_.push_back(std::move(sr));
+  return save();
+}
+
+std::optional<FileEntry> FileIndex::adopt_file(
+    const std::string& source_path, const FileHash& expected_hash,
+    const std::string& display_name, const std::string& mime,
+    const GroupId& scope_group, const UserId* owner_id) {
+  FileHash actual{};
+  if (!hash_file(source_path, actual) || actual != expected_hash) {
+    return std::nullopt;
+  }
+
+  if (!ensure_library_root(scope_group)) return std::nullopt;
+
+  std::string safe_name =
+      path_to_utf8(path_from_utf8(display_name).filename());
+  if (safe_name.empty()) safe_name = hash_hex(expected_hash);
+  const std::string library_root = library_root_path(scope_group);
+  UserId owner{};
+  if (owner_id && !user_id_is_zero(*owner_id)) owner = *owner_id;
+  const std::string owner_prefix =
+      user_id_is_zero(owner) ? std::string{}
+                             : (to_hex(owner.data(), owner.size()) + "/");
+  const std::string library_dir =
+      user_id_is_zero(owner) ? library_root
+                             : library_owner_dir(scope_group, owner);
+
+  // Prefer content-addressed object store, then mirror into library ShareRoot.
+  const std::string object_root =
+      normalize_utf8_path(data_dir() + "/objects/" + hash_hex(expected_hash));
+  const std::string object_path =
+      path_to_utf8(path_from_utf8(object_root) / path_from_utf8(safe_name));
+  std::error_code ec;
+  std::filesystem::create_directories(path_from_utf8(object_root), ec);
+  if (ec) return std::nullopt;
+  std::filesystem::create_directories(path_from_utf8(library_dir), ec);
+  if (ec) return std::nullopt;
+  const auto source_fs = path_from_utf8(source_path);
+  const auto object_fs = path_from_utf8(object_path);
+  if (source_fs.lexically_normal() != object_fs.lexically_normal()) {
+    std::filesystem::copy_file(source_fs, object_fs,
+                               std::filesystem::copy_options::overwrite_existing,
+                               ec);
+    if (ec) return std::nullopt;
+  }
+
+  std::string leaf_name = safe_name;
+  std::string library_path =
+      path_to_utf8(path_from_utf8(library_dir) / path_from_utf8(leaf_name));
+  {
+    // Avoid clobbering a different file with the same display name.
+    int suffix = 1;
+    while (std::filesystem::exists(path_from_utf8(library_path), ec)) {
+      FileHash existing_hash{};
+      if (hash_file(library_path, existing_hash) &&
+          existing_hash == expected_hash) {
+        break;
+      }
+      const auto dot = safe_name.rfind('.');
+      if (dot == std::string::npos) {
+        leaf_name = safe_name + "-" + std::to_string(suffix++);
+      } else {
+        leaf_name = safe_name.substr(0, dot) + "-" +
+                    std::to_string(suffix++) + safe_name.substr(dot);
+      }
+      library_path = path_to_utf8(path_from_utf8(library_dir) /
+                                  path_from_utf8(leaf_name));
+    }
+  }
+  const auto library_fs = path_from_utf8(library_path);
+  if (object_fs.lexically_normal() != library_fs.lexically_normal()) {
+    std::filesystem::copy_file(object_fs, library_fs,
+                               std::filesystem::copy_options::overwrite_existing,
+                               ec);
+    if (ec) return std::nullopt;
+  }
+
+  FileEntry entry;
+  entry.hash = expected_hash;
+  entry.root_path = library_root;
+  entry.relative_path = owner_prefix + leaf_name;
+  entry.mime = mime.empty() ? guess_mime(leaf_name) : mime;
+  entry.share_group = scope_group;
+  entry.owner_id = owner;
+  entry.size =
+      static_cast<uint64_t>(std::filesystem::file_size(library_fs, ec));
+  if (ec) return std::nullopt;
+
+  std::lock_guard lock(mutex_);
+  entries_.erase(
+      std::remove_if(entries_.begin(), entries_.end(),
+                     [&](const FileEntry& existing) {
+                       return existing.hash == expected_hash &&
+                              existing.share_group == scope_group;
+                     }),
+      entries_.end());
+  entries_.push_back(entry);
+  if (!save()) return std::nullopt;
+  return entry;
+}
+
+std::optional<FileEntry> FileIndex::import_file(
+    const std::string& source_path, const std::string& display_name,
+    const std::string& mime, const GroupId& scope_group,
+    const UserId* owner_id) {
+  FileHash hash{};
+  if (!hash_file(source_path, hash)) return std::nullopt;
+  return adopt_file(source_path, hash, display_name, mime, scope_group,
+                    owner_id);
 }
 
 }  // namespace nyx
