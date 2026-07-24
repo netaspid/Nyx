@@ -8,6 +8,7 @@ Rectangle {
     property string lang: ""
     property string code: ""
     property real maxContentHeight: 280
+    signal copyRequested(string text)
 
     color: "#1a2332"
     radius: 8
@@ -26,13 +27,43 @@ Rectangle {
         anchors.margins: 8
         spacing: 6
 
-        Label {
-            visible: root.lang.length > 0
+        Item {
             width: parent.width
-            text: root.lang
-            color: "#8b9bab"
-            font.pixelSize: 11
-            font.family: "Segoe UI"
+            height: 26
+
+            Label {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.lang === "copy" ? qsTr("Текст")
+                      : (root.lang.length ? root.lang : qsTr("Код"))
+                color: "#8b9bab"
+                font.pixelSize: 11
+                font.family: "Segoe UI"
+            }
+
+            Rectangle {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: copyLabel.implicitWidth + 18
+                height: 26
+                radius: 7
+                color: copyMouse.containsMouse ? "#35445a" : "#29374a"
+
+                Label {
+                    id: copyLabel
+                    anchors.centerIn: parent
+                    text: qsTr("Копировать")
+                    color: "#d4d4d4"
+                    font.pixelSize: 11
+                }
+                MouseArea {
+                    id: copyMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.copyRequested(root.code)
+                }
+            }
         }
 
         Flickable {

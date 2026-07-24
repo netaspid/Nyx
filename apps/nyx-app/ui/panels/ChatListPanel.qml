@@ -12,6 +12,11 @@ Rectangle {
     required property var avatarColorFn
 
     signal settingsRequested()
+    property string contextChatKey: ""
+    property string contextChatRefId: ""
+    property int contextChatKind: 0
+    property bool contextChatLive: false
+    property bool contextChatConnecting: false
 
     color: theme.bgSidebar
 
@@ -190,6 +195,16 @@ Rectangle {
                          || title.toLowerCase().indexOf(listFilter.text.toLowerCase()) >= 0
                          || preview.toLowerCase().indexOf(listFilter.text.toLowerCase()) >= 0
                 onClicked: root.node.openConversation(key, kind, refId, title, lastSeen)
+                onContextRequested: function(sceneX, sceneY) {
+                    root.contextChatKey = key
+                    root.contextChatRefId = refId
+                    root.contextChatKind = kind
+                    root.contextChatLive = live
+                    root.contextChatConnecting = connecting
+                    chatContextMenu.x = Math.min(sceneX, Overlay.overlay.width - chatContextMenu.width - 8)
+                    chatContextMenu.y = Math.min(sceneY, Overlay.overlay.height - chatContextMenu.height - 8)
+                    chatContextMenu.open()
+                }
             }
 
             EmptyState {
@@ -555,6 +570,40 @@ Rectangle {
                     hint: qsTr("Создайте поле выше или войдите по invite в «+ Связь»")
                 }
             }
+        }
+    }
+
+    NyxMenu {
+        id: chatContextMenu
+        theme: root.theme
+        parent: Overlay.overlay
+
+        NyxMenuItem {
+            theme: root.theme
+            text: qsTr("Отключиться")
+            enabled: root.contextChatLive || root.contextChatConnecting
+            onTriggered: node.disconnectChat(root.contextChatKey)
+        }
+        NyxMenuItem {
+            theme: root.theme
+            text: qsTr("Копировать invite поля")
+            visible: root.contextChatKind === 1
+            onTriggered: {
+                for (let i = 0; i < node.groupList.length; ++i) {
+                    const g = node.groupList[i]
+                    if (String(g.groupId).toLowerCase()
+                            === String(root.contextChatRefId).toLowerCase()) {
+                        node.copyToClipboard(g.invite)
+                        return
+                    }
+                }
+            }
+        }
+        NyxMenuItem {
+            theme: root.theme
+            text: root.contextChatKind === 1
+                  ? qsTr("Удалить поле из списка") : qsTr("Удалить чат")
+            onTriggered: node.removeConversation(root.contextChatKey)
         }
     }
 

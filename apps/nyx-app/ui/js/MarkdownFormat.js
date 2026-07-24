@@ -111,6 +111,15 @@ function parseBlocks(src) {
         const m = trimCopy(line).match(/^!\[([^\]]*)\]\(nyx-media:([a-fA-F0-9]{64})\)\s*$/)
         return m ? { caption: m[1], hash: m[2] } : null
     }
+    function isFileLine(line) {
+        const m = trimCopy(line).match(
+            /^\[([^\]]*)\]\(nyx-file:([a-fA-F0-9]{64});size=([0-9]+);mime=([A-Za-z0-9.+/_-]+)(?:;root=([^;)]*);rel=([^)]*))?\)\s*$/)
+        return m ? {
+            caption: m[1], hash: m[2],
+            size: parseInt(m[3], 10) || 0, mime: m[4],
+            root: m[5] || "", rel: m[6] || ""
+        } : null
+    }
     function isSep(line) {
         const t = trimCopy(line)
         return t.indexOf("|") >= 0 && t.indexOf("-") >= 0 && /^[\|\-\:\s]+$/.test(t)
@@ -183,6 +192,17 @@ function parseBlocks(src) {
             })
             continue
         }
+        const file = isFileLine(line)
+        if (file) {
+            flushPara()
+            blocks.push({
+                type: "file", text: "", hash: file.hash,
+                caption: file.caption, mime: file.mime, size: file.size,
+                root: file.root || "", rel: file.rel || "",
+                displayMath: false
+            })
+            continue
+        }
 
         if (looksTable(line) && i + 1 < lines.length && isSep(lines[i + 1])) {
             flushPara()
@@ -202,6 +222,34 @@ function parseBlocks(src) {
     if (!blocks.length && text.length)
         blocks.push({ type: "paragraph", text: text, hash: "", caption: "", displayMath: false })
     return blocks
+}
+
+function inlineToPlainText(src) {
+    let text = String(src || "")
+    text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    text = text.replace(/\|\|([\s\S]+?)\|\|/g, "$1")
+    text = text.replace(/(\*\*|__|~~|`)([\s\S]*?)\1/g, "$2")
+    text = text.replace(/(^|\n)\s{0,3}#{1,6}\s+/g, "$1")
+    text = text.replace(/(^|\n)\s*>\s?/g, "$1")
+    return text
+}
+
+/** Текст сообщения без служебной markdown-разметки для clipboard. */
+function toPlainText(src) {
+    const blocks = parseBlocks(src)
+    const out = []
+    for (let i = 0; i < blocks.length; ++i) {
+        const b = blocks[i]
+        if (b.type === "media" || b.type === "file") {
+            if (b.caption && b.caption.length) out.push(b.caption)
+        } else if (b.type === "paragraph" || b.type === "action") {
+            out.push(inlineToPlainText(b.text))
+        } else {
+            out.push(String(b.text || ""))
+        }
+    }
+    return out.join("\n\n").trim()
 }
 
 /** Разбить абзац на md / spoiler сегменты (для Telegram-спойлеров в QML). */
