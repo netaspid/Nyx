@@ -27,7 +27,7 @@ struct CallMediaFrame {
   static std::optional<CallMediaFrame> decode(const ByteBuffer& data);
 };
 
-/** Рекомендуемый потолок payload под MTU realtime. */
+/** Safe payload ceiling below common Internet/VPN MTUs. */
 constexpr std::size_t kMaxCallMediaPayload = 1000;
 
 }  // namespace nyx
