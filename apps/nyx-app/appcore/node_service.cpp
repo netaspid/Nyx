@@ -265,6 +265,12 @@ void NodeService::set_on_file_access_sync(FileAccessSyncCallback cb) {
   on_file_access_sync_ = std::move(cb);
 }
 
+void NodeService::set_on_transfer_queue_changed(
+    TransferQueueCallback cb) {
+  std::lock_guard lock(cb_mutex_);
+  on_transfer_queue_changed_ = std::move(cb);
+}
+
 void NodeService::set_on_mode(std::function<void(NodeMode)> cb) {
   std::lock_guard lock(cb_mutex_);
   on_mode_ = std::move(cb);
@@ -1084,6 +1090,8 @@ bool NodeService::ensure_session(const std::string& chat_key) {
 
   if (chat_key.rfind("dm:", 0) == 0) {
     const std::string peer_hex = chat_key.substr(3);
+    // Prefer LAN when rendezvous UDP is dead (common with VPN).
+    if (try_connect_via_lan(peer_hex)) return true;
     nyx::ContactBook book(nyx::default_contacts_path());
     book.load();
     for (const auto& c : book.contacts()) {
@@ -1094,6 +1102,17 @@ bool NodeService::ensure_session(const std::string& chat_key) {
     }
     if (const auto* intent = intent_store_.find(chat_key)) {
       if (intent->invite_hex.size() == 64) return start_connect_token(intent->invite_hex);
+      if (intent->invite_hex.rfind("lan://", 0) == 0) {
+        const std::string ep = intent->invite_hex.substr(6);
+        const auto colon = ep.rfind(':');
+        if (colon != std::string::npos && colon > 0) {
+          const std::string host = ep.substr(0, colon);
+          const int port = std::atoi(ep.substr(colon + 1).c_str());
+          if (!host.empty() && port > 0 && port <= 65535) {
+            return start_connect_peer(host, static_cast<uint16_t>(port));
+          }
+        }
+      }
     }
     return false;
   }
@@ -1146,16 +1165,27 @@ void NodeService::auto_reconnect_all() {
 
   if (!network_config_.auto_start_owned_hub) return;
 
-  // Чужие поля / join — только если intent явно включён (не после «Отключиться»).
+  // Чужие поля / join — пока intent не выключен вручную («Отключиться»).
   // После 3 видимых неудач — офлайн в UI, тихий probe раз в ~60 с.
   const int64_t now_ms = steady_now_ms();
   for (const auto& g : store.all()) {
     if (g.owner_id == profile.user_id()) continue;
     const std::string gid = nyx::GroupStore::group_id_hex(g.id);
     const std::string key = make_group_session_id(gid);
-    if (!intent_store_.is_enabled(key)) continue;
-    if (is_session_up(key)) continue;
     const auto* intent = intent_store_.find(key);
+    if (intent && !intent->enabled) continue;  // user disconnected
+    if (!intent) {
+      nyx::SessionIntent join_intent;
+      join_intent.key = key;
+      join_intent.kind = nyx::SessionIntentKind::GroupJoin;
+      join_intent.ref_id_hex = gid;
+      join_intent.invite_hex = nyx::GroupStore::invite_hex(g.invite_token);
+      join_intent.enabled = true;
+      intent_store_.enable(std::move(join_intent));
+      intent_store_.save();
+      intent = intent_store_.find(key);
+    }
+    if (is_session_up(key)) continue;
     const std::string invite =
         (intent && intent->invite_hex.size() == 64)
             ? intent->invite_hex
@@ -1175,12 +1205,29 @@ void NodeService::auto_reconnect_all() {
   }
 
   intent_store_.load();
+  // Drop pre-hello LAN stubs: their ports die when the peer rebinds DM inbox.
+  {
+    bool pruned = false;
+    for (const auto& intent : intent_store_.all()) {
+      if (intent.key.rfind("dm:pending:", 0) != 0) continue;
+      intent_store_.disable(intent.key);
+      pruned = true;
+    }
+    if (pruned) intent_store_.save();
+  }
+
   for (const auto& intent : intent_store_.all()) {
     if (!intent.enabled) continue;
     if (intent.kind != nyx::SessionIntentKind::Direct) continue;
+    if (intent.key.rfind("dm:pending:", 0) == 0) continue;
     if (is_session_up(intent.key)) continue;
 
-    // LAN dial-back: lan://host:port
+    // Same Wi‑Fi: always re-browse beacons first — inbox UDP ports are ephemeral.
+    if (!intent.ref_id_hex.empty() && try_connect_via_lan(intent.ref_id_hex)) {
+      continue;
+    }
+
+    // Weak fallback only when we still lack a DM inbox token.
     if (intent.invite_hex.rfind("lan://", 0) == 0) {
       const std::string ep = intent.invite_hex.substr(6);
       const auto colon = ep.rfind(':');

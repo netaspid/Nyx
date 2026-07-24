@@ -28,7 +28,7 @@ std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,
                                                    uint16_t stun_port = 19302,
                                                    int timeout_ms = 800);
 
-/** Hint для rendezvous: LAN IP или STUN, если доступен. */
+/** Hint для rendezvous: предпочитаем частный LAN IP (Wi‑Fi), STUN — запасной. */
 EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host,
                               uint16_t port);
 

@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <thread>
 
 #ifdef _WIN32
@@ -26,6 +27,9 @@ constexpr std::size_t kMagicLen = 4;
 /** Собственный multicast Nyx (не 5353 — там системный mDNS/Bonjour). */
 constexpr char kDiscoveryGroup[] = "239.255.77.77";
 constexpr uint16_t kDiscoveryPort = 34779;
+
+std::mutex g_unicast_mu;
+std::vector<std::string> g_unicast_targets;
 
 std::string sanitize_instance(const std::string& nickname) {
   std::string out;
@@ -99,13 +103,29 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
 
 }  // namespace
 
+void add_discovery_unicast_target(const std::string& ipv4) {
+  if (ipv4.empty() || ipv4 == "0.0.0.0" || ipv4 == "127.0.0.1") return;
+  std::lock_guard lock(g_unicast_mu);
+  if (std::find(g_unicast_targets.begin(), g_unicast_targets.end(), ipv4) !=
+      g_unicast_targets.end()) {
+    return;
+  }
+  g_unicast_targets.push_back(ipv4);
+}
+
+std::vector<std::string> discovery_unicast_targets() {
+  std::lock_guard lock(g_unicast_mu);
+  return g_unicast_targets;
+}
+
 bool MdnsLan::setup_socket(UdpSocket& socket, std::string* err) {
   return socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err,
                                         lan_ipv4_override());
 }
 
 bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint16_t port,
-                                const std::string& host_ip) {
+                                const std::string& host_ip,
+                                const std::vector<std::string>& unicast_hosts) {
   const auto wire = encode_beacon(profile, port, host_ip);
   socket.enable_broadcast(nullptr);
   const std::string iface = host_ip.empty() ? lan_ipv4_override() : host_ip;
@@ -121,6 +141,12 @@ bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint1
       inet_ntop(AF_INET, &addr, directed, sizeof(directed));
       ok = socket.send_to(wire, directed, kDiscoveryPort) || ok;
     }
+  }
+  // Wi‑Fi clients often miss multicast sourced from a wired host; unicast reaches them.
+  for (const auto& h : unicast_hosts) {
+    if (h.empty() || h == "0.0.0.0" || h == "127.0.0.1") continue;
+    if (!iface.empty() && h == iface) continue;
+    ok = socket.send_to(wire, h, kDiscoveryPort) || ok;
   }
   return ok;
 }
@@ -139,11 +165,40 @@ void MdnsLan::start_advertising(UdpSocket socket, Profile profile, uint16_t port
   running_.store(true);
   thread_ = std::thread([this, profile = std::move(profile), port,
                          host_ip = std::move(host_ip)]() mutable {
+    std::vector<std::string> peer_hosts;
+    auto last_scan = std::chrono::steady_clock::now() -
+                     std::chrono::milliseconds(2000);
     while (running_.load()) {
       // Prefer live LAN IP (Wi‑Fi may arrive after inbox start).
       std::string ip = guess_lan_ipv4();
       if (ip.empty() || ip == "127.0.0.1" || ip == "0.0.0.0") ip = host_ip;
-      send_announcement(advert_socket_, profile, port, ip);
+
+      const auto now = std::chrono::steady_clock::now();
+      if (now - last_scan >= std::chrono::milliseconds(1500)) {
+        last_scan = now;
+        UdpSocket probe;
+        if (setup_socket(probe, nullptr)) {
+          std::vector<std::string> fresh;
+          for (const auto& p : browse(probe, 400)) {
+            if (p.host.empty() || p.host == "0.0.0.0") continue;
+            if (!ip.empty() && p.host == ip) continue;
+            fresh.push_back(p.host);
+          }
+          std::sort(fresh.begin(), fresh.end());
+          fresh.erase(std::unique(fresh.begin(), fresh.end()), fresh.end());
+          peer_hosts = std::move(fresh);
+        }
+      }
+
+      auto extras = discovery_unicast_targets();
+      for (const auto& h : extras) {
+        if (h.empty()) continue;
+        if (!ip.empty() && h == ip) continue;
+        if (std::find(peer_hosts.begin(), peer_hosts.end(), h) == peer_hosts.end())
+          peer_hosts.push_back(h);
+      }
+
+      send_announcement(advert_socket_, profile, port, ip, peer_hosts);
       for (int i = 0; i < 10 && running_.load(); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
