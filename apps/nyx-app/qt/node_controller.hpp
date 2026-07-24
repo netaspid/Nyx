@@ -73,6 +73,8 @@ class NodeController : public QObject {
   Q_PROPERTY(bool callMicMuted READ callMicMuted WRITE setCallMicMuted NOTIFY callChanged)
   Q_PROPERTY(bool callCameraOn READ callCameraOn WRITE setCallCameraOn NOTIFY callChanged)
   Q_PROPERTY(bool callSpeakerphone READ callSpeakerphone WRITE setCallSpeakerphone NOTIFY callChanged)
+  Q_PROPERTY(float audioTestLevel READ audioTestLevel NOTIFY audioTestLevelChanged)
+  Q_PROPERTY(bool audioTestActive READ audioTestActive NOTIFY audioTestChanged)
   Q_PROPERTY(QUrl callRemoteFrameUrl READ callRemoteFrameUrl NOTIFY callRemoteFrameChanged)
   Q_PROPERTY(QUrl callLocalFrameUrl READ callLocalFrameUrl NOTIFY callLocalFrameChanged)
   Q_PROPERTY(bool callCanSwitchCamera READ callCanSwitchCamera NOTIFY callChanged)
@@ -420,6 +422,11 @@ class NodeController : public QObject {
   Q_INVOKABLE void toggleCallCamera();
   Q_INVOKABLE void toggleCallSpeakerphone();
   Q_INVOKABLE void refreshMediaDevices();
+  Q_INVOKABLE void startMicTest();
+  Q_INVOKABLE void stopAudioTest();
+  Q_INVOKABLE void playSpeakerTest();
+  float audioTestLevel() const;
+  bool audioTestActive() const;
   QString callState() const;
   QString callTitle() const;
   bool callVideo() const;
@@ -501,6 +508,8 @@ class NodeController : public QObject {
   void callLocalFrameChanged();
   void callVideoPeersChanged();
   void mediaDevicesChanged();
+  void audioTestLevelChanged();
+  void audioTestChanged();
   void windowActiveChanged();
   void fileProgressChanged();
   void fileIndexProgressChanged();
@@ -574,7 +583,8 @@ class NodeController : public QObject {
   // Thread must outlive call_audio_ (declared first → destroyed last).
   QThread call_audio_thread_;
   CallAudioIo call_audio_;
-  // Camera must stay on the GUI thread on Android (Camera2); do not moveToThread.
+  // Encode/decode off the GUI thread — Camera2 HAL already runs on nyx-camera2.
+  QThread call_video_thread_;
   CallVideoIo call_video_;
   CallFrameProvider* call_frames_ = nullptr;  // owned by QQmlEngine
   bool call_video_slots_wired_ = false;
@@ -583,6 +593,7 @@ class NodeController : public QObject {
   int call_frame_epoch_ = 0;
   bool call_speakerphone_ = true;
   QString last_call_notify_key_;
+  bool answering_call_ = false;
   qint64 last_send_fail_toast_ms_ = 0;
   qint64 call_media_started_ms_ = 0;
   MessageModel messages_;

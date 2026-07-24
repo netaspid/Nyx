@@ -79,9 +79,21 @@ void show_native_hangup_overlay(bool show);
 /** Called from JNI on the Qt GUI thread. */
 void invoke_hangup_handler();
 
-/** Android VoIP playback via AudioTrack (VOICE_COMMUNICATION). No-op elsewhere. */
+/** Stop ringtone/vibration without tearing down call notifications. */
+void stop_ringtone();
+
+/** Android VoIP playback via AudioTrack (VOICE_COMMUNICATION / MEDIA). No-op elsewhere. */
 void voice_playback_start(int sample_rate, int channels);
 void voice_playback_write(const int16_t* samples, int count);
 void voice_playback_stop();
+
+/** Android mic via AudioRecord (VOICE_COMMUNICATION). No-op elsewhere. */
+bool voice_capture_start(int sample_rate, int channels);
+/** Non-blocking read into samples; returns sample count (not bytes). */
+int voice_capture_read(int16_t* samples, int max_samples);
+void voice_capture_stop();
+
+/** Short audible beep for settings speaker check (Android MEDIA stream). */
+void play_test_tone(int sample_rate = 48000, int duration_ms = 700);
 
 }  // namespace nyx_android

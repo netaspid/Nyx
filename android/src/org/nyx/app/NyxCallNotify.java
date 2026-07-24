@@ -119,10 +119,10 @@ public final class NyxCallNotify {
                                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                                 .build();
                         sFocusRequest = new AudioFocusRequest.Builder(
-                                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                                 .setAudioAttributes(aa)
                                 .setOnAudioFocusChangeListener(sFocusListener)
-                                .setAcceptsDelayedFocusGain(true)
+                                .setAcceptsDelayedFocusGain(false)
                                 .build();
                     }
                     am.requestAudioFocus(sFocusRequest);
@@ -137,6 +137,7 @@ public final class NyxCallNotify {
                 // Route is applied by setSpeakerphone() from Qt after this.
             } else {
                 NyxCallAudio.stopVoicePlayback();
+                NyxCallAudio.stopVoiceCapture();
                 NyxCallAudio.stopRingtone();
                 if (Build.VERSION.SDK_INT >= 26 && sFocusRequest != null) {
                     am.abandonAudioFocusRequest(sFocusRequest);
@@ -185,7 +186,7 @@ public final class NyxCallNotify {
             }
             am.setSpeakerphoneOn(on);
             NyxCallAudio.boostCallVolumes(ctx);
-            NyxCallAudio.applyPlaybackRoute(ctx, on);
+            NyxCallAudio.restartVoicePlaybackForRoute(ctx, on);
             Log.i(TAG, "setSpeakerphone on=" + on + " routed=" + routed
                     + " speakerOn=" + am.isSpeakerphoneOn());
         } catch (Exception e) {
@@ -205,7 +206,7 @@ public final class NyxCallNotify {
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .setAutoCancel(false)
-                .setOnlyAlertOnce(true)
+                .setOnlyAlertOnce(false)
                 .setCategory(Notification.CATEGORY_CALL)
                 .setPriority(Notification.PRIORITY_MAX)
                 .setVisibility(Notification.VISIBILITY_PUBLIC);
@@ -248,7 +249,8 @@ public final class NyxCallNotify {
     public static void cancelAll(Context ctx) {
         releaseWakeLock();
         NyxCallAudio.stopRingtone();
-        NyxCallAudio.stopVoicePlayback();
+        // Do not stop voice playback here — Qt CallAudioIo owns the AudioTrack
+        // lifecycle. Stopping it from notification cancel raced with re-invite.
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         nm.cancel(NOTIF_INCOMING);

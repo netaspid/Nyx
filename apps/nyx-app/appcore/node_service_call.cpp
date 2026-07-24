@@ -4,6 +4,7 @@
 #include "nyx/nat.hpp"
 #include "nyx/util.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 
@@ -226,7 +227,22 @@ bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
 
   if (scope == nyx::CallScope::Direct) {
     if (!session->connection) return false;
-    return session->connection->send_realtime(wire);
+    std::lock_guard lock(session->call_media_outbound_mutex);
+    constexpr std::size_t kMaxQueuedMedia = 384;
+    while (session->call_media_outbound.size() >= kMaxQueuedMedia) {
+      auto it = std::find_if(
+          session->call_media_outbound.begin(), session->call_media_outbound.end(),
+          [](const nyx::ByteBuffer& queued) {
+            return !queued.empty() &&
+                   queued[0] == static_cast<uint8_t>(nyx::CallMediaType::Video);
+          });
+      if (it != session->call_media_outbound.end())
+        session->call_media_outbound.erase(it);
+      else
+        session->call_media_outbound.pop_front();
+    }
+    session->call_media_outbound.push_back(wire);
+    return true;
   }
   if (scope == nyx::CallScope::Field) {
     bool mesh_sent = false;
@@ -293,8 +309,45 @@ void NodeService::pump_call_realtime(const std::shared_ptr<NetSession>& session)
   };
 
   if (scope == nyx::CallScope::Direct && session->connection) {
+    // Connection and its Noise/socket state are worker-thread-owned. Audio and
+    // video threads only enqueue above; serialize actual UDP sends here.
+    std::deque<nyx::ByteBuffer> outbound;
+    {
+      std::lock_guard lock(session->call_media_outbound_mutex);
+      constexpr std::size_t kMaxSendPerPump = 128;
+      for (std::size_t i = 0;
+           i < kMaxSendPerPump && !session->call_media_outbound.empty(); ++i) {
+        auto opus = std::find_if(
+            session->call_media_outbound.begin(), session->call_media_outbound.end(),
+            [](const nyx::ByteBuffer& queued) {
+              return !queued.empty() &&
+                     queued[0] == static_cast<uint8_t>(nyx::CallMediaType::Opus);
+            });
+        if (opus != session->call_media_outbound.end()) {
+          outbound.push_back(std::move(*opus));
+          session->call_media_outbound.erase(opus);
+        } else {
+          outbound.push_back(std::move(session->call_media_outbound.front()));
+          session->call_media_outbound.pop_front();
+        }
+      }
+    }
+    for (const auto& packet : outbound) session->connection->send_realtime(packet);
+
+    // Drain all, deliver Opus before Video so mic audio is not starved by JPEG frags.
+    std::vector<nyx::ByteBuffer> opus_q;
+    std::vector<nyx::ByteBuffer> video_q;
     nyx::ByteBuffer raw;
-    while (session->connection->recv_realtime(raw)) handle_raw({}, std::move(raw));
+    while (session->connection->recv_realtime(raw)) {
+      auto frame = nyx::CallMediaFrame::decode(raw);
+      if (!frame) continue;
+      if (frame->type == nyx::CallMediaType::Opus)
+        opus_q.push_back(std::move(raw));
+      else
+        video_q.push_back(std::move(raw));
+    }
+    for (auto& p : opus_q) handle_raw({}, std::move(p));
+    for (auto& p : video_q) handle_raw({}, std::move(p));
   }
 
   if (scope == nyx::CallScope::Field) {
@@ -588,11 +641,9 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
     bool ok = false;
     {
       std::lock_guard lock(call_mutex_);
+      // Only end the call that this Hangup names. Retried hangups from a previous
+      // call must not wipe a fresh Incoming/Outgoing with a new call_id.
       ok = call_.on_hangup(*hang);
-      // Hangup for this session with mismatched/stale call_id — still clear local state.
-      if (!ok && !call_.idle() && call_session_id_ == session->id) {
-        ok = true;
-      }
       if (ok) {
         stop_call_mesh();
         call_is_host_ = false;
