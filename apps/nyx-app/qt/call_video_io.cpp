@@ -13,6 +13,7 @@
 #include <QCoreApplication>
 #include <QMetaObject>
 #include <QMutexLocker>
+#include <QPainter>
 #include <QThread>
 #include <QTimer>
 #include <QTransform>
@@ -44,14 +45,15 @@
 
 namespace {
 
-/** Center-crop to WxH keeping aspect (no stretch). */
-QImage coverCrop(const QImage& src, int w, int h) {
+QImage containFrame(const QImage& src, int w, int h) {
   if (src.isNull() || w <= 0 || h <= 0) return {};
-  QImage s = src.convertToFormat(QImage::Format_RGB32)
-                 .scaled(w, h, Qt::KeepAspectRatioByExpanding, Qt::FastTransformation);
-  const int x = std::max(0, (s.width() - w) / 2);
-  const int y = std::max(0, (s.height() - h) / 2);
-  return s.copy(x, y, w, h);
+  QImage scaled = src.convertToFormat(QImage::Format_RGB32)
+                      .scaled(w, h, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+  QImage out(w, h, QImage::Format_RGB32);
+  out.fill(Qt::black);
+  QPainter painter(&out);
+  painter.drawImage((w - scaled.width()) / 2, (h - scaled.height()) / 2, scaled);
+  return out;
 }
 
 QImage applyMetaOrientation(QImage img, const QVideoFrame& frame) {
@@ -214,36 +216,90 @@ QImage makeBlackFrame(int w, int h) {
   return img;
 }
 
+std::vector<uint8_t> imageToI420(const QImage& source, int width, int height) {
+  QImage img = source.convertToFormat(QImage::Format_RGB32);
+  if (img.width() != width || img.height() != height)
+    img = img.scaled(width, height, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+  if (img.isNull() || (width & 1) || (height & 1)) return {};
+
+  const int y_size = width * height;
+  const int uv_width = width / 2;
+  const int uv_size = uv_width * (height / 2);
+  std::vector<uint8_t> out(static_cast<std::size_t>(y_size + uv_size * 2));
+  uint8_t* y_plane = out.data();
+  uint8_t* u_plane = y_plane + y_size;
+  uint8_t* v_plane = u_plane + uv_size;
+
+  for (int y = 0; y < height; y += 2) {
+    const auto* row0 = reinterpret_cast<const QRgb*>(img.constScanLine(y));
+    const auto* row1 = reinterpret_cast<const QRgb*>(img.constScanLine(y + 1));
+    for (int x = 0; x < width; x += 2) {
+      int r_sum = 0, g_sum = 0, b_sum = 0;
+      const QRgb pixels[4] = {row0[x], row0[x + 1], row1[x], row1[x + 1]};
+      for (int i = 0; i < 4; ++i) {
+        const int r = qRed(pixels[i]);
+        const int g = qGreen(pixels[i]);
+        const int b = qBlue(pixels[i]);
+        const int py = std::clamp(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16, 0, 255);
+        const int ox = x + (i & 1);
+        const int oy = y + (i >> 1);
+        y_plane[oy * width + ox] = static_cast<uint8_t>(py);
+        r_sum += r;
+        g_sum += g;
+        b_sum += b;
+      }
+      const int r = r_sum / 4;
+      const int g = g_sum / 4;
+      const int b = b_sum / 4;
+      const int uv = (y / 2) * uv_width + x / 2;
+      u_plane[uv] = static_cast<uint8_t>(
+          std::clamp(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128, 0, 255));
+      v_plane[uv] = static_cast<uint8_t>(
+          std::clamp(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128, 0, 255));
+    }
+  }
+  return out;
+}
+
+QImage i420ToImage(const nyx::Av1Decoder::Frame& frame) {
+  if (frame.width <= 0 || frame.height <= 0 || (frame.width & 1) || (frame.height & 1))
+    return {};
+  const int y_size = frame.width * frame.height;
+  const int uv_width = frame.width / 2;
+  const int uv_size = uv_width * (frame.height / 2);
+  if (frame.i420.size() < static_cast<std::size_t>(y_size + uv_size * 2)) return {};
+  const uint8_t* yp = frame.i420.data();
+  const uint8_t* up = yp + y_size;
+  const uint8_t* vp = up + uv_size;
+  QImage out(frame.width, frame.height, QImage::Format_RGB32);
+  if (out.isNull()) return {};
+  for (int y = 0; y < frame.height; ++y) {
+    auto* dst = reinterpret_cast<QRgb*>(out.scanLine(y));
+    for (int x = 0; x < frame.width; ++x) {
+      const int c = std::max(0, static_cast<int>(yp[y * frame.width + x]) - 16);
+      const int d = static_cast<int>(up[(y / 2) * uv_width + x / 2]) - 128;
+      const int e = static_cast<int>(vp[(y / 2) * uv_width + x / 2]) - 128;
+      const int r = std::clamp((298 * c + 409 * e + 128) >> 8, 0, 255);
+      const int g = std::clamp((298 * c - 100 * d - 208 * e + 128) >> 8, 0, 255);
+      const int b = std::clamp((298 * c + 516 * d + 128) >> 8, 0, 255);
+      dst[x] = qRgb(r, g, b);
+    }
+  }
+  return out;
+}
+
 }  // namespace
 
-int CallVideoIo::encodeWidth() {
-#if defined(Q_OS_ANDROID)
-  return 480;
-#else
-  return 640;
-#endif
+int CallVideoIo::encodeWidth() const {
+  return nyx::kCallVideoWidth;
 }
 
-int CallVideoIo::encodeHeight() {
-#if defined(Q_OS_ANDROID)
-  return 270;
-#else
-  return 360;
-#endif
+int CallVideoIo::encodeHeight() const {
+  return nyx::kCallVideoHeight;
 }
 
-int CallVideoIo::encodeFps() {
-#if defined(Q_OS_ANDROID)
-  return 8;
-#else
-  return 12;
-#endif
-}
-
-int CallVideoIo::maxJpegBytes() {
-  // ~12 KB JPEG across UDP-sized frags — enough for 480p without heavy blocking.
-  constexpr int kMaxFrags = 12;
-  return static_cast<int>(kMaxFrags * (nyx::kMaxCallMediaPayload - nyx::CallVideoFragHeader::kSize));
+int CallVideoIo::encodeFps() const {
+  return nyx::kCallVideoFps;
 }
 
 CallVideoIo::CallVideoIo(QObject* parent) : QObject(parent) {
@@ -350,7 +406,7 @@ void CallVideoIo::handleCameraFrame(const QVideoFrame& frame) {
     ingest_busy_.store(false, std::memory_order_release);
     return;
   }
-  QImage cropped = coverCrop(img, encodeWidth(), encodeHeight());
+  QImage cropped = containFrame(img, encodeWidth(), encodeHeight());
   if (cropped.isNull()) {
     ingest_busy_.store(false, std::memory_order_release);
     return;
@@ -511,7 +567,7 @@ void CallVideoIo::onNativeJpeg(const QByteArray& jpeg, bool front) {
     return;
   }
   img = uprightForDevice(img, front);
-  QImage cropped = coverCrop(img, encodeWidth(), encodeHeight());
+  QImage cropped = containFrame(img, encodeWidth(), encodeHeight());
   ingest_busy_.store(false, std::memory_order_release);
   if (cropped.isNull()) return;
   NYX_VIDEO_LOG("native jpeg ok %dx%d -> %dx%d bytes=%d", img.width(), img.height(),
@@ -582,16 +638,24 @@ bool CallVideoIo::start() {
     pending_ = QImage();
   }
   frame_id_ = 0;
+  encoder_ = std::make_unique<nyx::Av1Encoder>();
+  if (!encoder_->ok()) {
+    encoder_.reset();
+    running_.store(false, std::memory_order_release);
+    NYX_VIDEO_LOG("start failed: AV1 encoder unavailable");
+    return false;
+  }
   capturing_.store(false, std::memory_order_release);
   local_dirty_ = false;
   ingest_busy_.store(false, std::memory_order_release);
   last_ingest_ms_.store(0, std::memory_order_relaxed);
+  encode_busy_ = false;
   if (encode_timer_) encode_timer_->setInterval(1000 / std::max(1, encodeFps()));
 
   if (camera_enabled_.load(std::memory_order_acquire)) {
 #if defined(Q_OS_ANDROID)
-    // Defer Camera2 open so accept/hangup UI can paint first.
-    QTimer::singleShot(120, this, [this]() {
+    // Defer Camera2 so Answer UI / ringtone stop paint first.
+    QTimer::singleShot(350, this, [this]() {
       if (!running_.load(std::memory_order_acquire)) return;
       if (!camera_enabled_.load(std::memory_order_acquire)) return;
       if (capturing_.load(std::memory_order_acquire)) return;
@@ -629,6 +693,7 @@ void CallVideoIo::stop() {
   local_dirty_ = false;
   if (encode_timer_) encode_timer_->stop();
   closeCameraHardware();
+  encoder_.reset();
 #if !defined(Q_OS_ANDROID)
   if (sink_) disconnect(sink_, nullptr, this, nullptr);
   sink_wired_ = false;
@@ -794,6 +859,7 @@ CallVideoIo::PeerDecoder& CallVideoIo::peerDecoder(const QString& peerId) {
   if (it != peers_.end()) return it->second;
   PeerDecoder& slot = peers_[key];
   slot.reasm = std::make_unique<nyx::CallVideoReassembler>();
+  slot.decoder = std::make_unique<nyx::Av1Decoder>();
   if (focused_peer_.isEmpty()) focused_peer_ = peerId;
   return slot;
 }
@@ -816,6 +882,8 @@ void CallVideoIo::ingestCapturedFrame(QImage cropped) {
 
 void CallVideoIo::onEncodeTick() {
   if (!running_.load(std::memory_order_acquire)) return;
+  if (encode_busy_) return;  // previous tick still encoding — skip rather than stall
+  encode_busy_ = true;
 
   QImage frame;
   bool emit_local = false;
@@ -828,7 +896,6 @@ void CallVideoIo::onEncodeTick() {
     }
     if (send_fn_) {
       if (!cam_on) {
-        // Keep telling the peer the camera is off (black), not a frozen last frame.
         static qint64 s_last_black_ms = 0;
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (now - s_last_black_ms >= 500) {
@@ -842,49 +909,50 @@ void CallVideoIo::onEncodeTick() {
     }
   }
   if (emit_local) emit localFrameChanged();
-  if (frame.isNull() || !send_fn_) return;
-
-  QByteArray jpeg;
-  int quality = cam_on ? 52 : 20;
-#if defined(Q_OS_ANDROID)
-  if (cam_on) quality = 48;
-#endif
-  const int budget = maxJpegBytes();
-  for (;;) {
-    jpeg.clear();
-    QBuffer buf(&jpeg);
-    if (!buf.open(QIODevice::WriteOnly)) return;
-    if (!frame.save(&buf, "JPG", quality)) return;
-    buf.close();
-    if (jpeg.size() <= budget || quality <= 18) break;
-    quality -= 6;
+  if (frame.isNull() || !send_fn_) {
+    encode_busy_ = false;
+    return;
   }
-  if (jpeg.isEmpty() || jpeg.size() > budget) {
-    QImage small = frame;
-    while (jpeg.size() > budget && (small.width() > 160)) {
-      small = small.scaled(small.width() * 3 / 4, small.height() * 3 / 4,
-                           Qt::IgnoreAspectRatio, Qt::FastTransformation);
-      jpeg.clear();
-      QBuffer buf(&jpeg);
-      if (!buf.open(QIODevice::WriteOnly)) return;
-      if (!small.save(&buf, "JPG", 22)) return;
-      buf.close();
-    }
-  }
-  if (jpeg.isEmpty() || jpeg.size() > budget) return;
 
-  nyx::ByteBuffer payload(jpeg.begin(), jpeg.end());
+  if (!encoder_) {
+    encode_busy_ = false;
+    return;
+  }
+
+  auto i420 = imageToI420(frame, encodeWidth(), encodeHeight());
+  if (i420.empty()) {
+    encode_busy_ = false;
+    return;
+  }
+  const bool keyframe = (frame_id_ % static_cast<uint16_t>(encodeFps())) == 0;
+  auto encoded =
+      encoder_->encode_i420(i420.data(), encodeWidth(), encodeHeight(), keyframe);
+  if (!encoded || encoded->empty()) {
+    encode_busy_ = false;
+    return;
+  }
   const uint16_t fid = frame_id_++;
-  auto frags = nyx::fragment_av1_frame(fid, true, payload, nyx::kMaxCallMediaPayload);
-  if (frags.empty()) return;
+  auto frags =
+      nyx::fragment_av1_frame(fid, keyframe, *encoded, nyx::kMaxCallMediaPayload);
+  if (frags.empty()) {
+    encode_busy_ = false;
+    return;
+  }
   int sent = 0;
   for (auto& frag : frags) {
     QByteArray bytes(reinterpret_cast<const char*>(frag.data()),
                      static_cast<int>(frag.size()));
-    if (send_fn_(bytes)) ++sent;
+    if (!send_fn_(bytes)) break;
+    ++sent;
   }
-  NYX_VIDEO_LOG("encode send fid=%u jpeg=%d frags=%d sent=%d cam=%d", unsigned(fid),
-                int(jpeg.size()), int(frags.size()), sent, cam_on ? 1 : 0);
+  if (sent != static_cast<int>(frags.size())) {
+    NYX_VIDEO_LOG("AV1 send drop fid=%u bytes=%d frags=%d sent=%d key=%d", unsigned(fid),
+                  int(encoded->size()), int(frags.size()), sent, keyframe ? 1 : 0);
+  } else {
+    NYX_VIDEO_LOG("AV1 send fid=%u bytes=%d frags=%d key=%d", unsigned(fid),
+                  int(encoded->size()), int(frags.size()), keyframe ? 1 : 0);
+  }
+  encode_busy_ = false;
 }
 
 void CallVideoIo::onRemoteVideo(const QString& peerId, const QByteArray& frag_payload) {
@@ -898,36 +966,42 @@ void CallVideoIo::onRemoteVideo(const QString& peerId, const QByteArray& frag_pa
   const QString pid = peerId.isEmpty() ? QStringLiteral("direct") : peerId;
 
   bool peers_changed = false;
-  QImage ready;
+  nyx::ByteBuffer av1;
+  nyx::Av1Decoder* decoder = nullptr;
   {
     QMutexLocker lock(&frames_mutex_);
     const auto before = peers_.size();
     auto& peer = peerDecoder(pid);
     peers_changed = peers_.size() != before;
-    if (!peer.reasm) return;
+    if (!peer.reasm || !peer.decoder || !peer.decoder->ok()) return;
 
     nyx::ByteBuffer buf(frag_payload.begin(), frag_payload.end());
     auto full = peer.reasm->push(buf);
     if (!full) {
-      // Still notify roster if this was the first packet from a new peer.
       lock.unlock();
       if (peers_changed) emit videoPeersChanged();
       return;
     }
+    av1 = std::move(full->data);
+    decoder = peer.decoder.get();
+  }
 
-    QImage img;
-    if (!img.loadFromData(full->data.data(), static_cast<int>(full->data.size()), "JPG")) {
-      lock.unlock();
-      if (peers_changed) emit videoPeersChanged();
-      return;
-    }
-    peer.frame = img.convertToFormat(QImage::Format_RGB32);
-    if (peer.frame.isNull()) {
-      lock.unlock();
-      if (peers_changed) emit videoPeersChanged();
-      return;
-    }
+  auto decoded = decoder->decode(av1.data(), av1.size());
+  if (!decoded) {
+    if (peers_changed) emit videoPeersChanged();
+    return;
+  }
+  QImage rgb = i420ToImage(*decoded);
+  if (rgb.isNull()) {
+    if (peers_changed) emit videoPeersChanged();
+    return;
+  }
 
+  QImage ready;
+  {
+    QMutexLocker lock(&frames_mutex_);
+    auto& peer = peerDecoder(pid);
+    peer.frame = rgb;
     if (focused_peer_.isEmpty() || focused_peer_ == pid) {
       focused_peer_ = pid;
       remote_ = peer.frame;
@@ -971,9 +1045,8 @@ void CallVideoIo::wireVideoSink() {}
 void CallVideoIo::handleCameraFrame(const QVideoFrame&) {}
 bool CallVideoIo::ensureOnVideoThread(const char*) { return true; }
 QCameraDevice CallVideoIo::resolveCameraDevice() const { return {}; }
-int CallVideoIo::encodeWidth() { return 320; }
-int CallVideoIo::encodeHeight() { return 180; }
-int CallVideoIo::encodeFps() { return 10; }
-int CallVideoIo::maxJpegBytes() { return 1200; }
+int CallVideoIo::encodeWidth() const { return 320; }
+int CallVideoIo::encodeHeight() const { return 180; }
+int CallVideoIo::encodeFps() const { return 10; }
 
 #endif

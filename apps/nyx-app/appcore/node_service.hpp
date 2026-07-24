@@ -317,6 +317,9 @@ class NodeService {
     std::string ref_id_hex;
     std::deque<FileDownloadRequest> download_queue;
     std::mutex download_mutex;
+    // Media producers run on audio/video threads; Connection belongs to worker.
+    std::deque<nyx::ByteBuffer> call_media_outbound;
+    std::mutex call_media_outbound_mutex;
 
     struct AvatarRx {
       nyx::FileHash hash{};

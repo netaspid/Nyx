@@ -108,7 +108,14 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
   connect(&call_audio_, &CallAudioIo::startFailed, this, [this]() {
     showToast(QStringLiteral("Микрофон/динамик недоступны — только сигналинг"), true);
   });
+  connect(&call_audio_, &CallAudioIo::micLevelChanged, this, &NodeController::audioTestLevelChanged);
+  connect(&call_audio_, &CallAudioIo::micTestChanged, this, &NodeController::audioTestChanged);
   call_audio_thread_.start();
+
+  // Video encode/JPEG decode must not block Answer/rotate UI.
+  call_video_thread_.setObjectName(QStringLiteral("nyx-call-video"));
+  call_video_.moveToThread(&call_video_thread_);
+  call_video_thread_.start();
 
   connect(&call_video_, &CallVideoIo::cameraOpenFailed, this, [this]() {
     service_.set_call_camera_on(false);
@@ -219,7 +226,16 @@ NodeController::~NodeController() {
   } else {
     call_audio_.stop();
   }
-  call_video_.stop();
+  if (call_video_thread_.isRunning()) {
+    QMetaObject::invokeMethod(&call_video_, &CallVideoIo::stop, Qt::BlockingQueuedConnection);
+    call_video_thread_.quit();
+    if (!call_video_thread_.wait(3000)) {
+      call_video_thread_.terminate();
+      call_video_thread_.wait(500);
+    }
+  } else {
+    call_video_.stop();
+  }
   service_.stop();
   nyx::lock_session();
 }
@@ -2351,8 +2367,9 @@ void NodeController::wireCallbacks() {
         this,
         [this]() {
           emit callChanged();
-          syncCallAudio();
+          // Stop ringtone / update notify BEFORE opening camera+mic.
           syncCallNotifications();
+          syncCallAudio();
         },
         Qt::QueuedConnection);
   });
@@ -3515,7 +3532,19 @@ bool NodeController::canStartCall() const {
 bool NodeController::callIsFieldRoom() const { return service_.call_is_field_room(); }
 
 void NodeController::startCall(bool video) {
-  if (!service_.can_start_call(active_chat_key_.toStdString())) {
+  const std::string key = active_chat_key_.toStdString();
+  if (!service_.is_session_up(key)) {
+    // Keep-alive drop leaves "offline" while UI still offers call buttons —
+    // reconnect first so invite can leave the wire.
+    if (service_.ensure_session(key)) {
+      showToast(QStringLiteral("Нет связи — переподключаюсь. Позвоните ещё раз через пару секунд."),
+                false);
+    } else {
+      showToast(QStringLiteral("Нет связи с собеседником — дождитесь «на связи»"), true);
+    }
+    return;
+  }
+  if (!service_.can_start_call(key)) {
     showToast(QStringLiteral("Нет права открывать комнату (нужна роль ведущего)"), true);
     return;
   }
@@ -3552,6 +3581,11 @@ void NodeController::startCall(bool video) {
 }
 
 void NodeController::acceptCall() {
+  answering_call_ = true;
+#if defined(Q_OS_ANDROID)
+  // Stop ringtone immediately on tap — do not wait for permissions/camera.
+  nyx_android::stop_ringtone();
+#endif
   struct Ctx {
     NodeController* self;
   };
@@ -3565,14 +3599,21 @@ void NodeController::acceptCall() {
         NodeController* self = c->self;
         delete c;
         if (!mic_ok) {
+          self->answering_call_ = false;
+          self->last_call_notify_key_.clear();
+          self->syncCallNotifications();
           self->showToast(QStringLiteral("Нужен доступ к микрофону"), true);
           return;
         }
         if (self->callVideo() && !cam_ok) {
           self->showToast(QStringLiteral("Нет доступа к камере — только приём видео"), false);
         }
-        if (!self->service_.accept_call())
+        if (!self->service_.accept_call()) {
+          self->answering_call_ = false;
+          self->last_call_notify_key_.clear();
+          self->syncCallNotifications();
           self->showToast(QStringLiteral("Не удалось войти в комнату"), true);
+        }
       },
       ctx);
 }
@@ -3585,6 +3626,7 @@ void NodeController::syncCallAudio() {
   const auto st = service_.call_state();
   const bool video = service_.call_mode() == nyx::CallMode::AudioVideo;
   if (st == nyx::CallState::Active) {
+    if (call_audio_.micTestActive()) call_audio_.stopMicLevelTest();
 #if defined(Q_OS_ANDROID)
     nyx_android::set_voip_audio_mode(true);
     nyx_android::set_speakerphone(call_speakerphone_);
@@ -3760,6 +3802,55 @@ void NodeController::saveMediaDevicePrefs() const {
 }
 
 void NodeController::refreshMediaDevices() { emit mediaDevicesChanged(); }
+
+float NodeController::audioTestLevel() const { return call_audio_.micLevel(); }
+
+bool NodeController::audioTestActive() const { return call_audio_.micTestActive(); }
+
+void NodeController::startMicTest() {
+  if (service_.call_state() == nyx::CallState::Active ||
+      service_.call_state() == nyx::CallState::Outgoing ||
+      service_.call_state() == nyx::CallState::Ringing ||
+      service_.call_state() == nyx::CallState::Incoming) {
+    showToast(QStringLiteral("Сначала завершите звонок"), true);
+    return;
+  }
+#if defined(Q_OS_ANDROID)
+  nyx_android::request_call_permissions(
+      false,
+      [](bool mic_ok, bool /*cam_ok*/, void* ctx) {
+        auto* self = static_cast<NodeController*>(ctx);
+        if (!mic_ok) {
+          QMetaObject::invokeMethod(
+              self,
+              [self]() { self->showToast(QStringLiteral("Нет доступа к микрофону"), true); },
+              Qt::QueuedConnection);
+          return;
+        }
+        QMetaObject::invokeMethod(
+            self,
+            [self]() {
+              if (!self->call_audio_.startMicLevelTest())
+                self->showToast(QStringLiteral("Не удалось открыть микрофон"), true);
+            },
+            Qt::QueuedConnection);
+      },
+      this);
+#else
+  if (!call_audio_.startMicLevelTest())
+    showToast(QStringLiteral("Не удалось открыть микрофон"), true);
+#endif
+}
+
+void NodeController::stopAudioTest() { call_audio_.stopMicLevelTest(); }
+
+void NodeController::playSpeakerTest() {
+  if (service_.call_state() == nyx::CallState::Active) {
+    showToast(QStringLiteral("Сначала завершите звонок"), true);
+    return;
+  }
+  call_audio_.playSpeakerTestTone();
+}
 
 QVariantList NodeController::cameraDeviceList() const { return CallVideoIo::listCameraDevices(); }
 
@@ -4251,18 +4342,20 @@ void NodeController::syncCallNotifications() {
   const auto st = service_.call_state();
   const QString title = callTitle();
   const bool video = callVideo();
+  const QString cid = QString::fromStdString(service_.call_id_hex());
 
   QString key;
   switch (st) {
     case nyx::CallState::Incoming:
-      key = QStringLiteral("incoming:%1").arg(title);
+      // Include call_id so a second invite from the same peer re-alerts.
+      key = QStringLiteral("incoming:%1:%2").arg(title, cid);
       break;
     case nyx::CallState::Active:
-      key = QStringLiteral("active:%1:%2").arg(title).arg(video ? 1 : 0);
+      key = QStringLiteral("active:%1:%2:%3").arg(title).arg(video ? 1 : 0).arg(cid);
       break;
     case nyx::CallState::Outgoing:
     case nyx::CallState::Ringing:
-      key = QStringLiteral("outgoing:%1").arg(title);
+      key = QStringLiteral("outgoing:%1:%2").arg(title, cid);
       break;
     default:
       key = QStringLiteral("idle");
@@ -4272,7 +4365,13 @@ void NodeController::syncCallNotifications() {
   last_call_notify_key_ = key;
 
 #if defined(Q_OS_ANDROID)
+  if (st == nyx::CallState::Incoming && answering_call_) {
+    nyx_android::stop_ringtone();
+    return;
+  }
+  if (st != nyx::CallState::Incoming) answering_call_ = false;
   if (st == nyx::CallState::Incoming) {
+    nyx_android::cancel_call_notifications();
     nyx_android::acquire_call_wake_lock();
     nyx_android::show_incoming_call_notification(title.toStdString());
     nyx_android::bring_app_to_foreground();

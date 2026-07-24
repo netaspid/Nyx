@@ -1,6 +1,6 @@
 #pragma once
 
-/** Video call: capture → JPEG fragments (realtime). */
+/** Video call: capture → AV1 + parity-protected realtime fragments. */
 
 #include <QObject>
 #include <QImage>
@@ -25,6 +25,8 @@ class QVideoFrame;
 
 namespace nyx {
 class CallVideoReassembler;
+class Av1Encoder;
+class Av1Decoder;
 }
 
 class CallVideoIo : public QObject {
@@ -81,6 +83,7 @@ class CallVideoIo : public QObject {
  private:
   struct PeerDecoder {
     std::unique_ptr<nyx::CallVideoReassembler> reasm;
+    std::unique_ptr<nyx::Av1Decoder> decoder;
     QImage frame;
   };
 
@@ -91,12 +94,12 @@ class CallVideoIo : public QObject {
   QCameraDevice resolveCameraDevice() const;
   PeerDecoder& peerDecoder(const QString& peerId);
   bool ensureOnVideoThread(const char* where);
-  static int encodeWidth();
-  static int encodeHeight();
-  static int encodeFps();
-  static int maxJpegBytes();
+  int encodeWidth() const;
+  int encodeHeight() const;
+  int encodeFps() const;
 
   SendFn send_fn_;
+  std::unique_ptr<nyx::Av1Encoder> encoder_;
 #if !defined(Q_OS_ANDROID)
   std::unique_ptr<QCamera> camera_;
   std::unique_ptr<QMediaCaptureSession> session_;
@@ -120,6 +123,7 @@ class CallVideoIo : public QObject {
   std::atomic<qint64> last_ingest_ms_{0};
   bool local_dirty_ = false;
   uint16_t frame_id_ = 0;
+  bool encode_busy_ = false;
 
   std::unordered_map<std::string, PeerDecoder> peers_;
 };

@@ -12,7 +12,9 @@
 #include <QVariantMap>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <memory>
 
 #if defined(Q_OS_ANDROID)
 #include <android/log.h>
@@ -28,6 +30,12 @@
 
 namespace {
 
+bool looksLikeMonitor(const QAudioDevice& d) {
+  const QString t = d.description().toLower();
+  return t.contains(QStringLiteral("monitor")) || t.contains(QStringLiteral("loopback")) ||
+         t.contains(QStringLiteral("what u hear"));
+}
+
 QAudioDevice findInput(const QString& id) {
   const auto list = QMediaDevices::audioInputs();
   if (!id.isEmpty()) {
@@ -35,7 +43,30 @@ QAudioDevice findInput(const QString& id) {
       if (QString::fromUtf8(d.id()) == id) return d;
     }
   }
-  return QMediaDevices::defaultAudioInput();
+  // Prefer OS default (USB headset mic etc.), skip pulse "Monitor of …".
+  const QAudioDevice def = QMediaDevices::defaultAudioInput();
+  if (!def.isNull() && !looksLikeMonitor(def)) return def;
+  for (const auto& d : list) {
+    if (!looksLikeMonitor(d)) return d;
+  }
+  return def;
+}
+
+QList<QAudioDevice> inputCandidates(const QString& preferred_id) {
+  QList<QAudioDevice> out;
+  auto add = [&](const QAudioDevice& d) {
+    if (d.isNull()) return;
+    for (const auto& x : out) {
+      if (x.id() == d.id()) return;
+    }
+    out.append(d);
+  };
+  if (!preferred_id.isEmpty()) add(findInput(preferred_id));
+  add(QMediaDevices::defaultAudioInput());
+  for (const auto& d : QMediaDevices::audioInputs()) {
+    if (!looksLikeMonitor(d)) add(d);
+  }
+  return out;
 }
 
 QAudioDevice findOutput(const QString& id) {
@@ -63,24 +94,72 @@ QVariantList devicesToVariant(const QList<QAudioDevice>& list) {
 }
 
 QAudioFormat makeVoipFormat(const QAudioDevice& dev) {
-  QAudioFormat want;
-  want.setSampleRate(nyx::kCallAudioSampleRate);
-  want.setChannelCount(nyx::kCallAudioChannels);
-  want.setSampleFormat(QAudioFormat::Int16);
-  if (dev.isNull()) return want;
-  if (dev.isFormatSupported(want)) return want;
+  if (dev.isNull()) {
+    QAudioFormat want;
+    want.setSampleRate(nyx::kCallAudioSampleRate);
+    want.setChannelCount(nyx::kCallAudioChannels);
+    want.setSampleFormat(QAudioFormat::Int16);
+    return want;
+  }
+  // Try common VoIP rates first — USB headsets often reject 48 kHz mono.
+  const int rates[] = {nyx::kCallAudioSampleRate, 44100, 32000, 16000, 8000};
+  for (int rate : rates) {
+    QAudioFormat want;
+    want.setSampleRate(rate);
+    want.setChannelCount(1);
+    want.setSampleFormat(QAudioFormat::Int16);
+    if (dev.isFormatSupported(want)) return want;
+    QAudioFormat stereo = want;
+    stereo.setChannelCount(2);
+    if (dev.isFormatSupported(stereo)) return stereo;
+  }
   QAudioFormat near = dev.preferredFormat();
-  if (near.sampleFormat() == QAudioFormat::Unknown)
-    near.setSampleFormat(QAudioFormat::Int16);
-  else if (near.sampleFormat() != QAudioFormat::Int16)
-    near.setSampleFormat(QAudioFormat::Int16);
   if (near.channelCount() <= 0) near.setChannelCount(1);
   if (near.sampleRate() <= 0) near.setSampleRate(nyx::kCallAudioSampleRate);
-  QAudioFormat mono = near;
-  mono.setChannelCount(1);
-  mono.setSampleFormat(QAudioFormat::Int16);
-  if (dev.isFormatSupported(mono)) return mono;
   return near;
+}
+
+std::vector<int16_t> audioBytesToMono16(const QByteArray& bytes, const QAudioFormat& fmt) {
+  const int channels = std::max(1, fmt.channelCount());
+  const int bytes_per_sample = fmt.bytesPerSample();
+  if (bytes_per_sample <= 0) return {};
+  const int frames = bytes.size() / (bytes_per_sample * channels);
+  if (frames <= 0) return {};
+  std::vector<int16_t> mono(static_cast<std::size_t>(frames));
+
+  for (int i = 0; i < frames; ++i) {
+    int64_t sum = 0;
+    for (int c = 0; c < channels; ++c) {
+      const int index = i * channels + c;
+      int32_t sample = 0;
+      switch (fmt.sampleFormat()) {
+        case QAudioFormat::Int16:
+          sample = reinterpret_cast<const int16_t*>(bytes.constData())[index];
+          break;
+        case QAudioFormat::Int32:
+          sample = reinterpret_cast<const int32_t*>(bytes.constData())[index] >> 16;
+          break;
+        case QAudioFormat::Float: {
+          const float value = reinterpret_cast<const float*>(bytes.constData())[index];
+          sample = static_cast<int32_t>(
+              std::clamp(value, -1.0f, 1.0f) * static_cast<float>(INT16_MAX));
+          break;
+        }
+        case QAudioFormat::UInt8:
+          sample = (static_cast<int32_t>(
+                        reinterpret_cast<const uint8_t*>(bytes.constData())[index]) -
+                    128)
+                   << 8;
+          break;
+        default:
+          return {};
+      }
+      sum += sample;
+    }
+    mono[static_cast<std::size_t>(i)] =
+        static_cast<int16_t>(std::clamp<int64_t>(sum / channels, INT16_MIN, INT16_MAX));
+  }
+  return mono;
 }
 
 void resampleMono(const int16_t* in, int in_n, int in_rate, std::vector<int16_t>* out,
@@ -177,46 +256,70 @@ void CallAudioIo::setPreferredOutputId(const QString& id) {
 
 bool CallAudioIo::openDevices() {
   NYX_AUDIO_LOG("openDevices begin");
-  const QAudioDevice in_dev = findInput(preferred_input_id_);
-  if (in_dev.isNull()) {
-    NYX_AUDIO_LOG("openDevices: null input device");
-    return false;
-  }
-
-  const QAudioFormat in_fmt = makeVoipFormat(in_dev);
-  if (in_fmt.sampleFormat() != QAudioFormat::Int16) {
-    NYX_AUDIO_LOG("openDevices: unsupported sample format");
-    return false;
-  }
-
-  preferred_input_id_ = QString::fromUtf8(in_dev.id());
-  capture_rate_ = in_fmt.sampleRate();
-
-  source_ = std::make_unique<QAudioSource>(in_dev, in_fmt);
-  const int bytes_20ms_in =
-      in_fmt.bytesForDuration(nyx::kCallAudioFrameMs * 1000);
-  source_->setBufferSize(std::max(bytes_20ms_in * 10, 8192));
-
-  NYX_AUDIO_LOG("openDevices: calling source start (may block this thread)");
-  source_dev_ = source_->start();
-  if (!source_dev_) {
-    NYX_AUDIO_LOG("openDevices: source start failed");
-    source_.reset();
-    source_dev_ = nullptr;
-    return false;
-  }
 
 #if defined(Q_OS_ANDROID)
-  // QAudioSink uses STREAM_MUSIC — silent under MODE_IN_COMMUNICATION.
+  // Native AudioRecord — Qt QAudioSource is often silent under MODE_IN_COMMUNICATION.
+  use_android_voice_capture_ = false;
+  capture_rate_ = nyx::kCallAudioSampleRate;
+  if (!nyx_android::voice_capture_start(nyx::kCallAudioSampleRate, 1)) {
+    NYX_AUDIO_LOG("openDevices: AudioRecord start failed");
+    return false;
+  }
+  use_android_voice_capture_ = true;
+  source_.reset();
+  source_dev_ = nullptr;
+  preferred_input_id_.clear();
+
+  if (mic_test_.load(std::memory_order_acquire)) {
+    use_android_voice_track_ = false;
+    NYX_AUDIO_LOG("openDevices ok (android AudioRecord mic test)");
+    return true;
+  }
+
   use_android_voice_track_ = true;
   playback_rate_ = nyx::kCallAudioSampleRate;
   nyx_android::voice_playback_start(nyx::kCallAudioSampleRate, 1);
   preferred_output_id_.clear();
-  // Re-apply speaker/earpiece after AudioTrack exists.
   nyx_android::set_speakerphone(nyx_android::speakerphone());
-  NYX_AUDIO_LOG("openDevices ok (android AudioTrack voice) rate_in=%d", capture_rate_);
+  NYX_AUDIO_LOG("openDevices ok (android AudioRecord+AudioTrack)");
   return true;
 #else
+  source_.reset();
+  source_dev_ = nullptr;
+  bool opened_in = false;
+  for (const QAudioDevice& in_dev : inputCandidates(preferred_input_id_)) {
+    if (in_dev.isNull()) continue;
+    const QAudioFormat in_fmt = makeVoipFormat(in_dev);
+    if (in_fmt.sampleFormat() == QAudioFormat::Unknown) continue;
+    auto src = std::make_unique<QAudioSource>(in_dev, in_fmt);
+    const int bytes_20ms_in =
+        in_fmt.bytesForDuration(nyx::kCallAudioFrameMs * 1000);
+    src->setBufferSize(std::max(bytes_20ms_in * 10, 8192));
+    QIODevice* dev = src->start();
+    if (!dev) {
+      NYX_AUDIO_LOG("openDevices: input failed id=%s", qPrintable(QString::fromUtf8(in_dev.id())));
+      continue;
+    }
+    source_ = std::move(src);
+    source_dev_ = dev;
+    preferred_input_id_ = QString::fromUtf8(in_dev.id());
+    capture_rate_ = in_fmt.sampleRate();
+    opened_in = true;
+    NYX_AUDIO_LOG("openDevices: input ok desc=%s rate=%d ch=%d",
+                  qPrintable(in_dev.description()), capture_rate_, in_fmt.channelCount());
+    break;
+  }
+  if (!opened_in) {
+    NYX_AUDIO_LOG("openDevices: no usable input device");
+    return false;
+  }
+
+  if (mic_test_.load(std::memory_order_acquire)) {
+    use_android_voice_track_ = false;
+    NYX_AUDIO_LOG("openDevices ok (mic test) rate_in=%d", capture_rate_);
+    return true;
+  }
+
   use_android_voice_track_ = false;
   const QAudioDevice out_dev = findOutput(preferred_output_id_);
   if (out_dev.isNull()) {
@@ -297,6 +400,7 @@ void CallAudioIo::stop() {
     return;
   }
   NYX_AUDIO_LOG("stop");
+  const bool was_mic_test = mic_test_.exchange(false, std::memory_order_acq_rel);
   running_.store(false, std::memory_order_release);
   if (timer_) timer_->stop();
   if (source_) {
@@ -311,15 +415,39 @@ void CallAudioIo::stop() {
     nyx_android::voice_playback_stop();
     use_android_voice_track_ = false;
   }
+  if (use_android_voice_capture_) {
+    nyx_android::voice_capture_stop();
+    use_android_voice_capture_ = false;
+  }
   source_dev_ = nullptr;
   sink_dev_ = nullptr;
   capture_pcm_.clear();
   opus_pcm_.clear();
   pending_remote_.clear();
+  android_cap_scratch_.clear();
+  mic_level_.store(0.f, std::memory_order_release);
+  if (was_mic_test) {
+    emit micLevelChanged();
+    emit micTestChanged();
+  }
 }
 
 void CallAudioIo::pushCapturePcm(const int16_t* samples, int count) {
   if (!samples || count <= 0) return;
+
+  if (mic_test_.load(std::memory_order_acquire)) {
+    double sum = 0.0;
+    for (int i = 0; i < count; ++i) {
+      const double s = static_cast<double>(samples[i]) / 32768.0;
+      sum += s * s;
+    }
+    const float rms = static_cast<float>(std::sqrt(sum / static_cast<double>(count)));
+    const float level = std::clamp(rms * 4.5f, 0.f, 1.f);
+    mic_level_.store(level, std::memory_order_release);
+    emit micLevelChanged();
+    return;
+  }
+
   capture_pcm_.insert(capture_pcm_.end(), samples, samples + count);
 
   const int need_dev =
@@ -350,29 +478,111 @@ void CallAudioIo::pushCapturePcm(const int16_t* samples, int count) {
 }
 
 void CallAudioIo::onCaptureReady() {
-  if (!running_.load(std::memory_order_acquire) || !source_dev_ || !send_fn_) return;
-  const int ch = source_ ? source_->format().channelCount() : 1;
-  const int channels = std::max(1, ch);
+  if (!running_.load(std::memory_order_acquire)) return;
+  if (!send_fn_ && !mic_test_.load(std::memory_order_acquire)) return;
+
+#if defined(Q_OS_ANDROID)
+  if (use_android_voice_capture_) {
+    // Drain AudioRecord aggressively so the mic buffer does not overrun.
+    android_cap_scratch_.resize(static_cast<std::size_t>(nyx::kCallAudioFrameSamples * 4));
+    for (int round = 0; round < 8; ++round) {
+      const int n = nyx_android::voice_capture_read(android_cap_scratch_.data(),
+                                                    static_cast<int>(android_cap_scratch_.size()));
+      if (n <= 0) break;
+      pushCapturePcm(android_cap_scratch_.data(), n);
+    }
+    return;
+  }
+#endif
+
+  if (!source_dev_) return;
+  const QAudioFormat format = source_ ? source_->format() : QAudioFormat{};
+  const int channels = std::max(1, format.channelCount());
+  const int bytes_per_sample = std::max(1, format.bytesPerSample());
   const qint64 avail = source_dev_->bytesAvailable();
-  if (avail < static_cast<qint64>(sizeof(int16_t) * channels)) return;
+  if (avail < static_cast<qint64>(bytes_per_sample * channels)) return;
 
   QByteArray chunk = source_dev_->read(avail);
   if (chunk.isEmpty()) return;
-  const int frames = chunk.size() / static_cast<int>(sizeof(int16_t) * channels);
-  if (frames <= 0) return;
+  auto mono = audioBytesToMono16(chunk, format);
+  if (!mono.empty()) pushCapturePcm(mono.data(), static_cast<int>(mono.size()));
+}
 
-  const auto* interleaved = reinterpret_cast<const int16_t*>(chunk.constData());
-  std::vector<int16_t> mono(static_cast<std::size_t>(frames));
-  for (int i = 0; i < frames; ++i) {
-    if (channels == 1) {
-      mono[static_cast<std::size_t>(i)] = interleaved[i];
-    } else {
-      const int32_t a = interleaved[i * channels];
-      const int32_t b = interleaved[i * channels + 1];
-      mono[static_cast<std::size_t>(i)] = static_cast<int16_t>((a + b) / 2);
+bool CallAudioIo::startMicLevelTest() {
+  if (!ensureOnAudioThread("startMicLevelTest")) {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          if (!startMicLevelTest()) emit startFailed();
+        },
+        Qt::QueuedConnection);
+    return true;
+  }
+  if (running_.load(std::memory_order_acquire)) {
+    NYX_AUDIO_LOG("startMicLevelTest: already running");
+    return false;
+  }
+  mic_test_.store(true, std::memory_order_release);
+  mic_level_.store(0.f, std::memory_order_release);
+  send_fn_ = nullptr;
+  if (!openDevices()) {
+    preferred_input_id_.clear();
+    if (!openDevices()) {
+      mic_test_.store(false, std::memory_order_release);
+      stop();
+      return false;
     }
   }
-  pushCapturePcm(mono.data(), frames);
+  running_.store(true, std::memory_order_release);
+  timer_->start();
+  emit micTestChanged();
+  emit micLevelChanged();
+  NYX_AUDIO_LOG("mic level test started");
+  return true;
+}
+
+void CallAudioIo::stopMicLevelTest() {
+  if (!ensureOnAudioThread("stopMicLevelTest")) {
+    QMetaObject::invokeMethod(this, [this]() { stopMicLevelTest(); }, Qt::QueuedConnection);
+    return;
+  }
+  if (!mic_test_.load(std::memory_order_acquire) &&
+      !running_.load(std::memory_order_acquire))
+    return;
+  stop();
+}
+
+void CallAudioIo::playSpeakerTestTone() {
+#if defined(Q_OS_ANDROID)
+  nyx_android::play_test_tone(nyx::kCallAudioSampleRate, 700);
+#else
+  if (!ensureOnAudioThread("playSpeakerTestTone")) {
+    QMetaObject::invokeMethod(this, [this]() { playSpeakerTestTone(); }, Qt::QueuedConnection);
+    return;
+  }
+  const QAudioDevice out_dev = findOutput(preferred_output_id_);
+  if (out_dev.isNull()) return;
+  QAudioFormat fmt = makeVoipFormat(out_dev);
+  fmt.setSampleFormat(QAudioFormat::Int16);
+  fmt.setChannelCount(1);
+  auto sink = std::make_unique<QAudioSink>(out_dev, fmt);
+  sink->setVolume(1.0);
+  QIODevice* dev = sink->start();
+  if (!dev) return;
+  const int sr = fmt.sampleRate() > 0 ? fmt.sampleRate() : nyx::kCallAudioSampleRate;
+  const int n = sr * 700 / 1000;
+  std::vector<int16_t> pcm(static_cast<std::size_t>(n));
+  for (int i = 0; i < n; ++i) {
+    const double t = static_cast<double>(i) / static_cast<double>(sr);
+    pcm[static_cast<std::size_t>(i)] =
+        static_cast<int16_t>(std::sin(2.0 * 3.141592653589793 * 440.0 * t) * 12000.0);
+  }
+  dev->write(reinterpret_cast<const char*>(pcm.data()),
+             static_cast<qint64>(pcm.size() * sizeof(int16_t)));
+  QTimer::singleShot(800, this, [s = std::shared_ptr<QAudioSink>(std::move(sink))]() {
+    if (s) s->stop();
+  });
+#endif
 }
 
 void CallAudioIo::onRemoteOpus(const QByteArray& packet) {
@@ -445,5 +655,8 @@ bool CallAudioIo::openDevices() { return false; }
 bool CallAudioIo::restartIfRunning() { return false; }
 void CallAudioIo::pushCapturePcm(const int16_t*, int) {}
 bool CallAudioIo::ensureOnAudioThread(const char*) { return true; }
+bool CallAudioIo::startMicLevelTest() { return false; }
+void CallAudioIo::stopMicLevelTest() {}
+void CallAudioIo::playSpeakerTestTone() {}
 
 #endif

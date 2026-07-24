@@ -34,6 +34,10 @@ Dialog {
     }
 
     onOpened: node.refreshMediaDevices()
+    onClosed: {
+        if (node.audioTestActive)
+            node.stopAudioTest()
+    }
 
     contentItem: ColumnLayout {
         width: parent ? parent.width : implicitWidth
@@ -358,6 +362,59 @@ Dialog {
                     text: Qt.platform.os === "android"
                           ? qsTr("Камера и микрофон применяются в звонке. Громкую связь также можно переключить во время звонка.")
                           : qsTr("Выбор сохраняется и применяется в следующих звонках (и сразу, если звонок уже идёт).")
+                    color: theme.textMuted
+                    font.pixelSize: 11
+                }
+
+                Label {
+                    text: qsTr("Проверка звука")
+                    color: theme.textSecondary
+                    font.pixelSize: 12
+                    font.capitalization: Font.AllUppercase
+                    Layout.topMargin: 8
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    NyxButton {
+                        Layout.fillWidth: true
+                        theme: root.theme
+                        text: node.audioTestActive ? qsTr("Стоп микрофон") : qsTr("Тест микрофона")
+                        onClicked: {
+                            if (node.audioTestActive)
+                                node.stopAudioTest()
+                            else
+                                node.startMicTest()
+                        }
+                    }
+                    NyxButton {
+                        Layout.fillWidth: true
+                        theme: root.theme
+                        text: qsTr("Тест динамика")
+                        onClicked: node.playSpeakerTest()
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 10
+                    radius: 5
+                    color: theme.inputBg
+                    visible: node.audioTestActive
+                    Rectangle {
+                        width: Math.max(2, parent.width * Math.min(1, Math.max(0, node.audioTestLevel)))
+                        height: parent.height
+                        radius: parent.radius
+                        color: theme.accent
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    visible: node.audioTestActive
+                    text: qsTr("Говорите в микрофон — полоска должна двигаться.")
                     color: theme.textMuted
                     font.pixelSize: 11
                 }

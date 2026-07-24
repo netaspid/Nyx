@@ -49,9 +49,18 @@ class CallAudioIo : public QObject {
   static QVariantList listInputDevices();
   static QVariantList listOutputDevices();
 
+  /** Settings: open mic only and report RMS level (0..1). Not for use during a call. */
+  Q_INVOKABLE bool startMicLevelTest();
+  Q_INVOKABLE void stopMicLevelTest();
+  Q_INVOKABLE void playSpeakerTestTone();
+  float micLevel() const { return mic_level_.load(std::memory_order_acquire); }
+  bool micTestActive() const { return mic_test_.load(std::memory_order_acquire); }
+
  signals:
   void devicesChanged();
   void startFailed();
+  void micLevelChanged();
+  void micTestChanged();
 
  public slots:
   void onRemoteOpus(const QByteArray& packet);
@@ -84,5 +93,9 @@ class CallAudioIo : public QObject {
   QString preferred_input_id_;
   QString preferred_output_id_;
   bool use_android_voice_track_ = false;
+  bool use_android_voice_capture_ = false;
   std::deque<QByteArray> pending_remote_;
+  std::atomic<bool> mic_test_{false};
+  std::atomic<float> mic_level_{0.f};
+  std::vector<int16_t> android_cap_scratch_;
 };

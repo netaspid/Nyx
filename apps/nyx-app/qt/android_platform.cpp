@@ -381,9 +381,14 @@ void invoke_hangup_handler() {
   if (g_hangup_fn) g_hangup_fn();
 }
 
+void stop_ringtone() {
+  QJniObject::callStaticMethod<void>("org/nyx/app/NyxCallAudio", "stopRingtone", "()V");
+}
+
 void voice_playback_start(int sample_rate, int channels) {
-  QJniObject::callStaticMethod<void>("org/nyx/app/NyxCallAudio", "startVoicePlayback", "(II)V",
-                                     jint(sample_rate), jint(channels));
+  QJniObject::callStaticMethod<void>("org/nyx/app/NyxCallAudio", "startVoicePlayback", "(IIZ)V",
+                                     jint(sample_rate), jint(channels),
+                                     jboolean(g_speakerphone ? 1 : 0));
 }
 
 void voice_playback_write(const int16_t* samples, int count) {
@@ -400,6 +405,43 @@ void voice_playback_write(const int16_t* samples, int count) {
 
 void voice_playback_stop() {
   QJniObject::callStaticMethod<void>("org/nyx/app/NyxCallAudio", "stopVoicePlayback", "()V");
+}
+
+bool voice_capture_start(int sample_rate, int channels) {
+  return QJniObject::callStaticMethod<jboolean>(
+             "org/nyx/app/NyxCallAudio", "startVoiceCapture", "(II)Z", jint(sample_rate),
+             jint(channels)) == JNI_TRUE;
+}
+
+int voice_capture_read(int16_t* samples, int max_samples) {
+  if (!samples || max_samples <= 0) return 0;
+  QJniEnvironment env;
+  const jsize nbytes = static_cast<jsize>(max_samples * static_cast<int>(sizeof(int16_t)));
+  jbyteArray arr = env->NewByteArray(nbytes);
+  if (!arr) return 0;
+  const jint n = QJniObject::callStaticMethod<jint>(
+      "org/nyx/app/NyxCallAudio", "readVoiceCapture", "([BII)I", arr, jint(0), jint(nbytes));
+  int out_samples = 0;
+  if (n > 0) {
+    out_samples = static_cast<int>(n) / static_cast<int>(sizeof(int16_t));
+    if (out_samples > max_samples) out_samples = max_samples;
+    env->GetByteArrayRegion(arr, 0, out_samples * static_cast<int>(sizeof(int16_t)),
+                            reinterpret_cast<jbyte*>(samples));
+  }
+  env->DeleteLocalRef(arr);
+  return out_samples;
+}
+
+void voice_capture_stop() {
+  QJniObject::callStaticMethod<void>("org/nyx/app/NyxCallAudio", "stopVoiceCapture", "()V");
+}
+
+void play_test_tone(int sample_rate, int duration_ms) {
+  QJniObject ctx = android_context();
+  if (!ctx.isValid()) return;
+  QJniObject::callStaticMethod<void>(
+      "org/nyx/app/NyxCallAudio", "playTestTone", "(Landroid/content/Context;II)V",
+      ctx.object<jobject>(), jint(sample_rate), jint(duration_ms));
 }
 
 void set_native_camera_callbacks(NativeCameraJpegFn on_jpeg, NativeCameraErrorFn on_error,
@@ -440,6 +482,7 @@ bool native_camera_has_front_and_back() {
 }  // namespace nyx_android
 
 #include <QMetaObject>
+#include <QObject>
 #include <jni.h>
 
 extern "C" JNIEXPORT void JNICALL Java_org_nyx_app_NyxCallNotify_nativeHangup(JNIEnv*, jclass) {
@@ -460,8 +503,11 @@ Java_org_nyx_app_NyxCameraCapture_nativeOnJpeg(JNIEnv* env, jclass, jbyteArray j
   auto* fn = g_cam_jpeg;
   void* ctx = g_cam_ctx;
   const bool is_front = front;
+  // Dispatch onto the CallVideoIo object thread (video worker), not the GUI.
+  auto* obj = static_cast<QObject*>(ctx);
+  if (!obj) return;
   QMetaObject::invokeMethod(
-      qApp,
+      obj,
       [fn, ctx, bytes = std::move(bytes), is_front]() mutable {
         if (fn) fn(bytes, is_front, ctx);
       },
@@ -480,8 +526,10 @@ Java_org_nyx_app_NyxCameraCapture_nativeOnError(JNIEnv* env, jclass, jstring mes
   }
   auto* fn = g_cam_error;
   void* ctx = g_cam_ctx;
+  auto* obj = static_cast<QObject*>(ctx);
+  if (!obj) return;
   QMetaObject::invokeMethod(
-      qApp,
+      obj,
       [fn, ctx, msg]() {
         if (fn) fn(msg, ctx);
       },
@@ -502,8 +550,10 @@ Java_org_nyx_app_NyxCameraCapture_nativeOnStarted(JNIEnv* env, jclass, jboolean 
   auto* fn = g_cam_started;
   void* ctx = g_cam_ctx;
   const bool is_front = front;
+  auto* obj = static_cast<QObject*>(ctx);
+  if (!obj) return;
   QMetaObject::invokeMethod(
-      qApp,
+      obj,
       [fn, ctx, is_front, id]() {
         if (fn) fn(is_front, id, ctx);
       },
@@ -546,9 +596,14 @@ bool native_camera_has_front_and_back() { return false; }
 void set_hangup_handler(void (*)()) {}
 void show_native_hangup_overlay(bool) {}
 void invoke_hangup_handler() {}
+void stop_ringtone() {}
 void voice_playback_start(int, int) {}
 void voice_playback_write(const int16_t*, int) {}
 void voice_playback_stop() {}
+bool voice_capture_start(int, int) { return false; }
+int voice_capture_read(int16_t*, int) { return 0; }
+void voice_capture_stop() {}
+void play_test_tone(int, int) {}
 
 }  // namespace nyx_android
 
