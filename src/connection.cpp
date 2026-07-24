@@ -1,5 +1,6 @@
 #include "nyx/connection.hpp"
 
+#include "nyx/call_media.hpp"
 #include "nyx/util.hpp"
 
 #include <chrono>
@@ -154,11 +155,12 @@ bool Connection::send_realtime(const ByteBuffer& data) {
   if (data.size() > kMaxRealtimePlain) return false;
 
   auto muxed = mux_.send(kRealtimeStream, data);
-  auto encrypted = session_->encrypt(muxed);
+  const uint32_t seq = realtime_seq_++;
+  auto encrypted = session_->encrypt_realtime(seq, muxed);
   if (!encrypted) return false;
 
   auto wire =
-      Frame::make(PacketType::Realtime, kRealtimeStream, realtime_seq_++, std::move(*encrypted))
+      Frame::make(PacketType::Realtime, kRealtimeStream, seq, std::move(*encrypted))
           .encode();
   if (wire.empty()) return false;
   // Realtime — сразу в сокет, без очереди reliable (минимум задержки).
@@ -180,13 +182,31 @@ void Connection::touch_peer_activity() {
 
 bool Connection::handle_realtime_wire(const Frame& frame) {
   if (!session_ || frame.header.packet_type != PacketType::Realtime) return false;
-  auto plain = session_->decrypt(frame.payload);
+  auto plain = session_->decrypt_realtime(frame.header.seq_num, frame.payload);
   if (!plain || plain->size() < 4) return false;
   const uint32_t stream_id = read_u32_le(plain->data());
   if (stream_id != kRealtimeStream) return false;
   ByteBuffer payload(plain->begin() + 4, plain->end());
-  constexpr std::size_t kMaxInbox = 64;
-  if (realtime_inbox_.size() >= kMaxInbox) realtime_inbox_.pop_front();
+  // Prefer dropping oldest video when congested — never starve Opus.
+  // Do NOT refuse new video entirely: that freezes the peer after a few seconds.
+  constexpr std::size_t kMaxInbox = 384;
+  auto is_video = [](const ByteBuffer& p) {
+    return !p.empty() && p[0] == static_cast<uint8_t>(CallMediaType::Video);
+  };
+  while (realtime_inbox_.size() >= kMaxInbox) {
+    bool dropped = false;
+    for (auto it = realtime_inbox_.begin(); it != realtime_inbox_.end(); ++it) {
+      if (is_video(*it)) {
+        realtime_inbox_.erase(it);
+        dropped = true;
+        break;
+      }
+    }
+    if (!dropped) {
+      realtime_inbox_.pop_front();
+      break;
+    }
+  }
   realtime_inbox_.push_back(std::move(payload));
   return true;
 }
@@ -231,12 +251,14 @@ bool Connection::drive_without_recv() {
   if (state_ != ConnectionState::Established) return false;
 
   const auto now = std::chrono::steady_clock::now();
-  if (now - last_peer_activity_ > std::chrono::seconds(45)) {
+  // Video/audio UDP bursts can delay control ACKs on congested Wi‑Fi; 45s was too
+  // aggressive and killed the session mid-call (no re-dial until reconnect).
+  if (now - last_peer_activity_ > std::chrono::seconds(120)) {
     peer_alive_ = false;
     state_ = ConnectionState::Closed;
     return false;
   }
-  if (now - last_ping_sent_ > std::chrono::seconds(15)) {
+  if (now - last_ping_sent_ > std::chrono::seconds(5)) {
     ping();
     last_ping_sent_ = now;
   }
@@ -339,12 +361,12 @@ bool Connection::drive() {
   process_incoming(0);
 
   const auto now = std::chrono::steady_clock::now();
-  if (now - last_peer_activity_ > std::chrono::seconds(45)) {
+  if (now - last_peer_activity_ > std::chrono::seconds(120)) {
     peer_alive_ = false;
     state_ = ConnectionState::Closed;
     return false;
   }
-  if (now - last_ping_sent_ > std::chrono::seconds(15)) {
+  if (now - last_ping_sent_ > std::chrono::seconds(5)) {
     ping();
     last_ping_sent_ = now;
   }

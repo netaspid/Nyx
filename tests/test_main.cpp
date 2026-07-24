@@ -102,6 +102,16 @@ static void test_noise_handshake() {
   assert(ct);
   auto pt = sb->decrypt(*ct);
   assert(pt && pt->size() == 2);
+
+  auto rt10 = sa->encrypt_realtime(10, {0x10});
+  auto rt11 = sa->encrypt_realtime(11, {0x11});
+  auto rt12 = sa->encrypt_realtime(12, {0x12});
+  assert(rt10 && rt11 && rt12);
+  // UDP loss and reordering must not desynchronize subsequent media packets.
+  auto pt12 = sb->decrypt_realtime(12, *rt12);
+  auto pt10 = sb->decrypt_realtime(10, *rt10);
+  assert(pt12 && *pt12 == nyx::ByteBuffer{0x12});
+  assert(pt10 && *pt10 == nyx::ByteBuffer{0x10});
   std::cout << "noise handshake ok\n";
 }
 
@@ -327,6 +337,41 @@ static void test_chat_echo() {
   auto decoded = nyx::decode_text_message(received);
   assert(decoded && *decoded == message);
   std::cout << "chat echo ok\n";
+}
+
+static void test_realtime_bidirectional() {
+  nyx::UdpSocket listen_sock;
+  nyx::UdpSocket connect_sock;
+  NYX_REQUIRE(listen_sock.bind("127.0.0.1", 0));
+  NYX_REQUIRE(connect_sock.bind("127.0.0.1", 0));
+  const uint16_t listen_port = listen_sock.local_port();
+
+  std::optional<nyx::Connection> server;
+  std::thread accept_thread([&] { server = accept_one(std::move(listen_sock)); });
+  auto client = nyx::Connection::connect_initiator(
+      std::move(connect_sock), "127.0.0.1", listen_port);
+  accept_thread.join();
+  NYX_REQUIRE(client && server);
+
+  const nyx::ByteBuffer to_server{0x01, 0x02, 0x03};
+  const nyx::ByteBuffer to_client{0x04, 0x05, 0x06};
+  NYX_REQUIRE(client->send_realtime(to_server));
+  NYX_REQUIRE(server->send_realtime(to_client));
+
+  nyx::ByteBuffer got_server;
+  nyx::ByteBuffer got_client;
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < deadline &&
+         (got_server.empty() || got_client.empty())) {
+    client->drive();
+    server->drive();
+    if (got_server.empty()) server->recv_realtime(got_server);
+    if (got_client.empty()) client->recv_realtime(got_client);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  NYX_REQUIRE(got_server == to_server);
+  NYX_REQUIRE(got_client == to_client);
+  std::cout << "realtime bidirectional ok\n";
 }
 
 static std::optional<nyx::Connection> loopback_connect(
@@ -1449,11 +1494,20 @@ static void test_call_av1_fragment() {
   nyx::CallVideoReassembler reasm;
   std::optional<nyx::CallVideoReassembler::Assembled> full;
   for (const auto& f : frags) {
-    full = reasm.push(f);
+    if (auto assembled = reasm.push(f)) full = std::move(assembled);
   }
   assert(full && full->data.size() == big.size());
   assert(full->keyframe);
   assert(std::equal(full->data.begin(), full->data.end(), big.begin()));
+
+  // Parity fragment recovers one missing data datagram.
+  nyx::CallVideoReassembler fec_reasm;
+  full.reset();
+  for (std::size_t i = 0; i < frags.size(); ++i) {
+    if (i == 2) continue;
+    if (auto assembled = fec_reasm.push(frags[i])) full = std::move(assembled);
+  }
+  assert(full && full->data == big);
 
   nyx::Av1Encoder enc;
   nyx::Av1Decoder dec;
@@ -1463,11 +1517,20 @@ static void test_call_av1_fragment() {
   }
   const int w = nyx::kCallVideoWidth;
   const int h = nyx::kCallVideoHeight;
-  std::vector<uint8_t> i420(static_cast<std::size_t>(w * h * 3 / 2), 16);
+  std::vector<uint8_t> i420(static_cast<std::size_t>(w * h * 3 / 2), 128);
+  std::fill(i420.begin(), i420.begin() + w * h, 96);
   auto encoded = enc.encode_i420(i420.data(), w, h, true);
   assert(encoded && !encoded->empty());
   auto decoded = dec.decode(encoded->data(), encoded->size());
   assert(decoded && decoded->width == w && decoded->height == h);
+  const int y_size = w * h;
+  const int uv_size = (w / 2) * (h / 2);
+  for (int x = 32; x < w - 32; ++x) {
+    assert(std::abs(static_cast<int>(decoded->i420[h / 2 * w + x]) - 96) < 16);
+  }
+  assert(std::abs(static_cast<int>(decoded->i420[y_size + uv_size / 2]) - 128) < 16);
+  assert(std::abs(static_cast<int>(decoded->i420[y_size + uv_size + uv_size / 2]) - 128) <
+         16);
   std::cout << "call av1 fragment ok\n";
 }
 
@@ -1925,6 +1988,7 @@ int main() {
   test_node_flow();
   test_udp_connection();
   test_chat_echo();
+  test_realtime_bidirectional();
   test_session_rekey();
   test_hello_roundtrip();
   test_profile_save_load();
@@ -1939,6 +2003,8 @@ int main() {
 #ifdef _WIN32
   test_file_index_unicode();
 #endif
+  test_call_media_and_opus();
+  test_call_av1_fragment();
   test_file_transfer_1mb();
   test_group_member_persistence();
   test_profile_meta_photos_wire();
@@ -1968,8 +2034,6 @@ int main() {
     assert(nyx::can_start_field_call(nyx::GroupRole::Host));
     assert(!nyx::can_start_field_call(nyx::GroupRole::Member));
   }
-  test_call_media_and_opus();
-  test_call_av1_fragment();
   test_file_access_roles();
   test_share_policy();
   test_conversation_list();

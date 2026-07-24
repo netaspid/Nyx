@@ -58,6 +58,11 @@ class Session {
 
   std::optional<ByteBuffer> encrypt(const ByteBuffer& plain, std::string* err = nullptr);
   std::optional<ByteBuffer> decrypt(const ByteBuffer& cipher, std::string* err = nullptr);
+  /** Stateless-per-packet realtime AEAD: nonce is the UDP frame sequence. */
+  std::optional<ByteBuffer> encrypt_realtime(std::uint64_t nonce, const ByteBuffer& plain,
+                                             std::string* err = nullptr);
+  std::optional<ByteBuffer> decrypt_realtime(std::uint64_t nonce, const ByteBuffer& cipher,
+                                             std::string* err = nullptr);
 
   /** Текущий epoch rekey (0 после handshake). */
   std::uint64_t rekey_epoch() const { return rekey_epoch_; }
@@ -76,9 +81,12 @@ class Session {
           HandshakeRole role);
 
   void note_transfer(std::size_t bytes);
+  bool init_realtime_keys(std::uint64_t epoch);
 
   void* send_ = nullptr;
   void* recv_ = nullptr;
+  std::array<uint8_t, 32> realtime_send_key_{};
+  std::array<uint8_t, 32> realtime_recv_key_{};
   std::array<uint8_t, 32> binding_hash_{};
   HandshakeRole role_ = HandshakeRole::Initiator;
   std::uint64_t rekey_epoch_ = 0;

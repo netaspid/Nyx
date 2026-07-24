@@ -16,7 +16,7 @@ namespace nyx {
 constexpr int kCallVideoWidth = 640;
 constexpr int kCallVideoHeight = 360;
 constexpr int kCallVideoFps = 12;
-constexpr int kCallVideoTargetKbps = 900;  // legacy AV1; call path uses JPEG
+constexpr int kCallVideoTargetKbps = 900;
 
 /** Фрагмент видеокадра в CallMediaType::Video payload. */
 struct CallVideoFragHeader {
@@ -26,6 +26,8 @@ struct CallVideoFragHeader {
   uint8_t keyframe = 0;
 
   static constexpr std::size_t kSize = 5;
+  static constexpr uint8_t kKeyframe = 0x01;
+  static constexpr uint8_t kParity = 0x02;
   void write(ByteBuffer& out) const;
   static std::optional<CallVideoFragHeader> read(const uint8_t* data, std::size_t len);
 };
@@ -52,6 +54,8 @@ class CallVideoReassembler {
   bool keyframe_ = false;
   std::vector<ByteBuffer> parts_;
   std::vector<uint8_t> got_;
+  ByteBuffer parity_;
+  std::size_t total_size_ = 0;
   bool active_ = false;
   std::chrono::steady_clock::time_point started_{};
 };
