@@ -7,6 +7,7 @@
 #include "nyx/types.hpp"
 
 #include <cstdint>
+#include <chrono>
 #include <map>
 #include <optional>
 #include <vector>
@@ -34,8 +35,10 @@ class ReliableSession {
 
  private:
   struct SendItem {
+    uint32_t stream_id = 0;
     ByteBuffer payload;
     uint32_t retransmits = 0;
+    std::chrono::steady_clock::time_point sent_at{};
   };
 
   std::optional<ByteBuffer> encode_data(uint32_t stream_id, uint32_t seq,

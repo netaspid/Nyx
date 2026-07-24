@@ -4,6 +4,7 @@
 #include "nyx/util.hpp"
 
 #include <algorithm>
+#include <iterator>
 
 namespace nyx {
 
@@ -121,7 +122,9 @@ std::vector<ByteBuffer> ReliableSession::flush_pending() {
     auto& ps = pending_.front();
     while (ps.next < ps.frags.size() && inflight_.size() < window_ && batch < kMaxBatch) {
       const uint32_t seq = next_seq_++;
-      inflight_[seq] = SendItem{ps.frags[ps.next], 0};
+      inflight_[seq] =
+          SendItem{ps.stream_id, ps.frags[ps.next], 0,
+                   std::chrono::steady_clock::now()};
       if (auto wire = encode_data(ps.stream_id, seq, ps.frags[ps.next])) {
         frames.push_back(std::move(*wire));
       }
@@ -137,7 +140,25 @@ std::vector<ByteBuffer> ReliableSession::flush_pending() {
   return frames;
 }
 
-std::vector<ByteBuffer> ReliableSession::drain_outbound() { return flush_pending(); }
+std::vector<ByteBuffer> ReliableSession::drain_outbound() {
+  std::vector<ByteBuffer> frames;
+  const auto now = std::chrono::steady_clock::now();
+  constexpr auto kRetransmitAfter = std::chrono::milliseconds(120);
+  constexpr std::size_t kMaxRetransmitBatch = 32;
+  for (auto& [seq, item] : inflight_) {
+    if (frames.size() >= kMaxRetransmitBatch) break;
+    if (now - item.sent_at < kRetransmitAfter) continue;
+    if (auto wire = encode_data(item.stream_id, seq, item.payload)) {
+      frames.push_back(std::move(*wire));
+      item.sent_at = now;
+      ++item.retransmits;
+    }
+  }
+  auto pending = flush_pending();
+  frames.insert(frames.end(), std::make_move_iterator(pending.begin()),
+                std::make_move_iterator(pending.end()));
+  return frames;
+}
 
 std::vector<ByteBuffer> ReliableSession::send(uint32_t stream_id,
                                                const ByteBuffer& data) {

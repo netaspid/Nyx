@@ -56,7 +56,7 @@ bool is_call_frame(const ByteBuffer& data) {
   if (data.empty()) return false;
   const uint8_t b = data[0];
   return b >= static_cast<uint8_t>(CallKind::Invite) &&
-         b <= static_cast<uint8_t>(CallKind::Endpoint);
+         b <= static_cast<uint8_t>(CallKind::RelaySet);
 }
 
 CallId generate_call_id() {
@@ -291,6 +291,84 @@ std::optional<CallEndpointMessage> CallEndpointMessage::decode(const ByteBuffer&
   if (!read_str(data, off, kMaxHost, m.self.host)) return std::nullopt;
   if (off + 2 > data.size()) return std::nullopt;
   m.self.port = read_u16_le(data.data() + off);
+  return m;
+}
+
+ByteBuffer CallLeaveAckMessage::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(CallKind::LeaveAck));
+  write_call_id(out, call_id);
+  write_user_id(out, user_id);
+  return out;
+}
+
+std::optional<CallLeaveAckMessage> CallLeaveAckMessage::decode(const ByteBuffer& data) {
+  if (data.size() != 1 + kCallIdSize + kPublicKeySize ||
+      data[0] != static_cast<uint8_t>(CallKind::LeaveAck)) {
+    return std::nullopt;
+  }
+  CallLeaveAckMessage m;
+  std::size_t off = 1;
+  if (!read_call_id(data, off, m.call_id)) return std::nullopt;
+  if (!read_user_id(data, off, m.user_id)) return std::nullopt;
+  return m;
+}
+
+ByteBuffer CallRelayCandidateMessage::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(CallKind::RelayCandidate));
+  write_call_id(out, call_id);
+  write_user_id(out, user_id);
+  write_u16_le(out, score);
+  return out;
+}
+
+std::optional<CallRelayCandidateMessage> CallRelayCandidateMessage::decode(
+    const ByteBuffer& data) {
+  if (data.size() != 1 + kCallIdSize + kPublicKeySize + 2 ||
+      data[0] != static_cast<uint8_t>(CallKind::RelayCandidate)) {
+    return std::nullopt;
+  }
+  CallRelayCandidateMessage m;
+  std::size_t off = 1;
+  if (!read_call_id(data, off, m.call_id)) return std::nullopt;
+  if (!read_user_id(data, off, m.user_id)) return std::nullopt;
+  m.score = read_u16_le(data.data() + off);
+  return m;
+}
+
+ByteBuffer CallRelaySetMessage::encode() const {
+  ByteBuffer out;
+  out.push_back(static_cast<uint8_t>(CallKind::RelaySet));
+  write_call_id(out, call_id);
+  write_u32_le(out, epoch);
+  const uint16_t count =
+      static_cast<uint16_t>(std::min(relays.size(), kMaxCallParticipants));
+  write_u16_le(out, count);
+  for (uint16_t i = 0; i < count; ++i) write_user_id(out, relays[i]);
+  return out;
+}
+
+std::optional<CallRelaySetMessage> CallRelaySetMessage::decode(const ByteBuffer& data) {
+  if (data.size() < 1 + kCallIdSize + 4 + 2 ||
+      data[0] != static_cast<uint8_t>(CallKind::RelaySet)) {
+    return std::nullopt;
+  }
+  CallRelaySetMessage m;
+  std::size_t off = 1;
+  if (!read_call_id(data, off, m.call_id)) return std::nullopt;
+  m.epoch = read_u32_le(data.data() + off);
+  off += 4;
+  const uint16_t count = read_u16_le(data.data() + off);
+  off += 2;
+  if (count > kMaxCallParticipants ||
+      off + static_cast<std::size_t>(count) * kPublicKeySize != data.size()) {
+    return std::nullopt;
+  }
+  m.relays.resize(count);
+  for (auto& relay : m.relays) {
+    if (!read_user_id(data, off, relay)) return std::nullopt;
+  }
   return m;
 }
 

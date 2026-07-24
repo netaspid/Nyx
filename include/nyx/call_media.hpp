@@ -4,6 +4,7 @@
  *  Кадры медиа на kRealtimeStream (без ARQ).
  */
 
+#include "nyx/identity.hpp"
 #include "nyx/types.hpp"
 
 #include <cstdint>
@@ -21,6 +22,9 @@ enum class CallMediaType : uint8_t {
 struct CallMediaFrame {
   CallMediaType type = CallMediaType::Opus;
   uint32_t seq = 0;
+  UserId origin{};
+  uint8_t hop_count = 0;
+  uint8_t audio_level = 0;
   ByteBuffer payload;
 
   ByteBuffer encode() const;

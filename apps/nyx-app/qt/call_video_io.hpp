@@ -55,6 +55,10 @@ class CallVideoIo : public QObject {
 
   Q_INVOKABLE void setCameraEnabled(bool on);
   bool cameraEnabled() const { return camera_enabled_.load(std::memory_order_acquire); }
+  void setTransmitEnabled(bool on) {
+    const bool previous = transmit_enabled_.exchange(on, std::memory_order_acq_rel);
+    if (on && !previous) force_keyframe_.store(true, std::memory_order_release);
+  }
 
   QString preferredCameraId() const;
   void setPreferredCameraId(const QString& id);
@@ -119,6 +123,8 @@ class CallVideoIo : public QObject {
   std::atomic<bool> running_{false};
   std::atomic<bool> capturing_{false};
   std::atomic<bool> camera_enabled_{true};
+  std::atomic<bool> transmit_enabled_{true};
+  std::atomic<bool> force_keyframe_{true};
   std::atomic<bool> ingest_busy_{false};
   std::atomic<qint64> last_ingest_ms_{0};
   bool local_dirty_ = false;

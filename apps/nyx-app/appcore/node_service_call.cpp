@@ -14,6 +14,7 @@ namespace {
 
 constexpr auto kCallAnnounceInterval = std::chrono::milliseconds(400);
 constexpr int kCallAnnounceBursts = 20;
+constexpr auto kCallSignalRetryInterval = std::chrono::milliseconds(350);
 
 }  // namespace
 
@@ -46,22 +47,197 @@ void NodeService::emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
   if (cb) cb(type, payload, from);
 }
 
-bool NodeService::note_inbound_call_media(nyx::CallMediaType type, uint32_t seq) {
+bool NodeService::note_inbound_call_media(const nyx::UserId& from,
+                                          nyx::CallMediaType type, uint32_t seq) {
   std::lock_guard lock(call_mutex_);
-  for (int i = 0; i < 4; ++i) {
-    if (call_media_dedupe_type_[static_cast<std::size_t>(i)] == static_cast<uint8_t>(type) &&
-        call_media_dedupe_seq_[static_cast<std::size_t>(i)] == seq) {
+  for (const auto& entry : call_media_dedupe_) {
+    if (entry.from == from && entry.type == static_cast<uint8_t>(type) &&
+        entry.seq == seq) {
       return false;
     }
   }
-  call_media_dedupe_type_[static_cast<std::size_t>(call_media_dedupe_i_)] =
-      static_cast<uint8_t>(type);
-  call_media_dedupe_seq_[static_cast<std::size_t>(call_media_dedupe_i_)] = seq;
-  call_media_dedupe_i_ = (call_media_dedupe_i_ + 1) % 4;
+  auto& entry = call_media_dedupe_[static_cast<std::size_t>(call_media_dedupe_i_)];
+  entry.from = from;
+  entry.type = static_cast<uint8_t>(type);
+  entry.seq = seq;
+  call_media_dedupe_i_ =
+      (call_media_dedupe_i_ + 1) % static_cast<int>(call_media_dedupe_.size());
   const auto now = std::chrono::steady_clock::now();
   if (type == nyx::CallMediaType::Opus) call_inbound_opus_ = now;
   if (type == nyx::CallMediaType::Video) call_inbound_video_ = now;
   return true;
+}
+
+void NodeService::pump_pending_call_signals(const std::shared_ptr<NetSession>& session) {
+  if (!session) return;
+  std::vector<nyx::ByteBuffer> due;
+  const auto now = std::chrono::steady_clock::now();
+  {
+    std::lock_guard lock(call_mutex_);
+    for (auto it = pending_call_signals_.begin(); it != pending_call_signals_.end();) {
+      if (now >= it->expires) {
+        it = pending_call_signals_.erase(it);
+        continue;
+      }
+      if (it->session_id == session->id && now >= it->next_send) {
+        due.push_back(it->wire);
+        it->next_send = now + kCallSignalRetryInterval;
+      }
+      ++it;
+    }
+  }
+  for (const auto& wire : due) send_call_frame_on_session(session, wire);
+}
+
+bool NodeService::call_media_peer_allowed(const nyx::UserId& peer) const {
+  if (call_relays_.empty()) return true;
+  const auto self = load_profile().public_key;
+  const bool self_relay =
+      std::find(call_relays_.begin(), call_relays_.end(), self) != call_relays_.end();
+  const bool peer_relay =
+      std::find(call_relays_.begin(), call_relays_.end(), peer) != call_relays_.end();
+  if (self_relay && peer_relay) return true;
+
+  if (!self_relay) {
+    const auto assigned = nyx::call_relay_targets(self, call_relays_);
+    return std::find(assigned.begin(), assigned.end(), peer) != assigned.end();
+  }
+  const auto assigned = nyx::call_relay_targets(peer, call_relays_);
+  return std::find(assigned.begin(), assigned.end(), self) != assigned.end();
+}
+
+void NodeService::apply_call_topology() {
+  std::shared_ptr<nyx::CallMesh> mesh;
+  std::set<nyx::UserId> allowed;
+  {
+    std::lock_guard lock(call_mutex_);
+    mesh = call_mesh_;
+    if (!mesh || call_relays_.empty()) return;
+    for (const auto& peer : call_participants_) {
+      if (peer != load_profile().public_key && call_media_peer_allowed(peer)) {
+        allowed.insert(peer);
+      }
+    }
+  }
+  mesh->retain_peers(allowed);
+}
+
+void NodeService::announce_relay_candidate() {
+  nyx::CallRelayCandidateMessage candidate;
+  std::string sid;
+  {
+    std::lock_guard lock(call_mutex_);
+    if (call_.state != nyx::CallState::Active ||
+        call_.scope != nyx::CallScope::Field) {
+      return;
+    }
+    candidate.call_id = call_.call_id;
+    candidate.user_id = load_profile().public_key;
+    candidate.score = static_cast<uint16_t>(
+        std::min<uint32_t>(1000, call_relay_score_.load() + (call_is_host_ ? 200 : 0)));
+    call_relay_candidates_[candidate.user_id] = candidate.score;
+    sid = call_session_id_;
+  }
+  if (auto session = find_session(sid)) {
+    send_call_frame_on_session(session, candidate.encode());
+  }
+  recompute_relay_set();
+}
+
+void NodeService::recompute_relay_set() {
+  nyx::CallRelaySetMessage message;
+  std::string sid;
+  bool changed = false;
+  {
+    std::lock_guard lock(call_mutex_);
+    if (!call_is_host_ || call_.state != nyx::CallState::Active ||
+        call_.scope != nyx::CallScope::Field) {
+      return;
+    }
+    std::vector<std::pair<nyx::UserId, uint16_t>> ranked;
+    for (const auto& id : call_participants_) {
+      const auto score = call_relay_candidates_.find(id);
+      ranked.emplace_back(id, score == call_relay_candidates_.end() ? 0 : score->second);
+    }
+    std::vector<nyx::UserId> relays =
+        nyx::select_call_relays(std::move(ranked), call_participants_.size());
+    if (relays != call_relays_) {
+      call_relays_ = relays;
+      ++call_relay_epoch_;
+      changed = true;
+    }
+    message.call_id = call_.call_id;
+    message.epoch = call_relay_epoch_;
+    message.relays = call_relays_;
+    sid = call_session_id_;
+  }
+  if (!changed) return;
+  if (auto session = find_session(sid)) {
+    send_call_frame_on_session(session, message.encode());
+  }
+  apply_call_topology();
+  maybe_send_field_intros();
+}
+
+void NodeService::handle_field_mesh_media(const nyx::UserId& from, nyx::ByteBuffer raw) {
+  auto frame = nyx::CallMediaFrame::decode(raw);
+  if (!frame) return;
+  if (from != nyx::UserId{} && frame->hop_count == 0 &&
+      frame->origin != nyx::UserId{} && frame->origin != from) {
+    return;
+  }
+  const nyx::UserId origin = frame->origin == nyx::UserId{} ? from : frame->origin;
+  if (!note_inbound_call_media(origin, frame->type, frame->seq)) return;
+
+  std::shared_ptr<nyx::CallMesh> mesh;
+  bool relay = false;
+  bool forward = false;
+  bool deliver = true;
+  {
+    std::lock_guard lock(call_mutex_);
+    const auto now = std::chrono::steady_clock::now();
+    if (frame->type == nyx::CallMediaType::Opus) {
+      call_speaker_levels_[origin] = {frame->audio_level, now};
+      nyx::UserId best{};
+      uint8_t best_level = 8;
+      for (auto it = call_speaker_levels_.begin(); it != call_speaker_levels_.end();) {
+        if (now - it->second.second > std::chrono::milliseconds(800)) {
+          it = call_speaker_levels_.erase(it);
+          continue;
+        }
+        if (it->second.first > best_level) {
+          best_level = it->second.first;
+          best = it->first;
+        }
+        ++it;
+      }
+      const auto current = call_speaker_levels_.find(call_dominant_speaker_);
+      if (best == nyx::UserId{}) {
+        call_dominant_speaker_ = {};
+      } else if (current == call_speaker_levels_.end() ||
+          current->second.first + 12 < best_level) {
+        call_dominant_speaker_ = best;
+      }
+    }
+    if (frame->type == nyx::CallMediaType::Video &&
+        call_dominant_speaker_ != nyx::UserId{} &&
+        origin != call_dominant_speaker_) {
+      deliver = false;
+    }
+    const auto self = load_profile().public_key;
+    relay = std::find(call_relays_.begin(), call_relays_.end(), self) !=
+            call_relays_.end();
+    forward = relay && frame->hop_count < 2 &&
+              (frame->type != nyx::CallMediaType::Video ||
+               origin == call_dominant_speaker_);
+    mesh = call_mesh_;
+  }
+  if (forward && mesh) {
+    frame->origin = origin;
+    ++frame->hop_count;
+    mesh->send_realtime_except(from, frame->encode());
+  }
+  if (deliver) emit_call_media(frame->type, frame->payload, origin);
 }
 
 void NodeService::stop_call_mesh() {
@@ -70,6 +246,13 @@ void NodeService::stop_call_mesh() {
   call_mesh_pending_peers_.clear();
   call_mesh_announce_burst_ = 0;
   call_mesh_last_announce_ = {};
+  call_relay_candidates_.clear();
+  call_relays_.clear();
+  call_relay_epoch_ = 0;
+  call_speaker_levels_.clear();
+  call_dominant_speaker_ = {};
+  call_media_dedupe_ = {};
+  call_media_dedupe_i_ = 0;
   if (call_mesh_) {
     call_mesh_->stop();
     call_mesh_.reset();
@@ -81,6 +264,7 @@ void NodeService::request_call_mesh_announce() { call_mesh_need_announce_.store(
 
 void NodeService::queue_mesh_peer(const nyx::CallPeerEndpoint& peer) {
   if (peer.port == 0 || peer.host.empty()) return;
+  if (!call_media_peer_allowed(peer.user_id)) return;
   for (auto& p : call_mesh_pending_peers_) {
     if (p.user_id == peer.user_id) {
       p = peer;
@@ -123,10 +307,7 @@ void NodeService::ensure_field_call_mesh() {
     return;
   }
   mesh->set_on_realtime([this](const nyx::UserId& from, nyx::ByteBuffer raw) {
-    auto frame = nyx::CallMediaFrame::decode(raw);
-    if (!frame) return;
-    if (!note_inbound_call_media(frame->type, frame->seq)) return;
-    emit_call_media(frame->type, frame->payload, from);
+    handle_field_mesh_media(from, std::move(raw));
   });
 
   {
@@ -187,34 +368,18 @@ void NodeService::pump_field_hub_media(
   }
 }
 
-bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload) {
+bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
+                                  uint8_t audio_level) {
   if (payload.empty() || payload.size() > nyx::kMaxCallMediaPayload) return false;
   std::string sid;
   uint32_t seq = 0;
   nyx::CallScope scope = nyx::CallScope::Direct;
-  std::shared_ptr<nyx::CallMesh> mesh;
-  bool need_hub_mirror = false;
   {
     std::lock_guard lock(call_mutex_);
     if (call_.state != nyx::CallState::Active) return false;
     sid = call_session_id_;
     seq = call_media_seq_++;
     scope = call_.scope;
-    mesh = call_mesh_;
-    const auto now = std::chrono::steady_clock::now();
-    if (scope == nyx::CallScope::Field) {
-      const bool no_inbound_opus =
-          type == nyx::CallMediaType::Opus &&
-          (call_inbound_opus_.time_since_epoch().count() == 0 ||
-           now - call_inbound_opus_ > std::chrono::seconds(2));
-      const bool no_inbound_video =
-          type == nyx::CallMediaType::Video &&
-          (call_inbound_video_.time_since_epoch().count() == 0 ||
-           now - call_inbound_video_ > std::chrono::seconds(2));
-      const int mesh_n = (mesh && mesh->active()) ? static_cast<int>(mesh->established_count()) : 0;
-      // Dual-path until reverse media is confirmed, or always for small rooms.
-      need_hub_mirror = no_inbound_opus || no_inbound_video || mesh_n <= 4;
-    }
   }
   auto session = find_session(sid);
   if (!session) return false;
@@ -222,11 +387,13 @@ bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
   nyx::CallMediaFrame frame;
   frame.type = type;
   frame.seq = seq;
+  frame.origin = load_profile().public_key;
+  frame.audio_level = audio_level;
   frame.payload = payload;
   const nyx::ByteBuffer wire = frame.encode();
 
-  if (scope == nyx::CallScope::Direct) {
-    if (!session->connection) return false;
+  if (scope == nyx::CallScope::Direct || scope == nyx::CallScope::Field) {
+    if (scope == nyx::CallScope::Direct && !session->connection) return false;
     std::lock_guard lock(session->call_media_outbound_mutex);
     constexpr std::size_t kMaxQueuedMedia = 384;
     while (session->call_media_outbound.size() >= kMaxQueuedMedia) {
@@ -244,27 +411,12 @@ bool NodeService::send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer
     session->call_media_outbound.push_back(wire);
     return true;
   }
-  if (scope == nyx::CallScope::Field) {
-    bool mesh_sent = false;
-    if (mesh && mesh->active() && mesh->established_count() > 0) {
-      if (type == nyx::CallMediaType::Video)
-        mesh_sent = mesh->send_realtime_video(wire);
-      else
-        mesh_sent = mesh->send_realtime(wire);
-    }
-    bool hub_sent = false;
-    // Prefer hub mirror whenever mesh is empty — Field audio must not stall.
-    if (!mesh_sent || need_hub_mirror || (mesh && mesh->established_count() == 0)) {
-      if (session->group_hub) hub_sent = session->group_hub->send_realtime_all(wire);
-      else if (session->connection) hub_sent = session->connection->send_realtime(wire);
-    }
-    return mesh_sent || hub_sent;
-  }
   return false;
 }
 
 void NodeService::pump_call_realtime(const std::shared_ptr<NetSession>& session) {
   if (!session) return;
+  pump_pending_call_signals(session);
   bool active = false;
   std::string sid;
   nyx::CallScope scope = nyx::CallScope::Direct;
@@ -302,38 +454,33 @@ void NodeService::pump_call_realtime(const std::shared_ptr<NetSession>& session)
   }
 
   auto handle_raw = [this](const nyx::UserId& from, nyx::ByteBuffer raw) {
-    auto frame = nyx::CallMediaFrame::decode(raw);
-    if (!frame) return;
-    if (!note_inbound_call_media(frame->type, frame->seq)) return;
-    emit_call_media(frame->type, frame->payload, from);
+    handle_field_mesh_media(from, std::move(raw));
   };
 
-  if (scope == nyx::CallScope::Direct && session->connection) {
-    // Connection and its Noise/socket state are worker-thread-owned. Audio and
-    // video threads only enqueue above; serialize actual UDP sends here.
-    std::deque<nyx::ByteBuffer> outbound;
-    {
-      std::lock_guard lock(session->call_media_outbound_mutex);
-      constexpr std::size_t kMaxSendPerPump = 128;
-      for (std::size_t i = 0;
-           i < kMaxSendPerPump && !session->call_media_outbound.empty(); ++i) {
-        auto opus = std::find_if(
-            session->call_media_outbound.begin(), session->call_media_outbound.end(),
-            [](const nyx::ByteBuffer& queued) {
-              return !queued.empty() &&
-                     queued[0] == static_cast<uint8_t>(nyx::CallMediaType::Opus);
-            });
-        if (opus != session->call_media_outbound.end()) {
-          outbound.push_back(std::move(*opus));
-          session->call_media_outbound.erase(opus);
-        } else {
-          outbound.push_back(std::move(session->call_media_outbound.front()));
-          session->call_media_outbound.pop_front();
-        }
+  std::deque<nyx::ByteBuffer> outbound;
+  {
+    std::lock_guard lock(session->call_media_outbound_mutex);
+    constexpr std::size_t kMaxSendPerPump = 128;
+    for (std::size_t i = 0;
+         i < kMaxSendPerPump && !session->call_media_outbound.empty(); ++i) {
+      auto opus = std::find_if(
+          session->call_media_outbound.begin(), session->call_media_outbound.end(),
+          [](const nyx::ByteBuffer& queued) {
+            return !queued.empty() &&
+                   queued[0] == static_cast<uint8_t>(nyx::CallMediaType::Opus);
+          });
+      if (opus != session->call_media_outbound.end()) {
+        outbound.push_back(std::move(*opus));
+        session->call_media_outbound.erase(opus);
+      } else {
+        outbound.push_back(std::move(session->call_media_outbound.front()));
+        session->call_media_outbound.pop_front();
       }
     }
-    for (const auto& packet : outbound) session->connection->send_realtime(packet);
+  }
 
+  if (scope == nyx::CallScope::Direct && session->connection) {
+    for (const auto& packet : outbound) session->connection->send_realtime(packet);
     // Drain all, deliver Opus before Video so mic audio is not starved by JPEG frags.
     std::vector<nyx::ByteBuffer> opus_q;
     std::vector<nyx::ByteBuffer> video_q;
@@ -351,6 +498,21 @@ void NodeService::pump_call_realtime(const std::shared_ptr<NetSession>& session)
   }
 
   if (scope == nyx::CallScope::Field) {
+    for (const auto& packet : outbound) {
+      const auto frame = nyx::CallMediaFrame::decode(packet);
+      bool mesh_sent = false;
+      if (mesh && mesh->active() && mesh->established_count() > 0) {
+        mesh_sent = frame && frame->type == nyx::CallMediaType::Video
+                        ? mesh->send_realtime_video(packet)
+                        : mesh->send_realtime(packet);
+      }
+      if (!mesh_sent) {
+        if (session->group_hub)
+          session->group_hub->send_realtime_all(packet);
+        else if (session->connection)
+          session->connection->send_realtime(packet);
+      }
+    }
     if (mesh && mesh->active()) mesh->poll();
     pump_field_hub_media(session, handle_raw);
   }
@@ -409,6 +571,11 @@ void NodeService::set_call_camera_on(bool on) {
 bool NodeService::call_is_host() const {
   std::lock_guard lock(call_mutex_);
   return call_is_host_;
+}
+
+std::vector<nyx::UserId> NodeService::call_participants() const {
+  std::lock_guard lock(call_mutex_);
+  return {call_participants_.begin(), call_participants_.end()};
 }
 
 nyx::GroupRole NodeService::local_field_role(const std::shared_ptr<NetSession>& session) const {
@@ -522,14 +689,15 @@ void NodeService::wire_call_handlers(const std::shared_ptr<NetSession>& session)
   }
   if (session->group_hub) {
     session->group_hub->set_on_call_frame(
-        [this, session](const nyx::UserId&, const nyx::ByteBuffer& frame) {
-          handle_incoming_call_frame(session, frame);
+        [this, session](const nyx::UserId& from, const nyx::ByteBuffer& frame) {
+          handle_incoming_call_frame(session, frame, from);
         });
   }
 }
 
 void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& session,
-                                             const nyx::ByteBuffer& frame) {
+                                             const nyx::ByteBuffer& frame,
+                                             const nyx::UserId& from) {
   if (!session || !nyx::is_call_frame(frame)) return;
 
   if (auto inv = nyx::CallInviteMessage::decode(frame)) {
@@ -555,11 +723,15 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
           call_.reset();
           call_session_id_.clear();
           call_title_.clear();
+          call_participants_.clear();
         }
         if (call_.on_invite(*inv)) {
           call_session_id_ = session->id;
           call_title_ = session->title;
           call_is_host_ = false;
+          call_participants_.clear();
+          call_participants_.insert(load_profile().public_key);
+          if (from != nyx::UserId{}) call_participants_.insert(from);
           accepted = true;
         }
       }
@@ -600,6 +772,7 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
       std::lock_guard lock(call_mutex_);
       ok = call_.on_accept(*acc);
       field = call_.scope == nyx::CallScope::Field;
+      if (ok && field && from != nyx::UserId{}) call_participants_.insert(from);
     }
     if (ok) {
       emit_call_changed();
@@ -626,6 +799,7 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
         call_.reset();
         call_session_id_.clear();
         call_title_.clear();
+        call_participants_.clear();
       }
     }
     if (ok) {
@@ -643,7 +817,16 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
       std::lock_guard lock(call_mutex_);
       // Only end the call that this Hangup names. Retried hangups from a previous
       // call must not wipe a fresh Incoming/Outgoing with a new call_id.
-      ok = call_.on_hangup(*hang);
+      const bool field_guest_leave =
+          call_.scope == nyx::CallScope::Field &&
+          hang->reason != nyx::CallHangupReason::HubClosed && from != nyx::UserId{};
+      if (field_guest_leave) {
+        call_participants_.erase(from);
+        if (call_mesh_) call_mesh_->remove_peer(from);
+        ok = call_participants_.size() <= 1;
+      } else {
+        ok = call_.on_hangup(*hang);
+      }
       if (ok) {
         stop_call_mesh();
         call_is_host_ = false;
@@ -651,6 +834,7 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
         call_session_id_.clear();
         call_title_.clear();
         call_media_seq_ = 0;
+        call_participants_.clear();
       }
     }
     if (ok) {
@@ -667,7 +851,12 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
   }
 
   if (auto intro = nyx::CallPeerIntroMessage::decode(frame)) {
-    (void)intro;
+    {
+      std::lock_guard lock(call_mutex_);
+      if (call_.call_id != intro->call_id || call_.idle()) return;
+      call_participants_.insert(intro->peer.user_id);
+      queue_mesh_peer(intro->peer);
+    }
     request_call_mesh_start();
     request_call_mesh_announce();
     return;
@@ -687,12 +876,52 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
   if (auto roster = nyx::CallRosterMessage::decode(frame)) {
     if (roster->participants.size() > nyx::kMaxCallParticipants) {
       emit_status("слишком много участников звонка");
+      return;
     }
+    {
+      std::lock_guard lock(call_mutex_);
+      if (call_.call_id != roster->call_id || call_.idle()) return;
+      call_participants_.clear();
+      call_participants_.insert(load_profile().public_key);
+      call_participants_.insert(roster->participants.begin(), roster->participants.end());
+    }
+    return;
+  }
+
+  if (auto candidate = nyx::CallRelayCandidateMessage::decode(frame)) {
+    {
+      std::lock_guard lock(call_mutex_);
+      if (call_.call_id != candidate->call_id || !call_is_host_ ||
+          call_participants_.find(candidate->user_id) == call_participants_.end()) {
+        return;
+      }
+      call_relay_candidates_[candidate->user_id] = candidate->score;
+    }
+    recompute_relay_set();
+    return;
+  }
+
+  if (auto relay_set = nyx::CallRelaySetMessage::decode(frame)) {
+    {
+      std::lock_guard lock(call_mutex_);
+      if (call_.call_id != relay_set->call_id ||
+          relay_set->epoch < call_relay_epoch_) {
+        return;
+      }
+      call_relay_epoch_ = relay_set->epoch;
+      call_relays_ = relay_set->relays;
+    }
+    apply_call_topology();
+    request_call_mesh_announce();
     return;
   }
 
   if (auto gone = nyx::CallPeerGoneMessage::decode(frame)) {
     bool end_call = false;
+    nyx::CallLeaveAckMessage ack;
+    ack.call_id = gone->call_id;
+    ack.user_id = gone->user_id;
+    send_call_frame_on_session(session, ack.encode());
     {
       std::lock_guard lock(call_mutex_);
       if (call_.call_id != gone->call_id && !call_.idle()) {
@@ -701,21 +930,21 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
         if (call_mesh_ && call_.call_id == gone->call_id) {
           call_mesh_->remove_peer(gone->user_id);
         }
+        call_participants_.erase(gone->user_id);
+        call_relay_candidates_.erase(gone->user_id);
+        call_speaker_levels_.erase(gone->user_id);
         call_.on_peer_leave(gone->call_id);
         // Direct calls are 1:1 — peer leave means the call is over.
         // Field: end when mesh is empty (last peer left).
         const bool direct = call_.scope == nyx::CallScope::Direct;
-        const int mesh_n =
-            (call_mesh_ && call_mesh_->active())
-                ? static_cast<int>(call_mesh_->established_count())
-                : 0;
-        if (direct || mesh_n == 0) {
+        if (direct || call_participants_.size() <= 1) {
           stop_call_mesh();
           call_is_host_ = false;
           call_.reset();
           call_session_id_.clear();
           call_title_.clear();
           call_media_seq_ = 0;
+          call_participants_.clear();
           end_call = true;
         }
       }
@@ -724,6 +953,22 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
       emit_call_changed();
       emit_status("звонок завершён");
     }
+    if (!end_call) recompute_relay_set();
+    return;
+  }
+
+  if (auto ack = nyx::CallLeaveAckMessage::decode(frame)) {
+    const auto self = load_profile().public_key;
+    if (ack->user_id != self) return;
+    std::lock_guard lock(call_mutex_);
+    pending_call_signals_.erase(
+        std::remove_if(pending_call_signals_.begin(), pending_call_signals_.end(),
+                       [&](const PendingCallSignal& pending) {
+                         auto gone = nyx::CallPeerGoneMessage::decode(pending.wire);
+                         return gone && gone->call_id == ack->call_id &&
+                                gone->user_id == ack->user_id;
+                       }),
+        pending_call_signals_.end());
     return;
   }
 }
@@ -731,25 +976,24 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
 void NodeService::maybe_send_field_intros() {
   std::string sid;
   nyx::CallId call_id{};
+  std::vector<nyx::UserId> participants;
   {
     std::lock_guard lock(call_mutex_);
     if (call_.state != nyx::CallState::Active || call_.scope != nyx::CallScope::Field) return;
     call_id = call_.call_id;
     sid = call_session_id_;
+    participants.assign(call_participants_.begin(), call_participants_.end());
   }
   auto session = find_session(sid);
   if (!session || !session->group_hub) return;
 
-  std::size_t n = 1;
-  for (const auto& m : session->group_hub->members()) {
-    if (m.joined) ++n;
-  }
+  const std::size_t n = participants.size();
   if (n > nyx::kMaxCallParticipants) {
-    emit_status("лимит участников звонка: 200");
+    emit_status("лимит участников звонка: 20");
     return;
   }
 
-  session->group_hub->distribute_call_mesh_intros(call_id);
+  session->group_hub->distribute_call_mesh_intros(call_id, participants);
 }
 
 bool NodeService::start_call(bool video, const std::string& session_id) {
@@ -771,7 +1015,7 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
 
   if (scope == nyx::CallScope::Field) {
     if (!nyx::can_start_field_call(local_field_role(session))) {
-      emit_status("нет права открывать комнату (нужна роль ведущего)");
+      emit_status("нет права открывать комнату");
       return false;
     }
   }
@@ -797,6 +1041,7 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
       call_session_id_.clear();
       call_title_.clear();
       call_media_seq_ = 0;
+      call_participants_.clear();
     }
     if (scope == nyx::CallScope::Field) {
       if (!call_.open_field_room(mode, target)) {
@@ -804,6 +1049,8 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
         return false;
       }
       call_is_host_ = true;
+      call_participants_.clear();
+      call_participants_.insert(load_profile().public_key);
     } else {
       if (!call_.start_outgoing(mode, scope, target)) {
         emit_status("звонок уже идёт");
@@ -815,7 +1062,7 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
     inv.mode = mode;
     inv.scope = scope;
     inv.group_or_peer = target;
-    inv.sdp_lite = "nyx-call/1;jpeg;room";
+    inv.sdp_lite = "nyx-call/2;av1;room";
     call_session_id_ = session->id;
     call_title_ = session->title;
   }
@@ -828,6 +1075,7 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
       call_.reset();
       call_session_id_.clear();
       call_title_.clear();
+      call_participants_.clear();
     }
     emit_status("не удалось открыть комнату");
     emit_call_changed();
@@ -838,6 +1086,7 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
     request_call_mesh_start();
     maybe_send_field_intros();
     request_call_mesh_announce();
+    announce_relay_candidate();
     emit_status(video ? "видеокомната открыта" : "аудиокомната открыта");
   } else {
     emit_status(video ? "видеовызов…" : "аудиовызов…");
@@ -855,10 +1104,13 @@ bool NodeService::accept_call() {
     if (!call_.accept(call_.mode)) return false;
     acc.call_id = call_.call_id;
     acc.mode = call_.mode;
-    acc.sdp_lite = "nyx-call/1;jpeg;room";
+    acc.sdp_lite = "nyx-call/2;av1;room";
     sid = call_session_id_;
     scope = call_.scope;
     call_is_host_ = false;
+    if (scope == nyx::CallScope::Field) {
+      call_participants_.insert(load_profile().public_key);
+    }
   }
   auto session = find_session(sid);
   if (!session || !send_call_frame_on_session(session, acc.encode())) {
@@ -870,6 +1122,7 @@ bool NodeService::accept_call() {
       call_session_id_.clear();
       call_title_.clear();
       call_media_seq_ = 0;
+      call_participants_.clear();
     }
     emit_status("не удалось войти в комнату");
     emit_call_changed();
@@ -880,6 +1133,7 @@ bool NodeService::accept_call() {
   if (scope == nyx::CallScope::Field) {
     request_call_mesh_start();
     request_call_mesh_announce();
+    announce_relay_candidate();
   }
   return true;
 }
@@ -887,24 +1141,21 @@ bool NodeService::accept_call() {
 bool NodeService::reject_call() {
   nyx::CallRejectMessage rej;
   std::string sid;
-  nyx::CallScope scope = nyx::CallScope::Direct;
   {
     std::lock_guard lock(call_mutex_);
     if (call_.state != nyx::CallState::Incoming) return false;
     rej.call_id = call_.call_id;
     rej.reason = nyx::CallRejectReason::Declined;
     sid = call_session_id_;
-    scope = call_.scope;
     call_.reject();
     stop_call_mesh();
     call_is_host_ = false;
     call_.reset();
     call_session_id_.clear();
     call_title_.clear();
+    call_participants_.clear();
   }
-  if (scope == nyx::CallScope::Direct) {
-    if (auto session = find_session(sid)) send_call_frame_on_session(session, rej.encode());
-  }
+  if (auto session = find_session(sid)) send_call_frame_on_session(session, rej.encode());
   emit_call_changed();
   return true;
 }
@@ -921,7 +1172,10 @@ bool NodeService::hangup_call() {
     std::lock_guard lock(call_mutex_);
     if (call_.idle()) return false;
     hang.call_id = call_.call_id;
-    hang.reason = nyx::CallHangupReason::Normal;
+    hang.reason =
+        call_.scope == nyx::CallScope::Field && call_is_host_
+            ? nyx::CallHangupReason::HubClosed
+            : nyx::CallHangupReason::Normal;
     gone.call_id = call_.call_id;
     call_id = call_.call_id;
     sid = call_session_id_;
@@ -931,15 +1185,17 @@ bool NodeService::hangup_call() {
   self = load_profile().public_key;
   gone.user_id = self;
 
-  // Send signaling BEFORE tearing local state down, and retry — call frames are
-  // not in the chat outbox, so a single lost UDP datagram left the peer hanging.
+  // Keep leave signaling alive briefly after local media has stopped.
   if (auto session = find_session(sid)) {
     const nyx::ByteBuffer wire =
         (field && !is_host) ? gone.encode() : hang.encode();
-    for (int i = 0; i < 3; ++i) {
-      send_call_frame_on_session(session, wire);
-      // Also send Hangup when a Field guest leaves, so peers clear the UI.
-      if (field && !is_host) send_call_frame_on_session(session, hang.encode());
+    send_call_frame_on_session(session, wire);
+    if (field) {
+      const auto now = std::chrono::steady_clock::now();
+      std::lock_guard lock(call_mutex_);
+      pending_call_signals_.push_back(
+          PendingCallSignal{sid, wire, now + kCallSignalRetryInterval,
+                            now + std::chrono::seconds(5)});
     }
   }
 
@@ -953,6 +1209,7 @@ bool NodeService::hangup_call() {
       call_session_id_.clear();
       call_title_.clear();
       call_media_seq_ = 0;
+      call_participants_.clear();
     }
   }
   emit_call_changed();
