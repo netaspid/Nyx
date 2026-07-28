@@ -347,7 +347,7 @@ if(NYX_BUILD_GUI)
 
       add_executable(nyx-setup-stub apps/nyx-setup/main.cpp apps/nyx-setup/setup_util.cpp)
       target_include_directories(nyx-setup-stub PRIVATE apps/nyx-setup)
-      target_link_libraries(nyx-setup-stub PRIVATE shell32 ole32 comctl32 shlwapi)
+      target_link_libraries(nyx-setup-stub PRIVATE shell32 ole32 comctl32 shlwapi advapi32)
       target_compile_options(nyx-setup-stub PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
       set_target_properties(nyx-setup-stub PROPERTIES
         WIN32_EXECUTABLE TRUE

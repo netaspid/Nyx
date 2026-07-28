@@ -371,6 +371,62 @@ bool tool_on_path_w(const wchar_t* name) {
   return n > 0 && n < MAX_PATH;
 }
 
+std::wstring expand_env_w(const wchar_t* pattern) {
+  wchar_t buf[MAX_PATH * 2];
+  const DWORD cap = static_cast<DWORD>(sizeof(buf) / sizeof(buf[0]));
+  const DWORD n = ExpandEnvironmentStringsW(pattern, buf, cap);
+  if (n == 0 || n > cap) return {};
+  return buf;
+}
+
+std::wstring app_paths_soffice_w(HKEY root) {
+  HKEY key = nullptr;
+  const REGSAM access = KEY_READ | KEY_WOW64_64KEY;
+  if (RegOpenKeyExW(root,
+                    L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\soffice.exe", 0,
+                    access, &key) != ERROR_SUCCESS) {
+    return {};
+  }
+  wchar_t path[MAX_PATH];
+  DWORD type = 0;
+  DWORD size = sizeof(path);
+  const LONG rc =
+      RegQueryValueExW(key, nullptr, nullptr, &type, reinterpret_cast<LPBYTE>(path), &size);
+  RegCloseKey(key);
+  if (rc != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)) return {};
+  std::wstring resolved = (type == REG_EXPAND_SZ) ? expand_env_w(path) : std::wstring(path);
+  if (!path_exists_w(resolved)) return {};
+  return resolved;
+}
+
+std::wstring find_soffice_exe_w() {
+  wchar_t buf[MAX_PATH];
+  if (SearchPathW(nullptr, L"soffice.exe", nullptr, MAX_PATH, buf, nullptr) > 0 &&
+      path_exists_w(buf)) {
+    return buf;
+  }
+  if (SearchPathW(nullptr, L"soffice", L".exe", MAX_PATH, buf, nullptr) > 0 &&
+      path_exists_w(buf)) {
+    return buf;
+  }
+
+  for (HKEY root : {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER}) {
+    std::wstring from_reg = app_paths_soffice_w(root);
+    if (!from_reg.empty()) return from_reg;
+  }
+
+  static const wchar_t* kCandidates[] = {
+      L"%ProgramFiles%\\LibreOffice\\program\\soffice.exe",
+      L"%ProgramFiles(x86)%\\LibreOffice\\program\\soffice.exe",
+      L"%LOCALAPPDATA%\\Programs\\LibreOffice\\program\\soffice.exe",
+  };
+  for (const wchar_t* pattern : kCandidates) {
+    const std::wstring path = expand_env_w(pattern);
+    if (!path.empty() && path_exists_w(path)) return path;
+  }
+  return {};
+}
+
 bool has_pdf_tools_w(const std::wstring& install_dir) {
   if (tool_on_path_w(L"mutool") || tool_on_path_w(L"pdftoppm")) return true;
   if (!install_dir.empty()) {
@@ -380,9 +436,7 @@ bool has_pdf_tools_w(const std::wstring& install_dir) {
   return false;
 }
 
-bool has_office_tools_w() {
-  return tool_on_path_w(L"soffice") || tool_on_path_w(L"soffice.exe");
-}
+bool has_office_tools_w() { return !find_soffice_exe_w().empty(); }
 
 int run_hidden(const std::wstring& cmd) {
   STARTUPINFOW si{};
@@ -502,23 +556,18 @@ bool install_mupdf_tools(const std::wstring& install_dir, std::wstring* err) {
 
 bool install_libreoffice(std::wstring* err) {
   if (has_office_tools_w()) return true;
-  if (!winget_available()) {
-    if (err) {
-      *err =
-          L"LibreOffice не найден, а winget недоступен. Установите LibreOffice вручную для "
-          L"просмотра Office-документов.";
-    }
-    return false;
+  if (winget_available()) {
+    winget_install(L"TheDocumentFoundation.LibreOffice");
+    if (has_office_tools_w()) return true;
   }
-  if (!winget_install(L"TheDocumentFoundation.LibreOffice")) {
-    if (err) {
-      *err =
-          L"Не удалось установить LibreOffice через winget. Установите вручную с "
-          L"https://www.libreoffice.org/";
-    }
-    return false;
+  if (err) {
+    *err = winget_available()
+               ? L"Не удалось установить LibreOffice через winget. Установите вручную с "
+                 L"https://www.libreoffice.org/"
+               : L"LibreOffice не найден, а winget недоступен. Установите LibreOffice вручную для "
+                 L"просмотра Office-документов.";
   }
-  return has_office_tools_w();
+  return false;
 }
 
 }  // namespace

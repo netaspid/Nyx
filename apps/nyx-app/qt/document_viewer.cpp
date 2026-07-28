@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -112,6 +113,42 @@ QString ext_of(const QString& path) {
   return QFileInfo(path).suffix().trimmed().toLower();
 }
 
+#if defined(Q_OS_WIN)
+QString windows_soffice_path() {
+  auto usable = [](const QString& path) -> bool {
+    if (path.isEmpty()) return false;
+    const QFileInfo fi(path);
+    return fi.exists() && fi.isFile();
+  };
+
+  const QString from_path = QStandardPaths::findExecutable(QStringLiteral("soffice"));
+  if (usable(from_path)) return from_path;
+
+  for (const QString& root :
+       {QStringLiteral("HKEY_LOCAL_MACHINE"), QStringLiteral("HKEY_CURRENT_USER")}) {
+    QSettings app_paths(
+        root + QStringLiteral(
+                   "\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\soffice.exe"),
+        QSettings::NativeFormat);
+    const QString def = app_paths.value(QStringLiteral(".")).toString();
+    if (usable(def)) return def;
+  }
+
+  const QStringList candidates = {
+      QDir(QString::fromLocal8Bit(qgetenv("ProgramFiles")))
+          .filePath(QStringLiteral("LibreOffice/program/soffice.exe")),
+      QDir(QString::fromLocal8Bit(qgetenv("ProgramFiles(x86)")))
+          .filePath(QStringLiteral("LibreOffice/program/soffice.exe")),
+      QDir(QString::fromLocal8Bit(qgetenv("LOCALAPPDATA")))
+          .filePath(QStringLiteral("Programs/LibreOffice/program/soffice.exe")),
+  };
+  for (const QString& path : candidates) {
+    if (usable(path)) return path;
+  }
+  return {};
+}
+#endif
+
 }  // namespace
 
 DocumentViewer::DocumentViewer(QObject* parent) : QObject(parent) {
@@ -174,9 +211,13 @@ QString DocumentViewer::findTool(const QStringList& names) {
     return fi.exists() && fi.isFile() && fi.isExecutable();
   };
 
-  // Prefer system tools: bundled copies may lack +x after extract/copy.
   for (const QString& name : names) {
-#if !defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
+    if (name == QLatin1String("soffice") || name == QLatin1String("libreoffice")) {
+      const QString soffice = windows_soffice_path();
+      if (!soffice.isEmpty() && QFileInfo::exists(soffice)) return soffice;
+    }
+#else
     const QString abs = QStringLiteral("/usr/bin/") + name;
     if (usable(abs)) return abs;
 #endif
