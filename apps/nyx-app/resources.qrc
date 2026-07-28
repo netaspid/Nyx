@@ -78,6 +78,9 @@
     <file alias="expand.svg">resources/icons/expand.svg</file>
     <file alias="collapse.svg">resources/icons/collapse.svg</file>
     <file alias="people.svg">resources/icons/people.svg</file>
+    <file alias="chat.svg">resources/icons/chat.svg</file>
+    <file alias="field.svg">resources/icons/field.svg</file>
+    <file alias="link.svg">resources/icons/link.svg</file>
     <file alias="emoji.svg">resources/icons/emoji.svg</file>
     <file alias="lock.svg">resources/icons/lock.svg</file>
     <file alias="chevron.svg">resources/icons/chevron.svg</file>
