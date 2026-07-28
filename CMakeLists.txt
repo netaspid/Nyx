@@ -211,6 +211,7 @@ if(NYX_BUILD_GUI)
     qt_add_executable(nyx-app
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
+      apps/nyx-app/qt/document_viewer.cpp
       apps/nyx-app/qt/win_chrome.cpp
       apps/nyx-app/qt/android_platform.cpp
       apps/nyx-app/qt/call_audio_io.cpp

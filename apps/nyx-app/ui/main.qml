@@ -73,6 +73,10 @@ ApplicationWindow {
 
     function handleBack() {
         // Active call: Back = hangup (also the escape hatch when camera steals taps).
+        if (app.documentViewer && app.documentViewer.open) {
+            app.documentViewer.close()
+            return true
+        }
         if (app.inAppMediaOpen) {
             app.closeInAppMedia()
             return true
@@ -239,6 +243,17 @@ ApplicationWindow {
             anchors.fill: parent
             theme: appTheme
             node: app
+        }
+    }
+
+    Loader {
+        id: documentViewerLoader
+        anchors.fill: parent
+        active: app.documentViewer && app.documentViewer.open
+        sourceComponent: DocumentViewer {
+            anchors.fill: parent
+            theme: appTheme
+            viewer: app.documentViewer
         }
     }
 

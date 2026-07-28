@@ -723,7 +723,8 @@ ColumnLayout {
                                     theme: root.theme
                                     text: qsTr("Открыть")
                                     onClicked: node.openFileByHash(
-                                        fileRow.fileHash, fileRow.fileName, fileRow.fileMime)
+                                        fileRow.fileHash, fileRow.fileName, fileRow.fileMime,
+                                        fileRow.fileRootPath, fileRow.fileFullRelPath)
                                 }
                                 NyxButtonSecondary {
                                     // Только личка 1:1: передать файл собеседнику по каналу обмена.

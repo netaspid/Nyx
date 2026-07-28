@@ -1,4 +1,6 @@
 #include "node_controller.hpp"
+
+#include "document_viewer.hpp"
 #include "android_platform.hpp"
 #include "win_chrome.hpp"
 
@@ -103,6 +105,8 @@ bool parse_user_id_hex(const QString& hex, nyx::UserId& out) {
 }  // namespace
 
 NodeController::NodeController(QObject* parent) : QObject(parent) {
+  connect(&document_viewer_, &DocumentViewer::toast, this,
+          [this](const QString& message, bool isError) { showToast(message, isError); });
 #if defined(Q_OS_ANDROID)
   service_.set_call_relay_score(300);
   nyx_android::native_camera_stop();
@@ -1234,7 +1238,7 @@ void NodeController::openRemoteFile(const QString& hashHex, const QString& fileN
     showToast(QStringLiteral("Нет права открывать файлы по сети"));
     return;
   }
-  openFileByHash(hashHex, fileName, {});
+  openFileByHash(hashHex, fileName, {}, rootPath, relativePath);
 }
 
 void NodeController::openFilesView() { setMainViewMode(1); }
@@ -3590,6 +3594,7 @@ void NodeController::openInAppMedia(const QString& path, const QString& mime,
     showToast(QStringLiteral("Файл ещё не загружен"), true);
     return;
   }
+  document_viewer_.close();
   in_app_media_path_ = path;
   in_app_media_mime_ = mime;
   in_app_media_title_ = title;
@@ -3688,6 +3693,7 @@ QString NodeController::mediaLocalPath(const QString& hashHex) const {
     return true;
   };
 
+  // Prefer O(1) index lookup — never scan the whole listing on the UI thread.
   if (const auto object = service_.find_file_object(hex.toStdString())) {
     const QString path = QString::fromStdString(object->absolute_path());
     if (is_verified_path(path)) return path;
@@ -3701,20 +3707,6 @@ QString NodeController::mediaLocalPath(const QString& hashHex) const {
   for (const QString& name : matches) {
     const QString path = dir.filePath(name);
     if (is_verified_path(path)) return path;
-  }
-
-  const std::vector<std::string> scopes = {
-      file_scope_group_id_.toStdString(),
-      active_chat_kind_ == 1 ? active_chat_ref_id_.toStdString()
-                             : std::string{}};
-  for (const auto& scope : scopes) {
-    for (const auto& e : service_.local_files_for_scope(scope)) {
-      if (nyx::to_hex(e.hash.data(), e.hash.size()) != hex.toStdString()) {
-        continue;
-      }
-      const QString path = QString::fromStdString(e.absolute_path());
-      if (is_verified_path(path)) return path;
-    }
   }
 
   const QString dl = QString::fromStdString(nyx::default_downloads_dir());
@@ -3800,7 +3792,8 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
   }
   QString use_mime = mime.trimmed();
   if (use_mime.isEmpty()) {
-    use_mime = QMimeDatabase().mimeTypeForFile(local).name();
+    // MatchExtension avoids reading file contents (can stall on big/network files).
+    use_mime = QMimeDatabase().mimeTypeForFile(local, QMimeDatabase::MatchExtension).name();
   }
   if (use_mime.startsWith(QLatin1String("image/")) ||
       use_mime.startsWith(QLatin1String("audio/")) ||
@@ -3808,8 +3801,37 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
     openInAppMedia(local, use_mime, QFileInfo(local).fileName());
     return true;
   }
+  if (DocumentViewer::canHandle(local, use_mime)) {
+    closeInAppMedia();
+    return document_viewer_.openDocument(local, use_mime, QFileInfo(local).fileName());
+  }
 #if defined(Q_OS_ANDROID)
   if (nyx_android::open_file(local, use_mime)) return true;
+  showToast(QStringLiteral("Не удалось открыть файл"), true);
+  return false;
+#elif defined(Q_OS_LINUX)
+  // Wrapper sets LD_LIBRARY_PATH to bundled Qt — inherited xdg-open often fails.
+  const QString abs = QFileInfo(local).absoluteFilePath();
+  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  env.remove(QStringLiteral("LD_LIBRARY_PATH"));
+  env.remove(QStringLiteral("QT_PLUGIN_PATH"));
+  env.remove(QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH"));
+  env.remove(QStringLiteral("QML2_IMPORT_PATH"));
+  env.remove(QStringLiteral("QML_IMPORT_PATH"));
+
+  auto launch = [&](const QString& program, const QStringList& args) -> bool {
+    QProcess proc;
+    proc.setProcessEnvironment(env);
+    proc.setProgram(program);
+    proc.setArguments(args);
+    proc.setWorkingDirectory(QFileInfo(abs).absolutePath());
+    return proc.startDetached();
+  };
+  if (launch(QStringLiteral("/usr/bin/xdg-open"), {abs})) return true;
+  if (launch(QStringLiteral("xdg-open"), {abs})) return true;
+  if (launch(QStringLiteral("/usr/bin/gio"), {QStringLiteral("open"), abs})) return true;
+  // Last resort (may still inherit bad env via QDesktopServices).
+  if (QDesktopServices::openUrl(QUrl::fromLocalFile(abs))) return true;
   showToast(QStringLiteral("Не удалось открыть файл"), true);
   return false;
 #else
@@ -3821,23 +3843,43 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
 
 void NodeController::openFileByHash(const QString& hashHex,
                                     const QString& fileName,
-                                    const QString& mime) {
+                                    const QString& mime,
+                                    const QString& rootPath,
+                                    const QString& relativePath) {
   const QString hex = hashHex.trimmed().toLower();
   if (hex.size() != 64) {
     showToast(QStringLiteral("Некорректный hash файла"), true);
     return;
   }
   QString path = fileLocalPath(hex);
+  // Field share roots: UI already knows root+rel — use them if index lookup misses.
+  if (path.isEmpty() && !rootPath.trimmed().isEmpty() &&
+      !relativePath.trimmed().isEmpty()) {
+    const QString candidate =
+        QDir(rootPath.trimmed()).filePath(relativePath.trimmed());
+    if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile()) {
+      path = candidate;
+    }
+  }
   if (path.isEmpty()) {
     ensureFileAvailable(hex, fileName);
     showToast(QStringLiteral("Файл загружается — откроется, когда будет готов"));
     // Retry open shortly after download lands in cache.
-    QTimer::singleShot(1200, this, [this, hex, fileName, mime]() {
-      const QString ready = fileLocalPath(hex);
+    QTimer::singleShot(1200, this, [this, hex, fileName, mime, rootPath, relativePath]() {
+      QString ready = fileLocalPath(hex);
+      if (ready.isEmpty() && !rootPath.trimmed().isEmpty() &&
+          !relativePath.trimmed().isEmpty()) {
+        const QString candidate =
+            QDir(rootPath.trimmed()).filePath(relativePath.trimmed());
+        if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile())
+          ready = candidate;
+      }
       if (ready.isEmpty()) return;
       QString use_mime = mime;
       if (use_mime.isEmpty()) {
-        use_mime = QMimeDatabase().mimeTypeForFile(ready).name();
+        use_mime = QMimeDatabase()
+                       .mimeTypeForFile(ready, QMimeDatabase::MatchExtension)
+                       .name();
       }
       openLocalFile(ready, use_mime);
     });
@@ -3845,7 +3887,8 @@ void NodeController::openFileByHash(const QString& hashHex,
   }
   QString use_mime = mime;
   if (use_mime.isEmpty()) {
-    use_mime = QMimeDatabase().mimeTypeForFile(path).name();
+    use_mime =
+        QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name();
   }
   openLocalFile(path, use_mime);
 }

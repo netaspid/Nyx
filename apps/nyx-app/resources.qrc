@@ -5,6 +5,7 @@
     <file>ui/components/AvatarBadge.qml</file>
     <file>ui/components/ChatBubble.qml</file>
     <file>ui/components/ChatMediaPlayer.qml</file>
+    <file>ui/components/DocumentViewer.qml</file>
     <file>ui/components/ChatMediaCapture.qml</file>
     <file>ui/components/ChatListItem.qml</file>
     <file>ui/components/NyxLogo.qml</file>

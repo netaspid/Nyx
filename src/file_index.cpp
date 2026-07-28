@@ -491,10 +491,22 @@ FileEntry FileIndex::make_directory_marker(const ShareRoot& root, int file_count
 
 std::vector<FileEntry> FileIndex::listing_for_session(const GroupId& session_group) const {
   std::lock_guard lock(mutex_);
-  std::vector<FileEntry> out = entries_for_session(session_group);
-  for (const auto& root : roots_for_session(session_group)) {
-    out.insert(out.begin(),
-               make_directory_marker(root, count_in_root(root.path, root.group_id)));
+  std::vector<FileEntry> out;
+  out.reserve(entries_.size() + share_roots_.size());
+  for (const auto& e : entries_) {
+    if (entry_visible_in_session(e, session_group)) out.push_back(e);
+  }
+  for (const auto& r : share_roots_) {
+    FileEntry fake;
+    fake.share_group = r.group_id;
+    if (!entry_visible_in_session(fake, session_group)) continue;
+    int count = 0;
+    const std::string norm = normalize_utf8_path(r.path);
+    for (const auto& e : entries_) {
+      if (e.is_directory()) continue;
+      if (normalize_utf8_path(e.root_path) == norm && e.share_group == r.group_id) ++count;
+    }
+    out.insert(out.begin(), make_directory_marker(r, count));
   }
   return out;
 }

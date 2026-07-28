@@ -105,7 +105,7 @@ Rectangle {
                 return
             }
             if (node && fileHash.length)
-                node.openFileByHash(fileHash, fileName, fileMime)
+                node.openFileByHash(fileHash, fileName, fileMime, fileRootPath, fileFullRelPath)
         }
     }
 
