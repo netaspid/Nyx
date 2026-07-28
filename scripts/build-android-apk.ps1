@@ -561,4 +561,5 @@ Configure-And-Build
 Sign-Apk
 Log "APK: $OutApk"
 if ($InstallApk) { Install-ApkToDevice }
-Log "Finished."
+Log "Finished. Sideload: adb install -r `"$OutApk`""
+Log "Docs: docs/ADMIN.md section 'Сборка Android APK'"

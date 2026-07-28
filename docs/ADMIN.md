@@ -30,6 +30,36 @@ Nyx — P2P-мессенджер: лички, поля (группы), обме�
 
 Данные аккаунта: `%APPDATA%\Nyx\` (профили, ключи, история, индекс файлов).
 
+Установщик ищет LibreOffice в `Program Files` / App Paths (не только в PATH). Если Office уже стоит, повторная установка через winget не нужна. MuPDF при отсутствии кладётся в `tools\` рядом с `nyx-app.exe`.
+
+## Сборка Android APK (Windows)
+
+Нужны: Windows 10/11 x64, сеть, ~15–25 ГБ на Qt + Android SDK/NDK.
+
+```powershell
+# Один проход: зависимости + Qt Android + сборка + подпись debug-ключом
+.\scripts\build-android-apk.ps1
+
+# Только зависимости (SDK/NDK/Qt), без сборки
+.\scripts\build-android-apk.ps1 -DepsOnly
+
+# После сборки сразу поставить на подключённый телефон
+.\scripts\build-android-apk.ps1 -InstallApk
+```
+
+Готовый файл: `build-android\Nyx.apk`.
+
+Опционально через окружение:
+
+| Переменная | Смысл | По умолчанию |
+|------------|--------|--------------|
+| `NYX_QT_ROOT` | Каталог Qt (aqt) | `%LOCALAPPDATA%\Qt` |
+| `NYX_QT_VERSION` | Версия Qt | `6.5.3` |
+| `ANDROID_SDK_ROOT` | Android SDK | `%LOCALAPPDATA%\Android\Sdk` |
+| `NYX_ANDROID_BUILD_DIR` | Каталог сборки | `build-android` |
+
+На Linux: `./scripts/build-android-apk.sh`.
+
 ## Развёртывание rendezvous
 
 Протокол: **UDP**. Порт по умолчанию: **3478**.

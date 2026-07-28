@@ -143,6 +143,7 @@ ApplicationWindow {
                 theme: appTheme
                 node: app
                 avatarColorFn: avatarColor
+                useBottomNav: root.narrow
                 visible: root.showChatList
                 onSettingsRequested: settingsDialog.open()
             }
@@ -165,6 +166,13 @@ ApplicationWindow {
             }
         }
 
+        MobileNavBar {
+            Layout.fillWidth: true
+            theme: appTheme
+            node: app
+            visible: root.narrow
+        }
+
         StatusBar {
             id: statusBar
             Layout.fillWidth: true
@@ -172,6 +180,7 @@ ApplicationWindow {
             node: app
             text: app.statusText
             busy: app.busy
+            compact: root.narrow
         }
     }
 

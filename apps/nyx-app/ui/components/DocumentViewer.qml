@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import "../controls"
 import "."
 
-/** Desktop in-app document viewer (text / PDF / office→PDF). No WebView. */
 Item {
     id: root
     required property var theme
@@ -13,6 +12,7 @@ Item {
     anchors.fill: parent
     visible: viewer && viewer.open
     focus: visible
+    readonly property bool narrow: width < 720 || Qt.platform.os === "android"
 
     Keys.onPressed: function(event) {
         if (!viewer || !viewer.open) return
@@ -46,8 +46,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 10
+        anchors.margins: root.narrow ? 8 : 16
+        spacing: root.narrow ? 8 : 10
 
         RowLayout {
             Layout.fillWidth: true
@@ -56,13 +56,14 @@ Item {
                 Layout.fillWidth: true
                 text: viewer ? (viewer.title || qsTr("Документ")) : ""
                 color: "#ffffff"
-                font.pixelSize: 16
+                font.pixelSize: root.narrow ? 14 : 16
                 font.weight: Font.DemiBold
                 elide: Text.ElideMiddle
             }
             NyxButtonSecondary {
                 theme: root.theme
                 text: qsTr("Внешне")
+                visible: !root.narrow
                 onClicked: if (viewer) viewer.openExternally()
             }
             IconButton {

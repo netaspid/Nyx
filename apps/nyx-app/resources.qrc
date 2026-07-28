@@ -17,6 +17,7 @@
     <file>ui/controls/NyxCheckBox.qml</file>
     <file>ui/controls/NyxTextField.qml</file>
     <file>ui/panels/ChatListPanel.qml</file>
+    <file>ui/panels/MobileNavBar.qml</file>
     <file>ui/panels/ChatView.qml</file>
     <file>ui/panels/MainContentPanel.qml</file>
     <file>ui/panels/FilesPanel.qml</file>

@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 
-/** Circular button with SVG icon from qrc:/icons (no Windows-only fonts). */
 AbstractButton {
     id: ctrl
 

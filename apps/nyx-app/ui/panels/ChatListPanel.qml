@@ -10,6 +10,8 @@ Rectangle {
     required property var theme
     required property var node
     required property var avatarColorFn
+    /** When true, icon nav moves to MobileNavBar (narrow / Android). */
+    property bool useBottomNav: false
 
     signal settingsRequested()
     property string contextChatKey: ""
@@ -34,12 +36,13 @@ Rectangle {
 
             NyxLogo {
                 theme: root.theme
-                compact: root.width < 340
+                compact: root.width < 340 || root.useBottomNav
             }
 
             Item { Layout.fillWidth: true }
 
             IconButton {
+                visible: !root.useBottomNav
                 theme: root.theme
                 name: "chat"
                 btnSize: root.width < 300 ? 32 : 36
@@ -53,6 +56,7 @@ Rectangle {
                 }
             }
             IconButton {
+                visible: !root.useBottomNav
                 theme: root.theme
                 name: "people"
                 btnSize: root.width < 300 ? 32 : 36
@@ -66,6 +70,7 @@ Rectangle {
                 }
             }
             IconButton {
+                visible: !root.useBottomNav
                 theme: root.theme
                 name: "field"
                 btnSize: root.width < 300 ? 32 : 36
@@ -79,6 +84,7 @@ Rectangle {
                 }
             }
             IconButton {
+                visible: !root.useBottomNav
                 theme: root.theme
                 name: "folder"
                 btnSize: root.width < 300 ? 32 : 36
@@ -90,6 +96,7 @@ Rectangle {
             }
 
             IconButton {
+                visible: !root.useBottomNav
                 theme: root.theme
                 name: "link"
                 btnSize: root.width < 300 ? 32 : 36
@@ -113,7 +120,12 @@ Rectangle {
                 anchors.margins: -4
                 radius: theme.radiusBtn
                 color: theme.btnSecondaryHover
-                opacity: profileMouse.containsMouse && !profileMenu.visible ? 0.45 : 0
+                opacity: {
+                    if (profileMenu.visible) return 0
+                    if (profileMouse.pressed) return 0.45
+                    if (profileMouse.containsMouse && Qt.platform.os !== "android") return 0.45
+                    return 0
+                }
             }
 
             RowLayout {
