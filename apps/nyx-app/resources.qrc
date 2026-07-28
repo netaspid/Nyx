@@ -5,6 +5,7 @@
     <file>ui/components/AvatarBadge.qml</file>
     <file>ui/components/ChatBubble.qml</file>
     <file>ui/components/ChatMediaPlayer.qml</file>
+    <file>ui/components/DocumentViewer.qml</file>
     <file>ui/components/ChatMediaCapture.qml</file>
     <file>ui/components/ChatListItem.qml</file>
     <file>ui/components/NyxLogo.qml</file>
@@ -77,6 +78,9 @@
     <file alias="expand.svg">resources/icons/expand.svg</file>
     <file alias="collapse.svg">resources/icons/collapse.svg</file>
     <file alias="people.svg">resources/icons/people.svg</file>
+    <file alias="chat.svg">resources/icons/chat.svg</file>
+    <file alias="field.svg">resources/icons/field.svg</file>
+    <file alias="link.svg">resources/icons/link.svg</file>
     <file alias="emoji.svg">resources/icons/emoji.svg</file>
     <file alias="lock.svg">resources/icons/lock.svg</file>
     <file alias="chevron.svg">resources/icons/chevron.svg</file>

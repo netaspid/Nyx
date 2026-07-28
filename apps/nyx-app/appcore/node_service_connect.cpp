@@ -419,7 +419,7 @@ bool NodeService::try_connect_via_lan(const std::string& user_id_hex) {
   const std::string dm_key = make_dm_session_id(uid);
   if (is_session_up(dm_key)) return true;
   const std::string short_id = uid.substr(0, 8);
-  const auto peers = browse_lan_peers(2200);
+  const auto peers = browse_lan_peers(800);
   std::vector<const nyx::LanPeer*> matches;
   for (const auto& p : peers) {
     if (p.user_id_short != short_id) continue;
@@ -438,6 +438,22 @@ bool NodeService::try_connect_via_lan(const std::string& user_id_hex) {
     if (start_connect_peer(p->host, p->port)) return true;
   }
   return false;
+}
+
+void NodeService::dial_dm_async(std::string peer_hex, std::string token_hex,
+                                std::string lan_host, uint16_t lan_port, bool quiet) {
+  std::thread([this, peer_hex = std::move(peer_hex), token_hex = std::move(token_hex),
+               lan_host = std::move(lan_host), lan_port, quiet]() {
+    if (!peer_hex.empty()) {
+      if (is_session_up(make_dm_session_id(peer_hex))) return;
+      if (try_connect_via_lan(peer_hex)) return;
+    }
+    if (token_hex.size() == 64) {
+      start_connect_token(token_hex, quiet);
+      return;
+    }
+    if (!lan_host.empty() && lan_port > 0) start_connect_peer(lan_host, lan_port);
+  }).detach();
 }
 
 bool NodeService::start_listen(bool lan_advertise) {

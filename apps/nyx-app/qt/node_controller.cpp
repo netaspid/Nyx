@@ -1,5 +1,6 @@
 #include "node_controller.hpp"
 #include "android_platform.hpp"
+#include "document_viewer.hpp"
 #include "win_chrome.hpp"
 
 #include "nyx/account_store.hpp"
@@ -35,6 +36,8 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMimeDatabase>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QTemporaryFile>
 #include <QGuiApplication>
 #include <QIcon>
@@ -103,6 +106,9 @@ bool parse_user_id_hex(const QString& hex, nyx::UserId& out) {
 }  // namespace
 
 NodeController::NodeController(QObject* parent) : QObject(parent) {
+  connect(&document_viewer_, &DocumentViewer::toast, this,
+          [this](const QString& message, bool isError) { showToast(message, isError); });
+
 #if defined(Q_OS_ANDROID)
   service_.set_call_relay_score(300);
   nyx_android::native_camera_stop();
@@ -241,16 +247,18 @@ void NodeController::beginMainSession() {
   syncFileScopeLabel();
   resetFileBrowse();
 
-  refreshFileLists();
-
   service_.load_network_config();
   syncNetworkSettingsFromService();
   refreshProfile();
+  loadProfileMeta();
   refreshChatList();
   refreshGroupList();
   refreshContactList();
-  loadProfileMeta();
-  refreshFileAccessLists();
+  // File index / access lists can be large — don't stall first paint.
+  QTimer::singleShot(0, this, [this]() {
+    refreshFileLists();
+    refreshFileAccessLists();
+  });
 #if defined(Q_OS_ANDROID)
   nyx_android::request_notification_permission();
   // Defer FGS until Activity is fully resumed (Xiaomi/Android 14).
@@ -258,18 +266,18 @@ void NodeController::beginMainSession() {
   QTimer::singleShot(5000, this, []() { nyx_android::start_keepalive_service(); });
 #endif
 
-  lan_discovery_timer_.setInterval(5000);
+  lan_discovery_timer_.setInterval(12000);
   connect(&lan_discovery_timer_, &QTimer::timeout, this, &NodeController::tickLanDiscovery);
   lan_discovery_timer_.start();
-  QTimer::singleShot(800, this, &NodeController::tickLanDiscovery);
+  QTimer::singleShot(1500, this, &NodeController::tickLanDiscovery);
   QTimer::singleShot(400, this, [this]() {
     service_.ensure_owned_hubs_running();
-    refreshChatList();
+    refreshChatSessionStates();
     emit sessionsChanged();
   });
-  QTimer::singleShot(1500, this, &NodeController::maybeAutoReconnectSessions);
+  QTimer::singleShot(2500, this, &NodeController::maybeAutoReconnectSessions);
 
-  session_reconnect_timer_.setInterval(5000);
+  session_reconnect_timer_.setInterval(20000);
   connect(&session_reconnect_timer_, &QTimer::timeout, this,
           &NodeController::maybeAutoReconnectSessions);
   session_reconnect_timer_.start();
@@ -333,13 +341,20 @@ bool NodeController::activeFieldIsOwner() const {
   if (active_chat_kind_ != static_cast<int>(nyx::ConversationKind::Group)) return false;
   if (active_chat_ref_id_.isEmpty()) return false;
 
+  const QString gid = active_chat_ref_id_.trimmed().toLower();
+  for (const QVariant& v : group_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("groupId")).toString() != gid) continue;
+    return m.value(QStringLiteral("isOwner")).toBool();
+  }
+
   nyx::Profile profile;
   if (!nyx::active_profile(profile)) return false;
 
   nyx::GroupStore store;
   store.load();
   nyx::GroupId group_id{};
-  if (!nyx::GroupStore::group_id_from_hex(active_chat_ref_id_.toStdString(), group_id)) {
+  if (!nyx::GroupStore::group_id_from_hex(gid.toStdString(), group_id)) {
     return false;
   }
   const auto group = store.find(group_id);
@@ -355,16 +370,9 @@ void NodeController::maybeAutoReconnectSessions() {
   emit inviteTokenChanged();
   emit listeningChanged();
   emit busyChanged();
+  // Only session badges — full disk rebuild every few seconds freezes the UI.
+  refreshChatSessionStates();
   emit sessionsChanged();
-  refreshGroupList();
-  refreshChatList();
-  // Reconnect is async — refresh again so list/status catch Live sessions.
-  QTimer::singleShot(2000, this, [this]() {
-    refreshChatList();
-    emit sessionsChanged();
-    emit chatChanged();
-    emit busyChanged();
-  });
 }
 
 QString NodeController::sessionSummary() const {
@@ -1234,7 +1242,7 @@ void NodeController::openRemoteFile(const QString& hashHex, const QString& fileN
     showToast(QStringLiteral("Нет права открывать файлы по сети"));
     return;
   }
-  openFileByHash(hashHex, fileName, {});
+  openFileByHash(hashHex, fileName, {}, rootPath, relativePath);
 }
 
 void NodeController::openFilesView() { setMainViewMode(1); }
@@ -2432,7 +2440,7 @@ void NodeController::wireCallbacks() {
 
   service_.set_on_sessions_changed([this]() {
     QMetaObject::invokeMethod(this, [this]() {
-      refreshChatList();
+      refreshChatSessionStates();
       emit sessionsChanged();
       emit busyChanged();
       emit listeningChanged();
@@ -2824,7 +2832,10 @@ void NodeController::completeOnboarding(const QString& nickname) {
 
 void NodeController::refreshChatList() {
   chat_list_.refreshFromDisk(profile_id_short_);
+  refreshChatSessionStates();
+}
 
+void NodeController::refreshChatSessionStates() {
   auto rank = [](const QString& state) -> int {
     if (state == QLatin1String("live")) return 3;
     if (state == QLatin1String("connecting")) return 2;
@@ -3295,7 +3306,7 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   service_.set_active_session(key.toStdString());
   chat_list_.setSelectedKey(key);
 
-  in_chat_ = live;
+  in_chat_ = true;  // Show chat UI immediately (narrow layout waits on inChat).
   if (live) {
     peer_status_text_ = is_group ? QStringLiteral("эфир открыт") : QStringLiteral("на связи");
   } else if (owner_field) {
@@ -3310,7 +3321,8 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   loadStoredHistory(kind, refId, key);
   chat_list_.clearUnread(key);
   emit chatChanged();
-  emit filesChanged();
+  // Defer file UI refresh — not needed for chat switch and can stall the UI thread.
+  QTimer::singleShot(0, this, [this]() { emit filesChanged(); });
 
   if (live) return;
 
@@ -3320,6 +3332,7 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
       peer_status_text_ = QStringLiteral("подключение к эфиру…");
       chat_list_.setSessionState(key, QStringLiteral("connecting"));
       emit chatChanged();
+      // Let the chat view paint before hub/join work.
       QTimer::singleShot(0, this, [this]() { connectActiveField(); });
       return;
     }
@@ -3333,7 +3346,6 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   QTimer::singleShot(0, this, [this, key]() {
     if (!service_.ensure_session(key.toStdString())) {
       peer_status_text_ = QStringLiteral("эфир закрыт");
-      in_chat_ = false;
       chat_list_.setSessionState(key, QStringLiteral("offline"));
       showToast(QStringLiteral("Не удалось открыть эфир"), true);
       emit chatChanged();
@@ -3481,7 +3493,8 @@ void NodeController::startListen() {
 }
 
 void NodeController::refreshLanPeers() {
-  service_.scan_lan_peers(3500);
+  // Keep browse short — longer waits belong on the worker thread only.
+  service_.scan_lan_peers(1200);
 }
 
 void NodeController::tickLanDiscovery() {
@@ -3590,6 +3603,7 @@ void NodeController::openInAppMedia(const QString& path, const QString& mime,
     showToast(QStringLiteral("Файл ещё не загружен"), true);
     return;
   }
+  document_viewer_.close();
   in_app_media_path_ = path;
   in_app_media_mime_ = mime;
   in_app_media_title_ = title;
@@ -3688,6 +3702,7 @@ QString NodeController::mediaLocalPath(const QString& hashHex) const {
     return true;
   };
 
+  // Prefer O(1) index lookup — never scan the whole listing on the UI thread.
   if (const auto object = service_.find_file_object(hex.toStdString())) {
     const QString path = QString::fromStdString(object->absolute_path());
     if (is_verified_path(path)) return path;
@@ -3701,20 +3716,6 @@ QString NodeController::mediaLocalPath(const QString& hashHex) const {
   for (const QString& name : matches) {
     const QString path = dir.filePath(name);
     if (is_verified_path(path)) return path;
-  }
-
-  const std::vector<std::string> scopes = {
-      file_scope_group_id_.toStdString(),
-      active_chat_kind_ == 1 ? active_chat_ref_id_.toStdString()
-                             : std::string{}};
-  for (const auto& scope : scopes) {
-    for (const auto& e : service_.local_files_for_scope(scope)) {
-      if (nyx::to_hex(e.hash.data(), e.hash.size()) != hex.toStdString()) {
-        continue;
-      }
-      const QString path = QString::fromStdString(e.absolute_path());
-      if (is_verified_path(path)) return path;
-    }
   }
 
   const QString dl = QString::fromStdString(nyx::default_downloads_dir());
@@ -3800,7 +3801,8 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
   }
   QString use_mime = mime.trimmed();
   if (use_mime.isEmpty()) {
-    use_mime = QMimeDatabase().mimeTypeForFile(local).name();
+    // MatchExtension avoids reading file contents (can stall on big/network files).
+    use_mime = QMimeDatabase().mimeTypeForFile(local, QMimeDatabase::MatchExtension).name();
   }
   if (use_mime.startsWith(QLatin1String("image/")) ||
       use_mime.startsWith(QLatin1String("audio/")) ||
@@ -3808,8 +3810,37 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
     openInAppMedia(local, use_mime, QFileInfo(local).fileName());
     return true;
   }
+  if (DocumentViewer::canHandle(local, use_mime)) {
+    closeInAppMedia();
+    return document_viewer_.openDocument(local, use_mime, QFileInfo(local).fileName());
+  }
 #if defined(Q_OS_ANDROID)
   if (nyx_android::open_file(local, use_mime)) return true;
+  showToast(QStringLiteral("Не удалось открыть файл"), true);
+  return false;
+#elif defined(Q_OS_LINUX)
+  // Wrapper sets LD_LIBRARY_PATH to bundled Qt — inherited xdg-open often fails.
+  const QString abs = QFileInfo(local).absoluteFilePath();
+  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  env.remove(QStringLiteral("LD_LIBRARY_PATH"));
+  env.remove(QStringLiteral("QT_PLUGIN_PATH"));
+  env.remove(QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH"));
+  env.remove(QStringLiteral("QML2_IMPORT_PATH"));
+  env.remove(QStringLiteral("QML_IMPORT_PATH"));
+
+  auto launch = [&](const QString& program, const QStringList& args) -> bool {
+    QProcess proc;
+    proc.setProcessEnvironment(env);
+    proc.setProgram(program);
+    proc.setArguments(args);
+    proc.setWorkingDirectory(QFileInfo(abs).absolutePath());
+    return proc.startDetached();
+  };
+  if (launch(QStringLiteral("/usr/bin/xdg-open"), {abs})) return true;
+  if (launch(QStringLiteral("xdg-open"), {abs})) return true;
+  if (launch(QStringLiteral("/usr/bin/gio"), {QStringLiteral("open"), abs})) return true;
+  // Last resort (may still inherit bad env via QDesktopServices).
+  if (QDesktopServices::openUrl(QUrl::fromLocalFile(abs))) return true;
   showToast(QStringLiteral("Не удалось открыть файл"), true);
   return false;
 #else
@@ -3821,23 +3852,43 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
 
 void NodeController::openFileByHash(const QString& hashHex,
                                     const QString& fileName,
-                                    const QString& mime) {
+                                    const QString& mime,
+                                    const QString& rootPath,
+                                    const QString& relativePath) {
   const QString hex = hashHex.trimmed().toLower();
   if (hex.size() != 64) {
     showToast(QStringLiteral("Некорректный hash файла"), true);
     return;
   }
   QString path = fileLocalPath(hex);
+  // Field share roots: UI already knows root+rel — use them if index lookup misses.
+  if (path.isEmpty() && !rootPath.trimmed().isEmpty() &&
+      !relativePath.trimmed().isEmpty()) {
+    const QString candidate =
+        QDir(rootPath.trimmed()).filePath(relativePath.trimmed());
+    if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile()) {
+      path = candidate;
+    }
+  }
   if (path.isEmpty()) {
     ensureFileAvailable(hex, fileName);
     showToast(QStringLiteral("Файл загружается — откроется, когда будет готов"));
     // Retry open shortly after download lands in cache.
-    QTimer::singleShot(1200, this, [this, hex, fileName, mime]() {
-      const QString ready = fileLocalPath(hex);
+    QTimer::singleShot(1200, this, [this, hex, fileName, mime, rootPath, relativePath]() {
+      QString ready = fileLocalPath(hex);
+      if (ready.isEmpty() && !rootPath.trimmed().isEmpty() &&
+          !relativePath.trimmed().isEmpty()) {
+        const QString candidate =
+            QDir(rootPath.trimmed()).filePath(relativePath.trimmed());
+        if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile())
+          ready = candidate;
+      }
       if (ready.isEmpty()) return;
       QString use_mime = mime;
       if (use_mime.isEmpty()) {
-        use_mime = QMimeDatabase().mimeTypeForFile(ready).name();
+        use_mime = QMimeDatabase()
+                       .mimeTypeForFile(ready, QMimeDatabase::MatchExtension)
+                       .name();
       }
       openLocalFile(ready, use_mime);
     });
@@ -3845,7 +3896,8 @@ void NodeController::openFileByHash(const QString& hashHex,
   }
   QString use_mime = mime;
   if (use_mime.isEmpty()) {
-    use_mime = QMimeDatabase().mimeTypeForFile(path).name();
+    use_mime =
+        QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name();
   }
   openLocalFile(path, use_mime);
 }
@@ -4835,7 +4887,10 @@ void NodeController::startFieldHub(const QString& groupIdHex) {
     showToast(QStringLiteral("Неверный id поля"));
     return;
   }
-  showGroupInView(gid);
+  // Already viewing this field — don't rebuild chat UI / reload history.
+  if (active_chat_key_ != QStringLiteral("group:") + gid || !in_chat_) {
+    showGroupInView(gid);
+  }
   setGroupsDialogOpen(false);
   peer_status_text_ = QStringLiteral("открытие эфира…");
   emit chatChanged();
@@ -4884,7 +4939,7 @@ void NodeController::joinField(const QString& inviteHex) {
   emit listeningChanged();
   emit busyChanged();
   emit sessionsChanged();
-  refreshChatList();
+  QTimer::singleShot(0, this, [this]() { refreshChatList(); });
 }
 
 void NodeController::connectActiveField() {
@@ -4908,8 +4963,6 @@ void NodeController::connectActiveField() {
     showToast(QStringLiteral("Неверный id поля"));
     return;
   }
-
-  refreshGroupList();
 
   bool is_owner = false;
   QString invite;

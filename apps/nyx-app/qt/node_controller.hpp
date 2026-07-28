@@ -4,6 +4,7 @@
 #include "call_video_io.hpp"
 #include "call_frame_provider.hpp"
 #include "chat_list_model.hpp"
+#include "document_viewer.hpp"
 #include "lan_peer_model.hpp"
 #include "message_model.hpp"
 #include "../appcore/node_service.hpp"
@@ -102,6 +103,7 @@ class NodeController : public QObject {
   Q_PROPERTY(QString inAppMediaPath READ inAppMediaPath NOTIFY inAppMediaChanged)
   Q_PROPERTY(QString inAppMediaMime READ inAppMediaMime NOTIFY inAppMediaChanged)
   Q_PROPERTY(QString inAppMediaTitle READ inAppMediaTitle NOTIFY inAppMediaChanged)
+  Q_PROPERTY(DocumentViewer* documentViewer READ documentViewer CONSTANT)
   Q_PROPERTY(QVariantList fileShareRoots READ fileShareRoots NOTIFY filesChanged)
   Q_PROPERTY(QString fileSelectedShareRoot READ fileSelectedShareRoot WRITE setFileSelectedShareRoot
                  NOTIFY filesChanged)
@@ -239,6 +241,7 @@ class NodeController : public QObject {
   QString inAppMediaPath() const { return in_app_media_path_; }
   QString inAppMediaMime() const { return in_app_media_mime_; }
   QString inAppMediaTitle() const { return in_app_media_title_; }
+  DocumentViewer* documentViewer() { return &document_viewer_; }
   QVariantList transferQueue() const { return transfer_queue_; }
   QVariantList fileShareRoots() const { return file_share_roots_; }
   QString fileSelectedShareRoot() const { return file_selected_share_root_; }
@@ -337,6 +340,8 @@ class NodeController : public QObject {
   Q_INVOKABLE void refreshProfile();
   Q_INVOKABLE void completeOnboarding(const QString& nickname);
   Q_INVOKABLE void refreshChatList();
+  /** Update live/offline badges without re-reading chat history from disk. */
+  void refreshChatSessionStates();
   Q_INVOKABLE void refreshGroupList();
   Q_INVOKABLE void refreshContactList();
   Q_INVOKABLE void refreshProfilePhotos();
@@ -492,10 +497,12 @@ class NodeController : public QObject {
   Q_INVOKABLE QString fileTextPreview(const QString& hashHex) const;
   /** Open local path with system viewer (FileProvider on Android). */
   Q_INVOKABLE bool openLocalFile(const QString& path, const QString& mime = {});
-  /** Ensure cached, then open. Downloads if needed. */
+  /** Ensure cached, then open. Downloads if needed. Optional root/rel for Field shares. */
   Q_INVOKABLE void openFileByHash(const QString& hashHex,
                                   const QString& fileName = {},
-                                  const QString& mime = {});
+                                  const QString& mime = {},
+                                  const QString& rootPath = {},
+                                  const QString& relativePath = {});
   Q_INVOKABLE void linkFileToChat(const QString& hashHex,
                                   const QString& fileName,
                                   const QString& mime,
@@ -742,6 +749,7 @@ class NodeController : public QObject {
   QString in_app_media_path_;
   QString in_app_media_mime_;
   QString in_app_media_title_;
+  DocumentViewer document_viewer_;
   int files_section_ = 0;
   bool file_index_progress_visible_ = false;
   int file_index_progress_percent_ = 0;

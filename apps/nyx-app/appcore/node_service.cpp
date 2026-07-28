@@ -812,7 +812,8 @@ bool NodeService::start_connect_peer(const std::string& host, uint16_t port) {
 
 bool NodeService::start_browse(int timeout_ms) {
   if (discovery_busy_.exchange(true)) return false;
-  if (discovery_thread_.joinable()) discovery_thread_.join();
+  // Never join() on the caller (often UI) — previous scan can still be exiting.
+  if (discovery_thread_.joinable()) discovery_thread_.detach();
   discovery_thread_ = std::thread([this, timeout_ms]() {
     run_browse(timeout_ms);
     discovery_busy_.store(false);
@@ -822,7 +823,7 @@ bool NodeService::start_browse(int timeout_ms) {
 
 bool NodeService::scan_lan_peers(int timeout_ms) {
   if (discovery_busy_.exchange(true)) return false;
-  if (discovery_thread_.joinable()) discovery_thread_.join();
+  if (discovery_thread_.joinable()) discovery_thread_.detach();
   discovery_thread_ = std::thread([this, timeout_ms]() {
     run_lan_scan(timeout_ms);
     discovery_busy_.store(false);
@@ -1090,31 +1091,33 @@ bool NodeService::ensure_session(const std::string& chat_key) {
 
   if (chat_key.rfind("dm:", 0) == 0) {
     const std::string peer_hex = chat_key.substr(3);
-    // Prefer LAN when rendezvous UDP is dead (common with VPN).
-    if (try_connect_via_lan(peer_hex)) return true;
+    std::string token_hex;
     nyx::ContactBook book(nyx::default_contacts_path());
     book.load();
     for (const auto& c : book.contacts()) {
       if (nyx::to_hex(c.user_id.data(), c.user_id.size()) != peer_hex) continue;
-      if (c.dm_inbox_token_hex.size() == 64) {
-        return start_connect_token(c.dm_inbox_token_hex);
-      }
+      if (c.dm_inbox_token_hex.size() == 64) token_hex = c.dm_inbox_token_hex;
+      break;
     }
+    std::string lan_host;
+    uint16_t lan_port = 0;
     if (const auto* intent = intent_store_.find(chat_key)) {
-      if (intent->invite_hex.size() == 64) return start_connect_token(intent->invite_hex);
+      if (token_hex.empty() && intent->invite_hex.size() == 64) token_hex = intent->invite_hex;
       if (intent->invite_hex.rfind("lan://", 0) == 0) {
         const std::string ep = intent->invite_hex.substr(6);
         const auto colon = ep.rfind(':');
         if (colon != std::string::npos && colon > 0) {
-          const std::string host = ep.substr(0, colon);
           const int port = std::atoi(ep.substr(colon + 1).c_str());
-          if (!host.empty() && port > 0 && port <= 65535) {
-            return start_connect_peer(host, static_cast<uint16_t>(port));
+          if (port > 0 && port <= 65535) {
+            lan_host = ep.substr(0, colon);
+            lan_port = static_cast<uint16_t>(port);
           }
         }
       }
     }
-    return false;
+    // LAN browse blocks for ~1 s — must never run on the UI thread.
+    dial_dm_async(peer_hex, token_hex, lan_host, lan_port, false);
+    return true;
   }
   return false;
 }
@@ -1216,44 +1219,77 @@ void NodeService::auto_reconnect_all() {
     if (pruned) intent_store_.save();
   }
 
+  // DM redial does a blocking LAN browse per intent — run the whole batch on a
+  // detached worker so the UI thread never stalls.
+  struct DmDialPlan {
+    std::string peer_hex;
+    std::string token_hex;
+    std::string lan_host;
+    uint16_t lan_port = 0;
+    bool quiet = false;
+  };
+  std::vector<DmDialPlan> plans;
   for (const auto& intent : intent_store_.all()) {
     if (!intent.enabled) continue;
     if (intent.kind != nyx::SessionIntentKind::Direct) continue;
     if (intent.key.rfind("dm:pending:", 0) == 0) continue;
     if (is_session_up(intent.key)) continue;
 
-    // Same Wi‑Fi: always re-browse beacons first — inbox UDP ports are ephemeral.
-    if (!intent.ref_id_hex.empty() && try_connect_via_lan(intent.ref_id_hex)) {
-      continue;
-    }
+    DmDialPlan plan;
+    plan.peer_hex = intent.ref_id_hex;
 
     // Weak fallback only when we still lack a DM inbox token.
     if (intent.invite_hex.rfind("lan://", 0) == 0) {
       const std::string ep = intent.invite_hex.substr(6);
       const auto colon = ep.rfind(':');
-      if (colon == std::string::npos || colon == 0) continue;
-      const std::string host = ep.substr(0, colon);
-      const int port = std::atoi(ep.substr(colon + 1).c_str());
-      if (host.empty() || port <= 0 || port > 65535) continue;
-      start_connect_peer(host, static_cast<uint16_t>(port));
-      continue;
-    }
-
-    if (intent.invite_hex.size() != 64) continue;
-
-    bool quiet = false;
-    {
-      std::lock_guard lock(join_reconnect_mutex_);
-      auto it = join_reconnect_.find(intent.key);
-      if (it == join_reconnect_.end())
-        it = join_reconnect_.find("dm:pending:" + intent.invite_hex.substr(0, 8));
-      if (it != join_reconnect_.end() && it->second.failures >= kMaxVisibleJoinRetries) {
-        if (now_ms < it->second.next_attempt_ms) continue;
-        it->second.next_attempt_ms = now_ms + kQuietJoinProbeIntervalMs;
-        quiet = true;
+      if (colon == std::string::npos || colon == 0) {
+        if (plan.peer_hex.empty()) continue;
+      } else {
+        const int port = std::atoi(ep.substr(colon + 1).c_str());
+        if (port > 0 && port <= 65535) {
+          plan.lan_host = ep.substr(0, colon);
+          plan.lan_port = static_cast<uint16_t>(port);
+        }
       }
+    } else if (intent.invite_hex.size() == 64) {
+      bool skip = false;
+      {
+        std::lock_guard lock(join_reconnect_mutex_);
+        auto it = join_reconnect_.find(intent.key);
+        if (it == join_reconnect_.end())
+          it = join_reconnect_.find("dm:pending:" + intent.invite_hex.substr(0, 8));
+        if (it != join_reconnect_.end() && it->second.failures >= kMaxVisibleJoinRetries) {
+          if (now_ms < it->second.next_attempt_ms) {
+            skip = true;
+          } else {
+            it->second.next_attempt_ms = now_ms + kQuietJoinProbeIntervalMs;
+            plan.quiet = true;
+          }
+        }
+      }
+      if (skip && plan.peer_hex.empty()) continue;
+      if (!skip) plan.token_hex = intent.invite_hex;
     }
-    start_connect_token(intent.invite_hex, quiet);
+
+    if (plan.peer_hex.empty() && plan.token_hex.empty() && plan.lan_host.empty()) continue;
+    plans.push_back(std::move(plan));
+  }
+
+  if (!plans.empty() && !dm_reconnect_busy_.exchange(true)) {
+    std::thread([this, plans = std::move(plans)]() {
+      for (const auto& p : plans) {
+        if (!p.peer_hex.empty()) {
+          if (is_session_up(make_dm_session_id(p.peer_hex))) continue;
+          if (try_connect_via_lan(p.peer_hex)) continue;
+        }
+        if (!p.token_hex.empty()) {
+          start_connect_token(p.token_hex, p.quiet);
+          continue;
+        }
+        if (!p.lan_host.empty() && p.lan_port > 0) start_connect_peer(p.lan_host, p.lan_port);
+      }
+      dm_reconnect_busy_.store(false);
+    }).detach();
   }
 }
 

@@ -26,133 +26,155 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.margins: theme.spacing
-            Layout.bottomMargin: 8
-            spacing: 8
-
-            NyxLogo { theme: root.theme }
-            Item { Layout.fillWidth: true }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
             Layout.leftMargin: theme.spacing
             Layout.rightMargin: theme.spacing
-            Layout.bottomMargin: theme.spacing
-            spacing: 8
+            Layout.topMargin: theme.spacing
+            Layout.bottomMargin: 8
+            spacing: 6
 
-            AvatarBadge {
-                size: 36
-                label: node.profileNickname
-                baseColor: avatarColorFn(node.profileNickname)
-                textColor: theme.textPrimary
-                imageSource: node.profileAvatarPath
+            NyxLogo {
+                theme: root.theme
+                compact: root.width < 340
             }
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 0
-                Label {
-                    text: node.profileNickname
-                    color: theme.textPrimary
-                    font.pixelSize: 15
-                    font.bold: true
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+
+            IconButton {
+                theme: root.theme
+                name: "chat"
+                btnSize: root.width < 300 ? 32 : 36
+                flat: true
+                active: node.sidebarMode === 0 && node.mainViewMode !== 1
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Чаты")
+                onClicked: {
+                    node.sidebarMode = 0
+                    node.showChatView()
                 }
-                Label {
-                    text: "id: " + node.profileIdShort
-                    color: theme.textSecondary
-                    font.pixelSize: 11
+            }
+            IconButton {
+                theme: root.theme
+                name: "people"
+                btnSize: root.width < 300 ? 32 : 36
+                flat: true
+                active: node.sidebarMode === 1 && node.mainViewMode !== 1
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Друзья")
+                onClicked: {
+                    node.sidebarMode = 1
+                    node.showChatView()
                 }
+            }
+            IconButton {
+                theme: root.theme
+                name: "field"
+                btnSize: root.width < 300 ? 32 : 36
+                flat: true
+                active: node.sidebarMode === 2 && node.mainViewMode !== 1
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Поля")
+                onClicked: {
+                    node.sidebarMode = 2
+                    node.showChatView()
+                }
+            }
+            IconButton {
+                theme: root.theme
+                name: "folder"
+                btnSize: root.width < 300 ? 32 : 36
+                flat: true
+                active: node.mainViewMode === 1
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Файлы")
+                onClicked: node.openFilesView()
             }
 
             IconButton {
                 theme: root.theme
-                name: "settings"
-                ToolTip.text: qsTr("Настройки")
-                onClicked: root.settingsRequested()
+                name: "link"
+                btnSize: root.width < 300 ? 32 : 36
+                accent: true
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Связь")
+                onClicked: node.connectionPanelOpen = true
             }
         }
 
-        // Режимы списка — не «Файлы/Поля как вкладки экрана»
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.leftMargin: theme.spacing
-            Layout.rightMargin: theme.spacing
-            Layout.bottomMargin: 8
-            implicitHeight: modeTabs.implicitHeight + 8
-            radius: theme.radiusBtn
-            color: theme.inputBg
-            border.color: theme.border
-
-            TabBar {
-                id: modeTabs
-                anchors.fill: parent
-                anchors.margins: 4
-                spacing: 4
-                currentIndex: node.sidebarMode
-                background: Item {}
-                onCurrentIndexChanged: {
-                    if (node.sidebarMode !== currentIndex)
-                        node.sidebarMode = currentIndex
-                }
-
-                Repeater {
-                    model: [qsTr("Чаты"), qsTr("Друзья"), qsTr("Поля")]
-                    TabButton {
-                        required property int index
-                        required property string modelData
-                        text: modelData
-                        width: (modeTabs.width - modeTabs.spacing * 2) / 3
-                        background: Rectangle {
-                            radius: theme.radiusBtn - 2
-                            color: parent.checked ? theme.accent
-                                 : parent.hovered ? theme.btnSecondaryHover
-                                 : "transparent"
-                        }
-                        contentItem: Label {
-                            text: parent.text
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            color: parent.checked ? theme.textPrimary : theme.textSecondary
-                            font.pixelSize: 12
-                            font.weight: parent.checked ? Font.DemiBold : Font.Normal
-                        }
-                    }
-                }
-            }
-        }
-
-        Connections {
-            target: node
-            function onSidebarModeChanged() {
-                if (modeTabs.currentIndex !== node.sidebarMode)
-                    modeTabs.currentIndex = node.sidebarMode
-            }
-        }
-
-        // Actions: invite / files (stacked on phone)
-        GridLayout {
+        Item {
+            id: profileHeader
             Layout.fillWidth: true
             Layout.leftMargin: theme.spacing
             Layout.rightMargin: theme.spacing
             Layout.bottomMargin: theme.spacing
-            columns: root.width < 420 ? 1 : 2
-            columnSpacing: 8
-            rowSpacing: 8
+            implicitHeight: profileRow.implicitHeight
 
-            NyxButton {
-                Layout.fillWidth: true
-                theme: root.theme
-                text: qsTr("+ Связь")
-                onClicked: node.connectionPanelOpen = true
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -4
+                radius: theme.radiusBtn
+                color: theme.btnSecondaryHover
+                opacity: profileMouse.containsMouse && !profileMenu.visible ? 0.45 : 0
             }
-            NyxButtonSecondary {
-                Layout.fillWidth: true
+
+            RowLayout {
+                id: profileRow
+                anchors.fill: parent
+                spacing: 8
+
+                AvatarBadge {
+                    size: 36
+                    label: node.profileNickname
+                    baseColor: avatarColorFn(node.profileNickname)
+                    textColor: theme.textPrimary
+                    imageSource: node.profileAvatarPath
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Label {
+                        text: node.profileNickname
+                        color: theme.textPrimary
+                        font.pixelSize: 15
+                        font.bold: true
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: "id: " + node.profileIdShort
+                        color: theme.textSecondary
+                        font.pixelSize: 11
+                    }
+                }
+
+                NyxIcon {
+                    name: "chevron"
+                    width: 14
+                    height: 14
+                    opacity: 0.55
+                    rotation: profileMenu.visible ? 180 : 0
+                }
+            }
+
+            MouseArea {
+                id: profileMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: profileMenu.open()
+            }
+
+            NyxMenu {
+                id: profileMenu
                 theme: root.theme
-                text: qsTr("Файлы")
-                onClicked: node.openFilesView()
+                menuWidth: 200
+                y: profileRow.height + 4
+
+                NyxMenuItem {
+                    theme: root.theme
+                    text: qsTr("Настройки")
+                    onTriggered: root.settingsRequested()
+                }
             }
         }
 

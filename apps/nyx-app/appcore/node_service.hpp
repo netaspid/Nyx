@@ -414,6 +414,9 @@ class NodeService {
   void run_group_join(std::shared_ptr<NetSession> session, std::string invite_hex);
   /** Browse LAN and dial peer by user-id hex (skips *-field hub beacons). */
   bool try_connect_via_lan(const std::string& user_id_hex);
+  /** LAN browse + token/endpoint fallback on a detached thread (never blocks caller). */
+  void dial_dm_async(std::string peer_hex, std::string token_hex, std::string lan_host,
+                     uint16_t lan_port, bool quiet);
   /** Browse LAN for field hub beacons / any peer; returns host:port candidates. */
   std::vector<nyx::LanPeer> browse_lan_peers(int timeout_ms);
   void run_direct_chat(std::shared_ptr<NetSession> session,
@@ -562,6 +565,7 @@ class NodeService {
   std::atomic<NodeMode> mode_{NodeMode::Idle};
   std::thread discovery_thread_;
   std::atomic<bool> discovery_busy_{false};
+  std::atomic<bool> dm_reconnect_busy_{false};
 
   nyx::FileIndex file_index_;
   /** Кэш каталога «Ресурсы» для локального hub (корни + подгруженные уровни). */

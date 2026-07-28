@@ -73,6 +73,10 @@ ApplicationWindow {
 
     function handleBack() {
         // Active call: Back = hangup (also the escape hatch when camera steals taps).
+        if (app.documentViewer && app.documentViewer.open) {
+            app.documentViewer.close()
+            return true
+        }
         if (app.inAppMediaOpen) {
             app.closeInAppMedia()
             return true
@@ -242,11 +246,19 @@ ApplicationWindow {
         }
     }
 
+    Loader {
+        id: documentViewerLoader
+        anchors.fill: parent
+        active: app.documentViewer && app.documentViewer.open
+        sourceComponent: DocumentViewer {
+            anchors.fill: parent
+            theme: appTheme
+            viewer: app.documentViewer
+        }
+    }
+
     Connections {
         target: app
-        function onChatChanged() {
-            if (app.inChat) app.refreshChatList()
-        }
         function onIncomingMessage(author, preview) {
             if (!root.active)
                 root.alert(0)
