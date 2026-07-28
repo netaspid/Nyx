@@ -743,7 +743,8 @@ bool FileIndex::ensure_library_root(const GroupId& scope_group) {
 std::optional<FileEntry> FileIndex::adopt_file(
     const std::string& source_path, const FileHash& expected_hash,
     const std::string& display_name, const std::string& mime,
-    const GroupId& scope_group, const UserId* owner_id) {
+    const GroupId& scope_group, const UserId* owner_id,
+    const std::string& relative_dir) {
   FileHash actual{};
   if (!hash_file(source_path, actual) || actual != expected_hash) {
     return std::nullopt;
@@ -757,12 +758,25 @@ std::optional<FileEntry> FileIndex::adopt_file(
   const std::string library_root = library_root_path(scope_group);
   UserId owner{};
   if (owner_id && !user_id_is_zero(*owner_id)) owner = *owner_id;
-  const std::string owner_prefix =
-      user_id_is_zero(owner) ? std::string{}
-                             : (to_hex(owner.data(), owner.size()) + "/");
-  const std::string library_dir =
-      user_id_is_zero(owner) ? library_root
-                             : library_owner_dir(scope_group, owner);
+  std::string relative_prefix;
+  std::string library_dir;
+  if (!relative_dir.empty()) {
+    const auto rel = path_from_utf8(relative_dir).lexically_normal();
+    if (rel.is_absolute() || rel.empty() ||
+        std::find(rel.begin(), rel.end(), std::filesystem::path("..")) != rel.end()) {
+      return std::nullopt;
+    }
+    relative_prefix = path_to_utf8(rel);
+    std::replace(relative_prefix.begin(), relative_prefix.end(), '\\', '/');
+    if (!relative_prefix.empty() && relative_prefix.back() != '/')
+      relative_prefix.push_back('/');
+    library_dir = path_to_utf8(path_from_utf8(library_root) / rel);
+  } else if (!user_id_is_zero(owner)) {
+    relative_prefix = to_hex(owner.data(), owner.size()) + "/";
+    library_dir = library_owner_dir(scope_group, owner);
+  } else {
+    library_dir = library_root;
+  }
 
   // Prefer content-addressed object store, then mirror into library ShareRoot.
   const std::string object_root =
@@ -817,7 +831,7 @@ std::optional<FileEntry> FileIndex::adopt_file(
   FileEntry entry;
   entry.hash = expected_hash;
   entry.root_path = library_root;
-  entry.relative_path = owner_prefix + leaf_name;
+  entry.relative_path = relative_prefix + leaf_name;
   entry.mime = mime.empty() ? guess_mime(leaf_name) : mime;
   entry.share_group = scope_group;
   entry.owner_id = owner;
@@ -829,8 +843,12 @@ std::optional<FileEntry> FileIndex::adopt_file(
   entries_.erase(
       std::remove_if(entries_.begin(), entries_.end(),
                      [&](const FileEntry& existing) {
-                       return existing.hash == expected_hash &&
-                              existing.share_group == scope_group;
+                       if (existing.hash != expected_hash ||
+                           existing.share_group != scope_group) {
+                         return false;
+                       }
+                       return path_from_utf8(existing.relative_path).parent_path() ==
+                              path_from_utf8(entry.relative_path).parent_path();
                      }),
       entries_.end());
   entries_.push_back(entry);
@@ -841,11 +859,11 @@ std::optional<FileEntry> FileIndex::adopt_file(
 std::optional<FileEntry> FileIndex::import_file(
     const std::string& source_path, const std::string& display_name,
     const std::string& mime, const GroupId& scope_group,
-    const UserId* owner_id) {
+    const UserId* owner_id, const std::string& relative_dir) {
   FileHash hash{};
   if (!hash_file(source_path, hash)) return std::nullopt;
   return adopt_file(source_path, hash, display_name, mime, scope_group,
-                    owner_id);
+                    owner_id, relative_dir);
 }
 
 }  // namespace nyx

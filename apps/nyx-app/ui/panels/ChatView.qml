@@ -465,6 +465,8 @@ Item {
                                 name: "image"
                                 btnSize: 36
                                 enabled: node.canSendMessage
+                                         && (node.callState === "idle"
+                                             || node.callState === "ended")
                                 ToolTip.text: qsTr("Камера: фото или видео")
                                 onPressed: root.holdComposerToolsBriefly()
                                 onClicked: root.openMediaCapture()
@@ -473,18 +475,26 @@ Item {
                             IconButton {
                                 id: voiceBtn
                                 theme: root.theme
-                                name: "mic"
+                                name: node.chatMediaRecorder.recording ? "stop" : "mic"
                                 btnSize: 36
-                                enabled: node.canSendMessage && !voiceRecorder.recording
-                                ToolTip.text: voiceRecorder.recording
-                                              ? qsTr("Отпустите, чтобы отправить")
-                                              : qsTr("Удерживайте для аудиосообщения")
-                                onPressed: {
+                                enabled: node.canSendMessage
+                                         && (node.callState === "idle"
+                                             || node.callState === "ended")
+                                         && node.chatMediaRecorder.state !== "starting"
+                                         && node.chatMediaRecorder.state !== "stopping"
+                                accent: node.chatMediaRecorder.recording
+                                ToolTip.text: node.chatMediaRecorder.recording
+                                              ? qsTr("Остановить и отправить")
+                                              : qsTr("Записать аудиосообщение")
+                                onClicked: {
                                     root.holdComposerToolsBriefly()
-                                    voiceRecorder.start()
+                                    if (node.chatMediaRecorder.recording) {
+                                        node.chatMediaRecorder.stopVoice(true)
+                                    } else {
+                                        node.chatMediaRecorder.startVoice(
+                                                    node.chatCaptureStagingPath("m4a"))
+                                    }
                                 }
-                                onReleased: voiceRecorder.finish(true)
-                                onCanceled: voiceRecorder.finish(false)
                             }
 
                             IconButton {
@@ -1101,90 +1111,10 @@ Item {
         }
     }
 
-    // Hold-to-record voice notes — CaptureSession created only on first press.
-    QtObject {
-        id: voiceRecorder
-        property bool recording: false
-        property bool acceptOnStop: false
-        property string pendingPath: ""
-        property real startedAt: 0
-        property var sessionItem: null
-
-        function ensureEngine() {
-            if (sessionItem)
-                return sessionItem
-            sessionItem = voiceEngineComp.createObject(root)
-            return sessionItem
-        }
-
-        function start() {
-            if (recording || !node.canSendMessage) return
-            const eng = ensureEngine()
-            if (!eng) return
-            const dest = node.chatCaptureStagingPath("m4a")
-            pendingPath = dest
-            startedAt = Date.now()
-            acceptOnStop = false
-            recording = true
-            eng.start(dest)
-        }
-
-        function finish(sendIt) {
-            if (!recording) return
-            acceptOnStop = !!sendIt
-            if (sessionItem)
-                sessionItem.stop()
-        }
-
-        function onStopped(path) {
-            const wasAccept = acceptOnStop
-            recording = false
-            acceptOnStop = false
-            const elapsed = Date.now() - startedAt
-            const usePath = (path && path.length) ? path : pendingPath
-            if (!wasAccept || elapsed < 400)
-                return
-            if (usePath && usePath.length)
-                node.sendCapturedMedia(usePath, "audio/mp4", "voice.m4a")
-        }
-
-        function onFailed() {
-            recording = false
-            acceptOnStop = false
-        }
-    }
-
-    Component {
-        id: voiceEngineComp
-        Item {
-            id: eng
-            function start(dest) {
-                try {
-                    recorder.outputLocation = "file://" + dest
-                    recorder.record()
-                } catch (e) {
-                    voiceRecorder.onFailed()
-                }
-            }
-            function stop() {
-                try { recorder.stop() } catch (e) { voiceRecorder.onFailed() }
-            }
-            CaptureSession {
-                audioInput: AudioInput {}
-                recorder: recorder
-            }
-            MediaRecorder {
-                id: recorder
-                onRecorderStateChanged: {
-                    if (recorder.recorderState !== MediaRecorder.StoppedState)
-                        return
-                    const path = recorder.actualLocation
-                                   ? recorder.actualLocation.toLocalFile()
-                                   : ""
-                    voiceRecorder.onStopped(path)
-                }
-                onErrorOccurred: function() { voiceRecorder.onFailed() }
-            }
+    Connections {
+        target: node.chatMediaRecorder
+        function onReady(path, mime, displayName, mediaKind) {
+            node.sendCapturedMedia(path, mime, displayName, mediaKind)
         }
     }
 
@@ -1192,18 +1122,38 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 88
-        visible: voiceRecorder.recording
+        visible: node.chatMediaRecorder.recording
+                 || node.chatMediaRecorder.error.length > 0
         z: 50
-        width: recLabel.implicitWidth + 28
+        width: recRow.implicitWidth + 24
         height: 36
         radius: 18
-        color: "#e53935"
-        Label {
-            id: recLabel
+        color: node.chatMediaRecorder.error.length > 0 ? "#b71c1c" : "#e53935"
+        RowLayout {
+            id: recRow
             anchors.centerIn: parent
-            text: qsTr("Запись… отпустите, чтобы отправить")
-            color: "#ffffff"
-            font.pixelSize: 12
+            spacing: 8
+            Label {
+                id: recLabel
+                text: {
+                    if (node.chatMediaRecorder.error.length)
+                        return node.chatMediaRecorder.error
+                    const seconds = Math.floor(node.chatMediaRecorder.elapsedMs / 1000)
+                    return qsTr("Запись %1:%2 · нажмите ■ для отправки")
+                            .arg(Math.floor(seconds / 60))
+                            .arg(String(seconds % 60).padStart(2, "0"))
+                }
+                color: "#ffffff"
+                font.pixelSize: 12
+            }
+            IconButton {
+                visible: node.chatMediaRecorder.recording
+                theme: root.theme
+                name: "close"
+                btnSize: 26
+                flat: true
+                onClicked: node.chatMediaRecorder.cancel()
+            }
         }
     }
 }

@@ -5,6 +5,7 @@
     <file>ui/components/AvatarBadge.qml</file>
     <file>ui/components/ChatBubble.qml</file>
     <file>ui/components/ChatMediaPlayer.qml</file>
+    <file>ui/components/MediaPlaybackControls.qml</file>
     <file>ui/components/DocumentViewer.qml</file>
     <file>ui/components/ChatMediaCapture.qml</file>
     <file>ui/components/ChatListItem.qml</file>
@@ -60,6 +61,9 @@
     <file alias="nyx-256.png">resources/icons/nyx-256.png</file>
     <file alias="nyx-512.png">resources/icons/nyx-512.png</file>
     <file alias="send.svg">resources/icons/send.svg</file>
+    <file alias="stop.svg">resources/icons/stop.svg</file>
+    <file alias="play.svg">resources/icons/play.svg</file>
+    <file alias="pause.svg">resources/icons/pause.svg</file>
     <file alias="attach.svg">resources/icons/attach.svg</file>
     <file alias="search.svg">resources/icons/search.svg</file>
     <file alias="settings.svg">resources/icons/settings.svg</file>

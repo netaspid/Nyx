@@ -113,12 +113,14 @@ class FileIndex {
                                       const std::string& display_name,
                                       const std::string& mime,
                                       const GroupId& scope_group,
-                                      const UserId* owner_id = nullptr);
+                                      const UserId* owner_id = nullptr,
+                                      const std::string& relative_dir = {});
   std::optional<FileEntry> import_file(const std::string& source_path,
                                        const std::string& display_name,
                                        const std::string& mime,
                                        const GroupId& scope_group,
-                                       const UserId* owner_id = nullptr);
+                                       const UserId* owner_id = nullptr,
+                                       const std::string& relative_dir = {});
 
   /** App-managed library root for scope (imports + adopted downloads). */
   static std::string library_root_path(const GroupId& scope_group);

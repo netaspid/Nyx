@@ -667,9 +667,11 @@ bool NodeService::move_transfer(const std::string& hash_hex, int delta) {
   return moved;
 }
 
-bool NodeService::download_file(const std::string& hash_hex, const std::string& dest_path) {
+bool NodeService::download_file(const std::string& hash_hex,
+                                const std::string& dest_path,
+                                const std::string& session_id) {
   if (hash_hex.empty() || dest_path.empty()) return false;
-  auto session = active_session();
+  auto session = session_id.empty() ? active_session() : find_session(session_id);
   if (!session || (!session->files && !session->group_hub)) return false;
   {
     std::lock_guard lock(session->download_mutex);
@@ -880,7 +882,8 @@ std::optional<nyx::FileEntry> NodeService::import_file_object(
     const std::string& path, const std::string& display_name,
     const std::string& mime,
     const std::string& scope_group_id_hex,
-    const std::string& owner_user_id_hex) {
+    const std::string& owner_user_id_hex,
+    const std::string& relative_dir) {
   nyx::UserId owner{};
   const nyx::UserId* owner_ptr = nullptr;
   if (!owner_user_id_hex.empty()) {
@@ -896,7 +899,8 @@ std::optional<nyx::FileEntry> NodeService::import_file_object(
     owner_ptr = &owner;
   }
   const auto imported = file_index_.import_file(
-      path, display_name, mime, scope_from_hex(scope_group_id_hex), owner_ptr);
+      path, display_name, mime, scope_from_hex(scope_group_id_hex), owner_ptr,
+      relative_dir);
   if (imported && !scope_group_id_hex.empty()) publish_field_index();
   return imported;
 }

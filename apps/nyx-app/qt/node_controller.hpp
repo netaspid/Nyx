@@ -3,6 +3,7 @@
 #include "call_audio_io.hpp"
 #include "call_video_io.hpp"
 #include "call_frame_provider.hpp"
+#include "chat_media_recorder.hpp"
 #include "chat_list_model.hpp"
 #include "document_viewer.hpp"
 #include "lan_peer_model.hpp"
@@ -104,6 +105,7 @@ class NodeController : public QObject {
   Q_PROPERTY(QString inAppMediaMime READ inAppMediaMime NOTIFY inAppMediaChanged)
   Q_PROPERTY(QString inAppMediaTitle READ inAppMediaTitle NOTIFY inAppMediaChanged)
   Q_PROPERTY(DocumentViewer* documentViewer READ documentViewer CONSTANT)
+  Q_PROPERTY(ChatMediaRecorder* chatMediaRecorder READ chatMediaRecorder CONSTANT)
   Q_PROPERTY(QVariantList fileShareRoots READ fileShareRoots NOTIFY filesChanged)
   Q_PROPERTY(QString fileSelectedShareRoot READ fileSelectedShareRoot WRITE setFileSelectedShareRoot
                  NOTIFY filesChanged)
@@ -242,6 +244,7 @@ class NodeController : public QObject {
   QString inAppMediaMime() const { return in_app_media_mime_; }
   QString inAppMediaTitle() const { return in_app_media_title_; }
   DocumentViewer* documentViewer() { return &document_viewer_; }
+  ChatMediaRecorder* chatMediaRecorder() { return &chat_media_recorder_; }
   QVariantList transferQueue() const { return transfer_queue_; }
   QVariantList fileShareRoots() const { return file_share_roots_; }
   QString fileSelectedShareRoot() const { return file_selected_share_root_; }
@@ -475,13 +478,16 @@ class NodeController : public QObject {
   /** Import captured/recorded media into library+chat_media and send to active chat. */
   Q_INVOKABLE bool sendCapturedMedia(const QString& localPath,
                                      const QString& mimeHint = {},
-                                     const QString& displayName = {});
+                                     const QString& displayName = {},
+                                     const QString& mediaKind = {});
   /** Import without auto-send; returns markdown (nyx-file:…). */
   Q_INVOKABLE QString importChatMediaMarkdown(const QString& localPath,
                                               const QString& mimeHint = {},
                                               const QString& displayName = {});
   /** Staging path for camera/voice capture under AppData. */
   Q_INVOKABLE QString chatCaptureStagingPath(const QString& extension) const;
+  Q_INVOKABLE void removeStagingMedia(const QString& path) const;
+  Q_INVOKABLE void requestChatCapturePermissions(bool needCamera);
   /** Resolve nickname for a user id hex (self / contact / field member). */
   Q_INVOKABLE QString userDisplayName(const QString& userIdHex) const;
   /** Open built-in in-app media player overlay. */
@@ -591,11 +597,14 @@ class NodeController : public QObject {
   void groupListChanged();
   void sessionsChanged();
   void incomingMessage(const QString& author, const QString& preview);
+  void chatCapturePermissionResult(bool granted);
   void logLine(const QString& line);
   void requestCloseToTray();
   void showMainWindow();
 
  private:
+  static void chatCapturePermissionCallback(bool micOk, bool cameraOk,
+                                            void* ctx);
   void wireCallbacks();
   void setStatus(const QString& text);
   void showToast(const QString& text, bool isError = false);
@@ -750,6 +759,7 @@ class NodeController : public QObject {
   QString in_app_media_mime_;
   QString in_app_media_title_;
   DocumentViewer document_viewer_;
+  ChatMediaRecorder chat_media_recorder_;
   int files_section_ = 0;
   bool file_index_progress_visible_ = false;
   int file_index_progress_percent_ = 0;

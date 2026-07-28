@@ -2,10 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtMultimedia
-import "../controls"
 import "."
 
-/** Fullscreen in-app player for image / audio / video from chat or resources. */
 Item {
     id: root
     required property var theme
@@ -43,7 +41,6 @@ Item {
             forceActiveFocus()
             if (isAudio || isVideo) {
                 player.source = sourceUrl
-                player.play()
             }
         } else {
             player.stop()
@@ -55,7 +52,6 @@ Item {
         if (!visible) return
         if (isAudio || isVideo) {
             player.source = sourceUrl
-            player.play()
         }
     }
 
@@ -66,7 +62,7 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        onClicked: node.closeInAppMedia()
+        onClicked: root.node.closeInAppMedia()
     }
 
     ColumnLayout {
@@ -89,7 +85,7 @@ Item {
                 theme: root.theme
                 name: "close"
                 ToolTip.text: qsTr("Закрыть")
-                onClicked: node.closeInAppMedia()
+                onClicked: root.node.closeInAppMedia()
             }
         }
 
@@ -131,8 +127,8 @@ Item {
                     NyxIcon {
                         Layout.alignment: Qt.AlignHCenter
                         name: "mic"
-                        width: 28
-                        height: 28
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
                     }
                     Label {
                         Layout.fillWidth: true
@@ -145,46 +141,12 @@ Item {
             }
         }
 
-        RowLayout {
+        MediaPlaybackControls {
             Layout.fillWidth: true
             visible: root.isAudio || root.isVideo
-            spacing: 10
-
-            IconButton {
-                theme: root.theme
-                name: player.playbackState === MediaPlayer.PlayingState ? "speaker" : "mic"
-                ToolTip.text: player.playbackState === MediaPlayer.PlayingState
-                              ? qsTr("Пауза") : qsTr("Играть")
-                onClicked: {
-                    if (player.playbackState === MediaPlayer.PlayingState)
-                        player.pause()
-                    else
-                        player.play()
-                }
-            }
-
-            Slider {
-                id: posSlider
-                Layout.fillWidth: true
-                from: 0
-                to: Math.max(1, player.duration)
-                value: player.position
-                onMoved: player.position = value
-            }
-
-            Label {
-                text: {
-                    function fmt(ms) {
-                        const s = Math.floor(ms / 1000)
-                        const m = Math.floor(s / 60)
-                        const r = s % 60
-                        return m + ":" + (r < 10 ? "0" : "") + r
-                    }
-                    return fmt(player.position) + " / " + fmt(player.duration)
-                }
-                color: "#ccffffff"
-                font.pixelSize: 12
-            }
+            theme: root.theme
+            player: player
+            compact: width < 360
         }
     }
 
@@ -192,8 +154,5 @@ Item {
         id: player
         videoOutput: videoOut
         audioOutput: AudioOutput {}
-        onErrorOccurred: function() {
-            // Keep overlay open; user can close manually.
-        }
     }
 }

@@ -227,8 +227,15 @@ Item {
                                               && (mime.indexOf("text/") === 0
                                                   || mime === "application/json")
                         property bool isAudio: !isDirectory && mime.indexOf("audio/") === 0
+                        property bool isVoice: isAudio
+                                               && (fileName.toLowerCase()
+                                                   .indexOf("voice-message") === 0
+                                                   || fileName.toLowerCase() === "voice.m4a")
                         property bool isVideo: !isDirectory && mime.indexOf("video/") === 0
                         property bool isImage: !isDirectory && mime.indexOf("image/") === 0
+                        property bool isCircle: isVideo
+                                                && fileName.toLowerCase()
+                                                    .indexOf("circle-message") === 0
                         property string localPath: {
                             void fileRefresh.tick
                             return bubbleRoot.node && hash.length && !isDirectory
@@ -244,7 +251,8 @@ Item {
 
                         Component.onCompleted: {
                             if (!isDirectory
-                                    && (isImage || (isText && fileSize <= 262144))
+                                    && (isImage || isVoice || isCircle
+                                        || (isText && fileSize <= 262144))
                                     && bubbleRoot.node) {
                                 requested = true
                                 bubbleRoot.node.ensureFileAvailable(hash, fileName)
@@ -267,6 +275,7 @@ Item {
 
                         Rectangle {
                             width: Math.min(parent.width, 320)
+                            visible: !fileBlock.isCircle
                             implicitHeight: fileCardRow.implicitHeight + 14
                             radius: 12
                             color: Qt.rgba(0.22, 0.22, 0.22, 0.55)
@@ -393,6 +402,15 @@ Item {
                                         audioOutput: AudioOutput {}
                                         videoOutput: fileVideoOutput
                                     }
+                                    MediaPlaybackControls {
+                                        Layout.fillWidth: true
+                                        visible: fileBlock.localPath.length > 0
+                                                 && (fileBlock.isAudio
+                                                     || fileBlock.isVideo)
+                                        theme: bubbleRoot.theme
+                                        player: filePlayer
+                                        compact: true
+                                    }
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 6
@@ -419,12 +437,15 @@ Item {
                                         }
                                         Button {
                                             visible: !fileBlock.isDirectory
+                                                     && (fileBlock.localPath.length === 0
+                                                         || (!fileBlock.isAudio
+                                                             && !fileBlock.isVideo))
                                             text: {
                                                 if (fileBlock.localPath.length === 0)
                                                     return qsTr("Скачать")
-                                                if (fileBlock.isAudio || fileBlock.isVideo)
+                                                if (fileBlock.isAudio)
                                                     return qsTr("Слушать")
-                                                if (fileBlock.isImage)
+                                                if (fileBlock.isImage || fileBlock.isVideo)
                                                     return qsTr("Смотреть")
                                                 return qsTr("Открыть")
                                             }
@@ -434,8 +455,7 @@ Item {
                                                     card.requested = true
                                                     bubbleRoot.node.ensureFileAvailable(
                                                         card.hash, card.fileName)
-                                                } else if (card.isAudio || card.isVideo
-                                                           || card.isImage) {
+                                                } else if (card.isImage) {
                                                     bubbleRoot.node.openInAppMedia(
                                                         card.localPath, card.mime, card.fileName)
                                                 } else {
@@ -455,6 +475,95 @@ Item {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        Column {
+                            width: Math.min(parent.width, 220)
+                            spacing: 6
+                            visible: fileBlock.isCircle
+
+                            Item {
+                                id: circleViewport
+                                width: parent.width
+                                height: width
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: "#11151c"
+                                    clip: true
+
+                                    VideoOutput {
+                                        id: circleVideoOutput
+                                        anchors.fill: parent
+                                        fillMode: VideoOutput.PreserveAspectCrop
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: "transparent"
+                                    border.color: theme ? theme.border : "#55ffffff"
+                                    border.width: 2
+                                }
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 48
+                                    height: 48
+                                    radius: 24
+                                    color: "#aa000000"
+                                    visible: fileBlock.localPath.length === 0
+                                             || circlePlayer.playbackState
+                                                !== MediaPlayer.PlayingState
+                                    NyxIcon {
+                                        anchors.centerIn: parent
+                                        name: fileBlock.localPath.length === 0
+                                              ? "video" : "play"
+                                        width: 24
+                                        height: 24
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (!fileBlock.localPath.length) {
+                                            fileBlock.requested = true
+                                            bubbleRoot.node.ensureFileAvailable(
+                                                        fileBlock.hash,
+                                                        fileBlock.fileName)
+                                        } else if (circlePlayer.playbackState
+                                                   === MediaPlayer.PlayingState) {
+                                            circlePlayer.pause()
+                                        } else {
+                                            if (circlePlayer.duration > 0
+                                                    && circlePlayer.position
+                                                       >= circlePlayer.duration)
+                                                circlePlayer.position = 0
+                                            circlePlayer.play()
+                                        }
+                                    }
+                                }
+                            }
+
+                            MediaPlayer {
+                                id: circlePlayer
+                                source: fileBlock.localPath.length
+                                        ? "file:///" + String(fileBlock.localPath)
+                                              .replace(/\\/g, "/") : ""
+                                videoOutput: circleVideoOutput
+                                audioOutput: AudioOutput {}
+                            }
+
+                            MediaPlaybackControls {
+                                width: parent.width
+                                visible: fileBlock.localPath.length > 0
+                                theme: bubbleRoot.theme
+                                player: circlePlayer
+                                compact: true
                             }
                         }
                     }
@@ -498,7 +607,7 @@ Item {
                             Image {
                                 visible: mediaCol.path.length > 0
                                          && (!bubbleRoot.node || bubbleRoot.node.isImageMedia(mediaCol.hash))
-                                source: mediaCol.path.length
+                                source: visible && mediaCol.path.length
                                         ? ("file:///" + String(mediaCol.path).replace(/\\/g, "/"))
                                         : ""
                                 width: Math.min(parent.width, 280)

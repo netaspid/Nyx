@@ -897,6 +897,7 @@ static void test_file_v2_and_scoped_index() {
   std::string resumed_text((std::istreambuf_iterator<char>(resumed)),
                            std::istreambuf_iterator<char>());
   assert(resumed_text == "abcdef");
+  resumed.close();
   std::filesystem::remove(partial);
   std::cout << "file v2, resume and scope isolation ok\n";
 }
@@ -981,6 +982,27 @@ static void test_file_index_migration_and_objects() {
         index.listing_at_root(owned->root_path, {}, &group);
     // Flat + owner dir marker(s).
     assert(owner_level.size() >= 2);
+
+    auto voice = index.adopt_file(
+        dir + "/owned.bin", owned_hash, "voice-message.m4a", "audio/mp4",
+        group, &owner,
+        "Медиа/Test Chat (abcd1234)/Голосовые сообщения");
+    assert(voice);
+    assert(voice->owner_id == owner);
+    assert(voice->relative_path.find("Медиа/") == 0);
+    assert(voice->relative_path.find("Голосовые сообщения") !=
+           std::string::npos);
+
+    auto circle = index.adopt_file(
+        dir + "/owned.bin", owned_hash, "circle-message.mp4", "video/mp4",
+        group, &owner, "Медиа/Other Chat (ef012345)/Видеокружки");
+    assert(circle);
+    const auto all = index.entries_for_session(group);
+    int media_copies = 0;
+    for (const auto& entry : all) {
+      if (entry.hash == owned_hash) ++media_copies;
+    }
+    assert(media_copies == 3);
   }
 
   std::filesystem::remove_all(dir);
@@ -1580,6 +1602,12 @@ static void test_markdown_to_html() {
   assert(file_blocks[0].caption == "report.txt");
   assert(file_blocks[0].mime == "text/plain");
   assert(file_blocks[0].size == 42);
+
+  const auto circle_blocks = nyx::parse_markdown_blocks(
+      "[circle-message.mp4](nyx-file:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;size=99;mime=video/mp4)");
+  assert(circle_blocks.size() == 1);
+  assert(circle_blocks[0].caption == "circle-message.mp4");
+  assert(circle_blocks[0].mime == "video/mp4");
 
   std::cout << "markdown to html ok\n";
 }
@@ -2313,6 +2341,10 @@ static void test_account_recovery_and_remember() {
 int main() {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+  const std::string test_data_root = "test_nyx_data";
+  std::filesystem::remove_all(test_data_root);
+  nyx::set_base_data_root(test_data_root);
+  assert(nyx::ensure_data_dir());
   test_frame_roundtrip();
   test_noise_handshake();
   test_reliable();
@@ -2385,6 +2417,8 @@ int main() {
   test_recovery_phrase_roundtrip();
   test_account_recovery_and_remember();
   test_file_transfer_1mb();
+  nyx::set_base_data_root({});
+  std::filesystem::remove_all(test_data_root);
   std::cout << "all tests passed\n";
   return 0;
 }

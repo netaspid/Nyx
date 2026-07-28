@@ -2,11 +2,15 @@
 
 #include "nyx/identity.hpp"
 #include "nyx/group.hpp"
+#include "nyx/file_index.hpp"
+#include "nyx/paths.hpp"
 #include "nyx/session_intent.hpp"
 
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <thread>
 
@@ -48,6 +52,24 @@ static void test_node_service_callbacks() {
   nyx_app::NodeService svc;
   assert(!svc.create_group(""));
   std::cout << "node service callbacks ok\n";
+}
+
+static void test_chat_media_import_directory() {
+  nyx_app::NodeService svc;
+  svc.set_nickname("MediaTest");
+  const std::string source = "test_voice_message.m4a";
+  {
+    std::ofstream out(source, std::ios::binary | std::ios::trunc);
+    out << "voice-payload";
+  }
+  auto entry = svc.import_file_object(
+      source, "voice-message.m4a", "audio/mp4", {}, {},
+      "Медиа/Test Chat (12345678)/Голосовые сообщения");
+  assert(entry);
+  assert(entry->relative_path.find("Медиа/") == 0);
+  assert(entry->mime == "audio/mp4");
+  std::filesystem::remove(source);
+  std::cout << "chat media import directory ok\n";
 }
 
 static void test_session_intent_store() {
@@ -107,11 +129,18 @@ static void test_multi_session_hubs_parallel() {
 }
 
 int main() {
+  const std::string test_data_root = "test_nyx_appcore_data";
+  std::filesystem::remove_all(test_data_root);
+  nyx::set_base_data_root(test_data_root);
+  assert(nyx::ensure_data_dir());
   test_node_service_profile();
   test_node_service_create_group();
   test_node_service_callbacks();
+  test_chat_media_import_directory();
   test_session_intent_store();
   test_multi_session_hubs_parallel();
+  nyx::set_base_data_root({});
+  std::filesystem::remove_all(test_data_root);
   std::cout << "node service tests passed\n";
   return 0;
 }

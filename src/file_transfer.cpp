@@ -498,9 +498,23 @@ void FileTransferService::handle_complete(const FileComplete& complete) {
     return;
   }
 
+  std::string relative_dir;
+  {
+    const auto root =
+        path_from_utf8(FileIndex::library_root_path(share_scope_));
+    const auto dest = path_from_utf8(dest_path);
+    std::error_code rel_ec;
+    const auto rel = std::filesystem::relative(dest.parent_path(), root, rel_ec);
+    if (!rel_ec && !rel.empty() && !rel.is_absolute() &&
+        std::find(rel.begin(), rel.end(), std::filesystem::path("..")) ==
+            rel.end()) {
+      relative_dir = path_to_utf8(rel);
+    }
+  }
   const auto cached =
       index_.adopt_file(dest_path, complete.hash, incoming_->offer.name,
-                        incoming_->offer.mime, share_scope_);
+                        incoming_->offer.mime, share_scope_, nullptr,
+                        relative_dir);
   if (!cached) {
     deferred_callbacks_.push_back(
         [this] { emit_event("файл получен, но не добавлен в локальный cache"); });

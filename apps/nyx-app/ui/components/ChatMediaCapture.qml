@@ -2,48 +2,172 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtMultimedia
-import "../controls"
 import "."
 
-/** Camera capture overlay: photo or short video → sendCapturedMedia. */
 Popup {
     id: root
     required property var theme
     required property var node
     modal: true
     focus: true
-    closePolicy: Popup.CloseOnEscape
+    closePolicy: Popup.NoAutoClose
     anchors.centerIn: Overlay.overlay
     width: Overlay.overlay ? Overlay.overlay.width : 400
     height: Overlay.overlay ? Overlay.overlay.height : 600
     padding: 0
 
-    property bool videoMode: false
-    property bool recording: false
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
+            root.closeSafely()
+            event.accepted = true
+        }
+    }
+
+    property bool circleMode: true
+    property string state: "idle"
     property string pendingPath: ""
-    property string pendingMime: ""
+    property bool acceptOnStop: false
+    property bool closeOnStop: false
+    property real startedAt: 0
+    property int elapsedMs: 0
+    readonly property bool busy: state === "starting" || state === "recording"
+                                 || state === "stopping"
+
+    function resetCapture(removeFile) {
+        stateTimer.stop()
+        durationTimer.stop()
+        previewPlayer.stop()
+        previewPlayer.source = ""
+        if (removeFile && pendingPath.length)
+            node.removeStagingMedia(pendingPath)
+        pendingPath = ""
+        acceptOnStop = false
+        closeOnStop = false
+        startedAt = 0
+        elapsedMs = 0
+        state = "idle"
+    }
+
+    function requestStart() {
+        if (busy || state === "preview") return
+        errorLabel.text = ""
+        state = "starting"
+        stateTimer.interval = 8000
+        stateTimer.start()
+        node.requestChatCapturePermissions(true)
+    }
+
+    function startAfterPermission() {
+        if (state !== "starting") return
+        if (!circleMode) {
+            const photoPath = node.chatCaptureStagingPath("jpg")
+            imageCapture.captureToFile(photoPath)
+            return
+        }
+        pendingPath = node.chatCaptureStagingPath("mp4")
+        node.removeStagingMedia(pendingPath)
+        recorder.outputLocation = "file://" + pendingPath
+        startedAt = Date.now()
+        elapsedMs = 0
+        recorder.record()
+    }
+
+    function stopRecording(sendAfterStop) {
+        if (state !== "recording") return
+        acceptOnStop = !!sendAfterStop
+        state = "stopping"
+        durationTimer.stop()
+        stateTimer.interval = 10000
+        stateTimer.restart()
+        recorder.stop()
+    }
+
+    function fail(message) {
+        errorLabel.text = message || qsTr("Не удалось завершить запись")
+        state = "failed"
+        stateTimer.stop()
+        durationTimer.stop()
+        acceptOnStop = false
+    }
+
+    function closeSafely() {
+        if (state === "recording") {
+            closeOnStop = true
+            stopRecording(false)
+            return
+        }
+        if (state === "stopping") {
+            closeOnStop = true
+            acceptOnStop = false
+            return
+        }
+        resetCapture(true)
+        close()
+    }
+
+    function selectFrontCamera() {
+        const cameras = mediaDevices.videoInputs
+        if (!cameras || cameras.length === 0) return
+        for (let i = 0; i < cameras.length; ++i) {
+            if (cameras[i].position === CameraDevice.FrontFace) {
+                if (camera.cameraDevice.id === cameras[i].id)
+                    return
+                const reactivate = root.opened && root.state !== "preview"
+                camera.active = false
+                camera.cameraDevice = cameras[i]
+                if (reactivate) {
+                    Qt.callLater(function() {
+                        camera.active = true
+                    })
+                }
+                return
+            }
+        }
+    }
+
+    Component.onCompleted: selectFrontCamera()
 
     onOpened: {
         errorLabel.text = ""
-        videoMode = false
-        recording = false
+        circleMode = true
+        resetCapture(true)
     }
     onClosed: {
-        if (recording) {
-            recorder.stop()
-            recording = false
+        previewPlayer.stop()
+        if (state !== "stopping")
+            resetCapture(true)
+    }
+
+    Connections {
+        target: root.node
+        function onChatCapturePermissionResult(granted) {
+            if (root.state !== "starting") return
+            if (!granted) {
+                root.fail(qsTr("Нет разрешения на камеру или микрофон"))
+                return
+            }
+            root.startAfterPermission()
         }
-        pendingPath = ""
-        pendingMime = ""
     }
 
-    function finishCapture(path, mime, name) {
-        root.close()
-        if (!path || !path.length) return
-        node.sendCapturedMedia(path, mime || "", name || "")
+    Timer {
+        id: durationTimer
+        interval: 100
+        repeat: true
+        onTriggered: {
+            root.elapsedMs = Date.now() - root.startedAt
+            if (root.elapsedMs >= 60000)
+                root.stopRecording(true)
+        }
     }
 
-    background: Rectangle { color: "#e0080a0c" }
+    Timer {
+        id: stateTimer
+        repeat: false
+        onTriggered: root.fail(qsTr("Камера не ответила вовремя"))
+    }
+
+    background: Rectangle { color: "#f0080a0c" }
 
     contentItem: Item {
         anchors.fill: parent
@@ -51,52 +175,114 @@ Popup {
         CaptureSession {
             id: captureSession
             camera: camera
-            imageCapture: imageCapture
-            recorder: recorder
-            videoOutput: preview
+            audioInput: root.circleMode ? captureAudioInput : null
+            imageCapture: root.circleMode ? null : imageCapture
+            recorder: root.circleMode ? recorder : null
+            videoOutput: livePreview
         }
 
-        MediaDevices {
-            id: mediaDevices
+        AudioInput {
+            id: captureAudioInput
         }
+
+        MediaDevices { id: mediaDevices }
 
         Camera {
             id: camera
-            active: root.opened
+            active: root.opened && root.state !== "preview"
+            onErrorOccurred: function(error, message) {
+                root.fail(message || qsTr("Камера недоступна"))
+            }
         }
 
         ImageCapture {
             id: imageCapture
             onImageSaved: function(id, path) {
-                root.finishCapture(path, "image/jpeg", "photo.jpg")
+                stateTimer.stop()
+                root.close()
+                root.node.sendCapturedMedia(path, "image/jpeg", "photo.jpg", "photo")
             }
             onErrorOccurred: function(id, error, message) {
-                errorLabel.text = message || qsTr("Не удалось сделать фото")
+                root.fail(message || qsTr("Не удалось сделать фото"))
             }
         }
 
         MediaRecorder {
             id: recorder
-            onRecorderStateChanged: {
-                if (recorder.recorderState === MediaRecorder.StoppedState && root.recording) {
-                    root.recording = false
-                    const path = recorder.actualLocation
-                                   ? recorder.actualLocation.toLocalFile()
-                                   : root.pendingPath
-                    if (path && path.length)
-                        root.finishCapture(path, "video/mp4", "video.mp4")
+            quality: MediaRecorder.NormalQuality
+            onRecorderStateChanged: function() {
+                if (recorder.recorderState === MediaRecorder.RecordingState
+                        && root.state === "starting") {
+                    stateTimer.stop()
+                    root.state = "recording"
+                    root.startedAt = Date.now()
+                    durationTimer.start()
+                    return
                 }
+                if (recorder.recorderState !== MediaRecorder.StoppedState
+                        || root.state !== "stopping")
+                    return
+
+                stateTimer.stop()
+                if (root.closeOnStop) {
+                    root.resetCapture(true)
+                    root.close()
+                    return
+                }
+                if (!root.acceptOnStop || root.elapsedMs < 700) {
+                    root.resetCapture(true)
+                    return
+                }
+                root.state = "preview"
+                previewPlayer.source = "file://" + root.pendingPath
             }
             onErrorOccurred: function(error, message) {
-                root.recording = false
-                errorLabel.text = message || qsTr("Не удалось записать видео")
+                root.fail(message || qsTr("Не удалось записать видеокружок"))
             }
         }
 
-        VideoOutput {
-            id: preview
-            anchors.fill: parent
-            fillMode: VideoOutput.PreserveAspectCrop
+        MediaPlayer {
+            id: previewPlayer
+            videoOutput: recordedPreview
+            audioOutput: AudioOutput {}
+        }
+
+        Item {
+            id: circleFrame
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 32, parent.height - 190, 440)
+            height: width
+            clip: true
+
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: "#11151c"
+                clip: true
+
+                VideoOutput {
+                    id: livePreview
+                    anchors.fill: parent
+                    visible: root.state !== "preview"
+                    fillMode: VideoOutput.PreserveAspectCrop
+                    orientation: 0
+                }
+
+                VideoOutput {
+                    id: recordedPreview
+                    anchors.fill: parent
+                    visible: root.state === "preview"
+                    fillMode: VideoOutput.PreserveAspectCrop
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: "transparent"
+                border.color: root.state === "recording" ? "#ef5350" : "#66ffffff"
+                border.width: root.state === "recording" ? 5 : 2
+            }
         }
 
         ColumnLayout {
@@ -108,7 +294,7 @@ Popup {
                 Layout.fillWidth: true
                 Label {
                     Layout.fillWidth: true
-                    text: root.videoMode ? qsTr("Видео") : qsTr("Фото")
+                    text: root.circleMode ? qsTr("Видеокружок") : qsTr("Фото")
                     color: "#ffffff"
                     font.pixelSize: 16
                     font.weight: Font.DemiBold
@@ -116,7 +302,7 @@ Popup {
                 IconButton {
                     theme: root.theme
                     name: "close"
-                    onClicked: root.close()
+                    onClicked: root.closeSafely()
                 }
             }
 
@@ -125,105 +311,113 @@ Popup {
             Label {
                 id: errorLabel
                 Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
                 color: "#ff8a80"
                 wrapMode: Text.WordWrap
                 visible: text.length > 0
             }
 
+            Label {
+                Layout.alignment: Qt.AlignHCenter
+                visible: root.state === "recording"
+                text: {
+                    const sec = Math.floor(root.elapsedMs / 1000)
+                    return qsTr("%1:%2 / 1:00")
+                            .arg(Math.floor(sec / 60))
+                            .arg(String(sec % 60).padStart(2, "0"))
+                }
+                color: "#ffffff"
+                font.pixelSize: 14
+                font.bold: true
+            }
+
+            MediaPlaybackControls {
+                Layout.fillWidth: true
+                Layout.maximumWidth: 440
+                Layout.alignment: Qt.AlignHCenter
+                visible: root.state === "preview"
+                theme: root.theme
+                player: previewPlayer
+                compact: width < 320
+            }
+
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                spacing: 18
+                spacing: 20
 
-                // Mode toggle
-                Rectangle {
-                    width: 48
-                    height: 48
-                    radius: 24
-                    color: "#cc2a3140"
-                    border.color: "#55ffffff"
-                    NyxIcon {
-                        anchors.centerIn: parent
-                        name: root.videoMode ? "image" : "video"
-                        width: 22
-                        height: 22
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: !root.recording
-                        onClicked: root.videoMode = !root.videoMode
-                    }
+                IconButton {
+                    theme: root.theme
+                    name: root.circleMode ? "image" : "video"
+                    btnSize: 48
+                    enabled: !root.busy && root.state !== "preview"
+                    onClicked: root.circleMode = !root.circleMode
                 }
 
-                // Shutter
-                Rectangle {
-                    width: 72
-                    height: 72
-                    radius: 36
-                    color: root.recording ? "#e53935" : "#ffffff"
-                    border.color: root.videoMode ? "#e53935" : "#ffffff"
-                    border.width: 4
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            errorLabel.text = ""
-                            if (!root.videoMode) {
-                                const dest = node.chatCaptureStagingPath("jpg")
-                                imageCapture.captureToFile(dest)
-                                return
-                            }
-                            if (root.recording) {
-                                recorder.stop()
-                                return
-                            }
-                            const dest = node.chatCaptureStagingPath("mp4")
-                            root.pendingPath = dest
-                            recorder.outputLocation = "file://" + dest
-                            root.recording = true
-                            recorder.record()
+                IconButton {
+                    theme: root.theme
+                    name: root.state === "recording" ? "stop"
+                          : (root.state === "preview" ? "send" : "video")
+                    btnSize: 72
+                    accent: root.state === "recording"
+                    enabled: root.state !== "starting" && root.state !== "stopping"
+                    onClicked: {
+                        if (root.state === "recording") {
+                            root.stopRecording(true)
+                        } else if (root.state === "preview") {
+                            const path = root.pendingPath
+                            root.pendingPath = ""
+                            root.close()
+                            root.node.sendCapturedMedia(
+                                        path, "video/mp4",
+                                        "circle-message.mp4", "circle")
+                        } else {
+                            root.requestStart()
                         }
                     }
                 }
 
-                Rectangle {
-                    width: 48
-                    height: 48
-                    radius: 24
-                    color: "#cc2a3140"
-                    border.color: "#55ffffff"
-                    visible: typeof camera.cameraDevice !== "undefined"
-                    NyxIcon {
-                        anchors.centerIn: parent
-                        name: "camera-switch"
-                        width: 22
-                        height: 22
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: !root.recording
-                        onClicked: {
-                            const cams = mediaDevices.videoInputs
-                            if (!cams || cams.length < 2) return
-                            const cur = camera.cameraDevice
-                            let next = cams[0]
-                            for (let i = 0; i < cams.length; ++i) {
-                                if (cams[i].id === cur.id) {
-                                    next = cams[(i + 1) % cams.length]
-                                    break
-                                }
-                            }
-                            camera.cameraDevice = next
+                IconButton {
+                    theme: root.theme
+                    name: root.state === "preview" ? "close" : "camera-switch"
+                    btnSize: 48
+                    enabled: !root.busy
+                    onClicked: {
+                        if (root.state === "preview") {
+                            previewPlayer.stop()
+                            root.resetCapture(true)
+                            return
                         }
+                        const cams = mediaDevices.videoInputs
+                        if (!cams || cams.length < 2) return
+                        const current = camera.cameraDevice
+                        let next = cams[0]
+                        for (let i = 0; i < cams.length; ++i) {
+                            if (cams[i].id === current.id) {
+                                next = cams[(i + 1) % cams.length]
+                                break
+                            }
+                        }
+                        camera.active = false
+                        camera.cameraDevice = next
+                        Qt.callLater(function() {
+                            if (root.opened && root.state !== "preview")
+                                camera.active = true
+                        })
                     }
                 }
             }
 
             Label {
-                Layout.alignment: Qt.AlignHCenter
-                text: root.recording
-                      ? qsTr("Идёт запись — нажмите ещё раз, чтобы отправить")
-                      : (root.videoMode
-                         ? qsTr("Нажмите, чтобы начать видео")
-                         : qsTr("Нажмите, чтобы сделать фото"))
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: {
+                    if (root.state === "starting") return qsTr("Запуск камеры…")
+                    if (root.state === "stopping") return qsTr("Сохранение записи…")
+                    if (root.state === "recording") return qsTr("Нажмите ■, чтобы завершить")
+                    if (root.state === "preview") return qsTr("Проверьте кружок перед отправкой")
+                    return root.circleMode ? qsTr("Нажмите для записи видеокружка")
+                                           : qsTr("Нажмите, чтобы сделать фото")
+                }
                 color: "#ccffffff"
                 font.pixelSize: 12
             }

@@ -38,8 +38,14 @@ set(ENABLE_DOCS OFF CACHE BOOL "" FORCE)
 set(ENABLE_APP OFF CACHE BOOL "" FORCE)
 set(CONFIG_AV1_ENCODER 1 CACHE STRING "" FORCE)
 set(CONFIG_AV1_DECODER 1 CACHE STRING "" FORCE)
-if(ANDROID)
+if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
   set(AOM_TARGET_CPU "arm64" CACHE STRING "" FORCE)
+elseif(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+  set(AOM_TARGET_CPU "armv7" CACHE STRING "" FORCE)
+elseif(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+  set(AOM_TARGET_CPU "x86_64" CACHE STRING "" FORCE)
+elseif(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
+  set(AOM_TARGET_CPU "x86" CACHE STRING "" FORCE)
 else()
   set(AOM_TARGET_CPU "generic" CACHE STRING "" FORCE)
 endif()
@@ -217,6 +223,7 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/qt/call_audio_io.cpp
       apps/nyx-app/qt/call_video_io.cpp
       apps/nyx-app/qt/call_frame_provider.cpp
+      apps/nyx-app/qt/chat_media_recorder.cpp
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp

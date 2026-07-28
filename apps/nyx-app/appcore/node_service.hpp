@@ -252,7 +252,8 @@ class NodeService {
   bool request_remote_files_at(const std::string& scope_group_id_hex, const std::string& root_path,
                                const std::string& parent_rel);
   bool request_file_access_policy();
-  bool download_file(const std::string& hash_hex, const std::string& dest_path = {});
+  bool download_file(const std::string& hash_hex, const std::string& dest_path = {},
+                     const std::string& session_id = {});
   std::vector<TransferQueueItem> transfer_queue() const;
   bool pause_transfer(const std::string& hash_hex, bool paused);
   bool cancel_transfer(const std::string& hash_hex);
@@ -266,7 +267,8 @@ class NodeService {
       const std::string& path, const std::string& display_name,
       const std::string& mime,
       const std::string& scope_group_id_hex = {},
-      const std::string& owner_user_id_hex = {});
+      const std::string& owner_user_id_hex = {},
+      const std::string& relative_dir = {});
   /** Verified local object (share root or objects/ cache) by hash hex. */
   std::optional<nyx::FileEntry> find_file_object(
       const std::string& hash_hex) const;

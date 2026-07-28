@@ -38,6 +38,7 @@
 #include <QMimeDatabase>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QPointer>
 #include <QTemporaryFile>
 #include <QGuiApplication>
 #include <QIcon>
@@ -49,6 +50,7 @@
 #include <QStyleHints>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
+#include <QThreadPool>
 #include <QUrl>
 #include <QVariantMap>
 
@@ -60,6 +62,32 @@ QString normalizeSessionKey(const QString& key) {
            key.section(QLatin1Char(':'), 1).toLower();
   }
   return key;
+}
+
+QString safeMediaPathPart(QString value) {
+  value = value.trimmed();
+  value.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")),
+                QStringLiteral("_"));
+  value.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
+  if (value.isEmpty()) value = QStringLiteral("Чат");
+  return value.left(64);
+}
+
+QString mediaRelativeDir(const QString& chatKey, const QString&,
+                         const QString& mediaKind) {
+  QString stable = chatKey.section(QLatin1Char(':'), 1).toLower();
+  if (stable.isEmpty()) stable = chatKey.toLower();
+  stable.remove(QRegularExpression(QStringLiteral("[^a-z0-9]")));
+  if (stable.isEmpty()) stable = QStringLiteral("local");
+  const QString label = chatKey.startsWith(QLatin1String("group:"))
+                            ? QStringLiteral("Поле")
+                            : QStringLiteral("Личный чат");
+  const QString conversation =
+      label + QStringLiteral(" (") + stable.left(8) + QLatin1Char(')');
+  const QString leaf = mediaKind == QLatin1String("circle")
+                           ? QStringLiteral("Видеокружки")
+                           : QStringLiteral("Голосовые сообщения");
+  return QStringLiteral("Медиа/") + conversation + QLatin1Char('/') + leaf;
 }
 
 }  // namespace
@@ -2287,6 +2315,59 @@ void NodeController::wireCallbacks() {
   });
 
   service_.set_on_message([this](const nyx_app::UiMessage& msg) {
+    if (!msg.outgoing) {
+      const auto blocks = nyx::parse_markdown_blocks(msg.text);
+      const QString chat_key = QString::fromStdString(msg.chat_key);
+      const QString title = QString::fromStdString(msg.author);
+      nyx::GroupId scope_id{};
+      QString scope_hex;
+      if (chat_key.startsWith(QLatin1String("group:"))) {
+        scope_hex = chat_key.section(QLatin1Char(':'), 1).toLower();
+        nyx::FileIndex::group_id_from_hex(scope_hex.toStdString(), scope_id);
+      }
+      const QString library_root = QString::fromStdString(
+          nyx::FileIndex::library_root_path(scope_id));
+      for (const auto& block : blocks) {
+        if (block.type != nyx::MdBlockType::File || block.hash.empty()) continue;
+        const QString mime = QString::fromStdString(block.mime).toLower();
+        const QString name = safeMediaPathPart(
+            QString::fromStdString(block.caption));
+        QString kind;
+        if (mime.startsWith(QLatin1String("audio/")) &&
+            (name.startsWith(QLatin1String("voice-message"),
+                             Qt::CaseInsensitive) ||
+             name.compare(QLatin1String("voice.m4a"),
+                          Qt::CaseInsensitive) == 0)) {
+          kind = QStringLiteral("voice");
+        } else if (mime.startsWith(QLatin1String("video/")) &&
+                   name.startsWith(QLatin1String("circle-message"),
+                                   Qt::CaseInsensitive)) {
+          kind = QStringLiteral("circle");
+        } else {
+          continue;
+        }
+        const QString relative_dir =
+            mediaRelativeDir(chat_key, title, kind);
+        const QString dest_dir =
+            QDir(library_root).filePath(relative_dir);
+        QDir().mkpath(dest_dir);
+        const QString destination =
+            QDir(dest_dir).filePath(
+                QString::fromStdString(block.hash).left(12) +
+                QLatin1Char('-') + name);
+
+        if (const auto local =
+                service_.find_file_object(block.hash)) {
+          service_.import_file_object(
+              local->absolute_path(), name.toStdString(),
+              mime.toStdString(), scope_hex.toStdString(),
+              msg.author_user_id, relative_dir.toStdString());
+        } else {
+          service_.download_file(block.hash, destination.toStdString(),
+                                 msg.session_id);
+        }
+      }
+    }
     QMetaObject::invokeMethod(
         this,
         [this, msg]() {
@@ -3568,6 +3649,33 @@ QString NodeController::chatCaptureStagingPath(const QString& extension) const {
           .arg(ext));
 }
 
+void NodeController::removeStagingMedia(const QString& path) const {
+  const QString staging =
+      QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+           QStringLiteral("/chat-capture"))
+          .canonicalPath();
+  const QFileInfo info(path);
+  const QString parent = info.dir().canonicalPath();
+  if (!staging.isEmpty() && parent == staging) QFile::remove(info.absoluteFilePath());
+}
+
+void NodeController::requestChatCapturePermissions(bool needCamera) {
+  nyx_android::request_call_permissions(
+      needCamera, &NodeController::chatCapturePermissionCallback, this);
+}
+
+void NodeController::chatCapturePermissionCallback(bool micOk, bool cameraOk,
+                                                   void* ctx) {
+  auto* self = static_cast<NodeController*>(ctx);
+  if (!self) return;
+  QMetaObject::invokeMethod(
+      self,
+      [self, micOk, cameraOk]() {
+        emit self->chatCapturePermissionResult(micOk && cameraOk);
+      },
+      Qt::QueuedConnection);
+}
+
 QString NodeController::userDisplayName(const QString& userIdHex) const {
   const QString uid = userIdHex.trimmed().toLower();
   if (uid.isEmpty()) return {};
@@ -3681,14 +3789,84 @@ QString NodeController::importChatMediaMarkdown(const QString& localPath,
 
 bool NodeController::sendCapturedMedia(const QString& localPath,
                                        const QString& mimeHint,
-                                       const QString& displayName) {
+                                       const QString& displayName,
+                                       const QString& mediaKind) {
   if (!canSendMessage()) {
     showToast(QStringLiteral("Нет связи — медиа не отправлено"), true);
     return false;
   }
-  const QString md = importChatMediaMarkdown(localPath, mimeHint, displayName);
-  if (md.isEmpty()) return false;
-  sendMessage(md);
+  const QString src = localPath.trimmed();
+  const QFileInfo source_info(src);
+  if (!source_info.isFile() || source_info.size() <= 0) {
+    showToast(QStringLiteral("Запись не создана или пуста"), true);
+    return false;
+  }
+
+  QString mime = mimeHint.trimmed();
+  if (mime.isEmpty()) mime = QMimeDatabase().mimeTypeForFile(src).name();
+  QString name = displayName.trimmed();
+  if (name.isEmpty()) name = source_info.fileName();
+  if (name.isEmpty()) name = QStringLiteral("media");
+
+  QString scope;
+  if (active_chat_kind_ == 1) scope = active_chat_ref_id_;
+  const QString chat_key = active_chat_key_;
+  const QString owner = profile_user_id_hex_;
+  const QString relative_dir =
+      (mediaKind == QLatin1String("voice") ||
+       mediaKind == QLatin1String("circle"))
+          ? mediaRelativeDir(chat_key, peer_title_, mediaKind)
+          : QString{};
+
+  QPointer<NodeController> guard(this);
+  QThreadPool::globalInstance()->start(
+      [guard, src, mime, name, scope, owner, relative_dir, chat_key]() {
+        if (!guard) return;
+        const auto object = guard->service_.import_file_object(
+            src.toStdString(), name.toStdString(), mime.toStdString(),
+            scope.toStdString(), owner.toStdString(), relative_dir.toStdString());
+        QFile::remove(src);
+
+        QString markdown;
+        if (object) {
+          QString safe_name = name;
+          safe_name.replace(QLatin1Char(']'), QLatin1Char('_'));
+          QString safe_mime = mime;
+          safe_mime.remove(
+              QRegularExpression(QStringLiteral("[^A-Za-z0-9.+/_-]")));
+          if (safe_mime.isEmpty())
+            safe_mime = QStringLiteral("application/octet-stream");
+          markdown =
+              QStringLiteral("[%1](nyx-file:%2;size=%3;mime=%4)")
+                  .arg(safe_name,
+                       QString::fromStdString(nyx::hash_hex(object->hash)),
+                       QString::number(
+                           static_cast<qulonglong>(object->size)),
+                       safe_mime);
+        }
+
+        QMetaObject::invokeMethod(
+            guard,
+            [guard, markdown, chat_key]() {
+              if (!guard) return;
+              guard->refreshFileLists();
+              if (markdown.isEmpty()) {
+                guard->showToast(
+                    QStringLiteral("Не удалось сохранить запись"), true);
+                return;
+              }
+              if (guard->active_chat_key_ != chat_key ||
+                  !guard->canSendMessage()) {
+                guard->showToast(
+                    QStringLiteral(
+                        "Запись сохранена в Файлах, но чат уже закрыт"),
+                    true);
+                return;
+              }
+              guard->sendMessage(markdown);
+            },
+            Qt::QueuedConnection);
+      });
   return true;
 }
 
