@@ -224,6 +224,7 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/qt/call_video_io.cpp
       apps/nyx-app/qt/call_frame_provider.cpp
       apps/nyx-app/qt/chat_media_recorder.cpp
+      apps/nyx-app/qt/chat_video_recorder.cpp
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp

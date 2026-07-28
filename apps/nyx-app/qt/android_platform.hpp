@@ -71,6 +71,16 @@ void native_camera_stop();
 void native_camera_switch_facing();
 bool native_camera_has_front_and_back();
 
+using NativeRecordingStartedFn = void (*)(const QString& path, void* ctx);
+using NativeRecordingStoppedFn = void (*)(const QString& path, bool success,
+                                          void* ctx);
+using NativeRecordingErrorFn = void (*)(const QString& message, void* ctx);
+void set_native_recording_callbacks(NativeRecordingStartedFn on_started,
+                                    NativeRecordingStoppedFn on_stopped,
+                                    NativeRecordingErrorFn on_error, void* ctx);
+void native_camera_start_recording(const QString& path);
+void native_camera_stop_recording();
+
 /** Register hangup callback invoked from native Android hangup UI / notification. */
 void set_hangup_handler(void (*fn)());
 

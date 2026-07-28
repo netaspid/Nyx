@@ -1091,6 +1091,7 @@ Item {
 
     function openMediaCapture() {
         // Lazy: Camera/MediaRecorder crash on Android if created at ChatView load.
+        captureDestroyTimer.stop()
         mediaCaptureLoader.active = true
         Qt.callLater(function() {
             if (mediaCaptureLoader.item)
@@ -1107,8 +1108,17 @@ Item {
             theme: root.theme
             node: root.node
             parent: Overlay.overlay
-            onClosed: mediaCaptureLoader.active = false
+            onClosed: {
+                captureDestroyTimer.restart()
+            }
         }
+    }
+
+    Timer {
+        id: captureDestroyTimer
+        interval: 800
+        repeat: false
+        onTriggered: mediaCaptureLoader.active = false
     }
 
     Connections {

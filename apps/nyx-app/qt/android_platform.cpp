@@ -22,6 +22,10 @@ static nyx_android::NativeCameraJpegFn g_cam_jpeg = nullptr;
 static nyx_android::NativeCameraErrorFn g_cam_error = nullptr;
 static nyx_android::NativeCameraStartedFn g_cam_started = nullptr;
 static void* g_cam_ctx = nullptr;
+static nyx_android::NativeRecordingStartedFn g_recording_started = nullptr;
+static nyx_android::NativeRecordingStoppedFn g_recording_stopped = nullptr;
+static nyx_android::NativeRecordingErrorFn g_recording_error = nullptr;
+static void* g_recording_ctx = nullptr;
 
 namespace nyx_android {
 namespace {
@@ -480,6 +484,27 @@ bool native_camera_has_front_and_back() {
                                                 ctx.object<jobject>());
 }
 
+void set_native_recording_callbacks(NativeRecordingStartedFn on_started,
+                                    NativeRecordingStoppedFn on_stopped,
+                                    NativeRecordingErrorFn on_error, void* ctx) {
+  g_recording_started = on_started;
+  g_recording_stopped = on_stopped;
+  g_recording_error = on_error;
+  g_recording_ctx = ctx;
+}
+
+void native_camera_start_recording(const QString& path) {
+  const QJniObject output = QJniObject::fromString(path);
+  QJniObject::callStaticMethod<void>(
+      "org/nyx/app/NyxCameraCapture", "startRecording",
+      "(Ljava/lang/String;)V", output.object<jstring>());
+}
+
+void native_camera_stop_recording() {
+  QJniObject::callStaticMethod<void>("org/nyx/app/NyxCameraCapture",
+                                     "stopRecording", "()V");
+}
+
 StorageDocument storage_document_info(const QString& uri) {
   StorageDocument info;
   info.uri = uri;
@@ -620,6 +645,74 @@ Java_org_nyx_app_NyxCameraCapture_nativeOnStarted(JNIEnv* env, jclass, jboolean 
       Qt::QueuedConnection);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_org_nyx_app_NyxCameraCapture_nativeOnRecordingStarted(JNIEnv* env, jclass,
+                                                           jstring path) {
+  QString output;
+  if (path) {
+    const char* utf = env->GetStringUTFChars(path, nullptr);
+    if (utf) {
+      output = QString::fromUtf8(utf);
+      env->ReleaseStringUTFChars(path, utf);
+    }
+  }
+  auto* fn = g_recording_started;
+  void* ctx = g_recording_ctx;
+  auto* obj = static_cast<QObject*>(ctx);
+  if (!obj) return;
+  QMetaObject::invokeMethod(
+      obj, [fn, ctx, output]() {
+        if (fn) fn(output, ctx);
+      },
+      Qt::QueuedConnection);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_nyx_app_NyxCameraCapture_nativeOnRecordingStopped(JNIEnv* env, jclass,
+                                                           jstring path,
+                                                           jboolean success) {
+  QString output;
+  if (path) {
+    const char* utf = env->GetStringUTFChars(path, nullptr);
+    if (utf) {
+      output = QString::fromUtf8(utf);
+      env->ReleaseStringUTFChars(path, utf);
+    }
+  }
+  auto* fn = g_recording_stopped;
+  void* ctx = g_recording_ctx;
+  auto* obj = static_cast<QObject*>(ctx);
+  if (!obj) return;
+  const bool ok = success;
+  QMetaObject::invokeMethod(
+      obj, [fn, ctx, output, ok]() {
+        if (fn) fn(output, ok, ctx);
+      },
+      Qt::QueuedConnection);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_nyx_app_NyxCameraCapture_nativeOnRecordingError(JNIEnv* env, jclass,
+                                                         jstring message) {
+  QString error;
+  if (message) {
+    const char* utf = env->GetStringUTFChars(message, nullptr);
+    if (utf) {
+      error = QString::fromUtf8(utf);
+      env->ReleaseStringUTFChars(message, utf);
+    }
+  }
+  auto* fn = g_recording_error;
+  void* ctx = g_recording_ctx;
+  auto* obj = static_cast<QObject*>(ctx);
+  if (!obj) return;
+  QMetaObject::invokeMethod(
+      obj, [fn, ctx, error]() {
+        if (fn) fn(error, ctx);
+      },
+      Qt::QueuedConnection);
+}
+
 #else
 
 namespace nyx_android {
@@ -653,6 +746,11 @@ void native_camera_start(bool) {}
 void native_camera_stop() {}
 void native_camera_switch_facing() {}
 bool native_camera_has_front_and_back() { return false; }
+void set_native_recording_callbacks(NativeRecordingStartedFn,
+                                    NativeRecordingStoppedFn,
+                                    NativeRecordingErrorFn, void*) {}
+void native_camera_start_recording(const QString&) {}
+void native_camera_stop_recording() {}
 void set_hangup_handler(void (*)()) {}
 void show_native_hangup_overlay(bool) {}
 void invoke_hangup_handler() {}
