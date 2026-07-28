@@ -259,9 +259,6 @@ ApplicationWindow {
 
     Connections {
         target: app
-        function onChatChanged() {
-            if (app.inChat) app.refreshChatList()
-        }
         function onIncomingMessage(author, preview) {
             if (!root.active)
                 root.alert(0)

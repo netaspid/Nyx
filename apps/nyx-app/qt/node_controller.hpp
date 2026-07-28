@@ -340,6 +340,8 @@ class NodeController : public QObject {
   Q_INVOKABLE void refreshProfile();
   Q_INVOKABLE void completeOnboarding(const QString& nickname);
   Q_INVOKABLE void refreshChatList();
+  /** Update live/offline badges without re-reading chat history from disk. */
+  void refreshChatSessionStates();
   Q_INVOKABLE void refreshGroupList();
   Q_INVOKABLE void refreshContactList();
   Q_INVOKABLE void refreshProfilePhotos();
