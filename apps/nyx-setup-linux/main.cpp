@@ -1,6 +1,7 @@
 #include "../nyx-setup/payload.hpp"
 #include "setup_util.hpp"
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -64,6 +65,15 @@ int main(int argc, char** argv) {
 
   nyx_setup::create_desktop_entry(install_dir);
   nyx_setup::register_install_manifest(install_dir);
+
+  std::cerr << "Checking document viewer dependencies...\n";
+  std::string deps_err;
+  const bool skip_deps =
+      (std::getenv("NYX_SKIP_DOC_DEPS") != nullptr);
+  if (!skip_deps) {
+    nyx_setup::ensure_document_dependencies(install_dir, &deps_err, /*interactive=*/true);
+    if (!deps_err.empty()) std::cerr << "Note: " << deps_err << '\n';
+  }
 
   std::cout << "Nyx installed to " << install_dir << '\n';
   if (ask_yes_no("Launch Nyx now?")) {

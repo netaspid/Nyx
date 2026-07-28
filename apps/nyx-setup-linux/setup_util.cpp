@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -143,6 +144,183 @@ bool launch_app(const std::string& exe_path) {
     setsid();
     execl(exe_path.c_str(), exe_path.c_str(), static_cast<char*>(nullptr));
     _exit(127);
+  }
+  return true;
+}
+
+namespace {
+
+bool tool_on_path(const char* name) {
+  if (const char* path = std::getenv("PATH")) {
+    std::string paths = path;
+    std::size_t start = 0;
+    while (start <= paths.size()) {
+      const auto sep = paths.find(':', start);
+      const std::string dir =
+          paths.substr(start, sep == std::string::npos ? std::string::npos : sep - start);
+      if (!dir.empty()) {
+        const std::string cand = join_path(dir, name);
+        if (path_exists(cand) && access(cand.c_str(), X_OK) == 0) return true;
+      }
+      if (sep == std::string::npos) break;
+      start = sep + 1;
+    }
+  }
+  const std::string abs = std::string("/usr/bin/") + name;
+  return path_exists(abs) && access(abs.c_str(), X_OK) == 0;
+}
+
+bool has_pdf_tools() {
+  return tool_on_path("mutool") || (tool_on_path("pdftoppm") && tool_on_path("pdfinfo"));
+}
+
+bool has_bundled_pdf_tools(const std::string& install_dir) {
+  if (install_dir.empty()) return false;
+  const std::string tools = join_path(install_dir, "tools");
+  return (path_exists(join_path(tools, "mutool")) &&
+          access(join_path(tools, "mutool").c_str(), X_OK) == 0) ||
+         (path_exists(join_path(tools, "pdftoppm")) &&
+          access(join_path(tools, "pdftoppm").c_str(), X_OK) == 0);
+}
+
+bool has_office_tools() {
+  return tool_on_path("soffice") || tool_on_path("libreoffice");
+}
+
+enum class PackageManager { None, Apt, Dnf, Pacman, Zypper };
+
+PackageManager detect_package_manager() {
+  if (path_exists("/usr/bin/apt-get")) return PackageManager::Apt;
+  if (path_exists("/usr/bin/dnf")) return PackageManager::Dnf;
+  if (path_exists("/usr/bin/pacman")) return PackageManager::Pacman;
+  if (path_exists("/usr/bin/zypper")) return PackageManager::Zypper;
+  return PackageManager::None;
+}
+
+int run_command(const std::string& cmd) {
+  return std::system(cmd.c_str());
+}
+
+bool run_privileged(const std::string& inner_cmd, std::string* err) {
+  // Prefer graphical elevation when available.
+  if (path_exists("/usr/bin/pkexec")) {
+    const std::string cmd = "pkexec --disable-internal-agent /bin/sh -c '" + inner_cmd + "'";
+    const int rc = run_command(cmd);
+    if (rc == 0) return true;
+  }
+  if (path_exists("/usr/bin/sudo")) {
+    const std::string cmd = "sudo -n /bin/sh -c '" + inner_cmd + "'";
+    if (run_command(cmd) == 0) return true;
+    const std::string cmd_ask = "sudo /bin/sh -c '" + inner_cmd + "'";
+    if (run_command(cmd_ask) == 0) return true;
+  }
+  if (geteuid() == 0) {
+    if (run_command(inner_cmd) == 0) return true;
+  }
+  if (err) {
+    *err =
+        "Не удалось установить пакеты (нужны права администратора: pkexec/sudo). "
+        "Установите вручную: mupdf-tools (или poppler-utils) и LibreOffice.";
+  }
+  return false;
+}
+
+std::string install_command(PackageManager pm, bool need_pdf, bool need_office) {
+  std::string pkgs;
+  auto add = [&](const char* p) {
+    if (!pkgs.empty()) pkgs += ' ';
+    pkgs += p;
+  };
+  switch (pm) {
+    case PackageManager::Apt:
+      if (need_pdf) {
+        add("mupdf-tools");
+        add("poppler-utils");
+      }
+      if (need_office) add("libreoffice-writer");
+      return "export DEBIAN_FRONTEND=noninteractive; apt-get update -y && apt-get install -y " +
+             pkgs;
+    case PackageManager::Dnf:
+      if (need_pdf) {
+        add("mupdf");
+        add("poppler-utils");
+      }
+      if (need_office) add("libreoffice-writer");
+      return "dnf install -y " + pkgs;
+    case PackageManager::Pacman:
+      if (need_pdf) {
+        add("mupdf-tools");
+        add("poppler");
+      }
+      if (need_office) add("libreoffice-still");
+      return "pacman -Sy --noconfirm " + pkgs;
+    case PackageManager::Zypper:
+      if (need_pdf) {
+        add("mupdf");
+        add("poppler-tools");
+      }
+      if (need_office) add("libreoffice-writer");
+      return "zypper --non-interactive install -y " + pkgs;
+    case PackageManager::None:
+      break;
+  }
+  return {};
+}
+
+}  // namespace
+
+bool ensure_document_dependencies(const std::string& install_dir, std::string* err,
+                                  bool interactive) {
+  const bool need_pdf = !has_pdf_tools() && !has_bundled_pdf_tools(install_dir);
+  const bool need_office = !has_office_tools();
+  if (!need_pdf && !need_office) return true;
+
+  const PackageManager pm = detect_package_manager();
+  if (pm == PackageManager::None) {
+    if (err) {
+      *err =
+          "Не найден пакетный менеджер (apt/dnf/pacman/zypper). "
+          "Установите вручную: mutool/pdftoppm и LibreOffice.";
+    }
+    // Soft-fail: Nyx itself still installs; document viewer may be limited.
+    return true;
+  }
+
+  if (interactive) {
+    std::cout << "\nДля встроенного просмотра документов нужны:\n";
+    if (need_pdf) std::cout << "  - PDF: mupdf-tools / poppler-utils\n";
+    if (need_office) std::cout << "  - Office: LibreOffice\n";
+    std::cout << "Установить через системный пакетный менеджер? [Y/n] ";
+    std::string line;
+    if (!std::getline(std::cin, line)) line.clear();
+    if (!line.empty() && (line[0] == 'n' || line[0] == 'N')) {
+      if (err) *err = "Установка зависимостей пропущена пользователем";
+      return true;
+    }
+  }
+
+  const std::string cmd = install_command(pm, need_pdf, need_office);
+  if (cmd.empty()) {
+    if (err) *err = "Не удалось сформировать команду установки пакетов";
+    return true;
+  }
+
+  std::cerr << "Installing document viewer dependencies...\n";
+  std::string elev_err;
+  if (!run_privileged(cmd, &elev_err)) {
+    if (err) *err = elev_err;
+    // Soft-fail so Nyx still installs.
+    return true;
+  }
+
+  if (need_pdf && !has_pdf_tools()) {
+    if (err) *err = "PDF-утилиты не найдены после установки пакетов";
+  }
+  if (need_office && !has_office_tools()) {
+    if (err) {
+      if (!err->empty()) *err += "; ";
+      *err += "LibreOffice (soffice) не найден после установки";
+    }
   }
   return true;
 }

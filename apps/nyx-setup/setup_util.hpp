@@ -43,6 +43,13 @@ bool launch_app(const std::wstring& exe_path);
 /** Windows 10+ x64; returns false with Russian message in err. */
 bool ensure_system_prerequisites(std::wstring* err = nullptr);
 
+/**
+ * Install document-viewer dependencies (MuPDF/Poppler + LibreOffice) when missing.
+ * Uses winget when available; otherwise downloads MuPDF tools into install_dir\\tools.
+ */
+bool ensure_document_dependencies(const std::wstring& install_dir, std::wstring* err = nullptr,
+                                  ProgressFn progress = nullptr);
+
 /** Checks extracted files and that Qt/runtime DLLs load. */
 bool verify_installation(const std::wstring& install_dir, std::wstring* err = nullptr);
 

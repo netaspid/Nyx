@@ -468,6 +468,8 @@ if(NYX_BUILD_GUI)
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy-installer-runtime.cmake
         COMMAND ${CMAKE_COMMAND} -DROOT=${NYX_INSTALLER_STAGING}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/materialize-lib-symlinks.cmake
+        COMMAND ${CMAKE_COMMAND} -DDST=${NYX_INSTALLER_STAGING}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/bundle-doc-tools-linux.cmake
         COMMAND ${NYX_INSTALLER_DIR}/run-pack-installer.sh
         DEPENDS nyx-app nyx-node nyx-rendezvous nyx-setup-stub-linux nyx-uninstall nyx-installer-pack
         COMMENT "NyxSetup"
