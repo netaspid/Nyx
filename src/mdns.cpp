@@ -165,40 +165,11 @@ void MdnsLan::start_advertising(UdpSocket socket, Profile profile, uint16_t port
   running_.store(true);
   thread_ = std::thread([this, profile = std::move(profile), port,
                          host_ip = std::move(host_ip)]() mutable {
-    std::vector<std::string> peer_hosts;
-    auto last_scan = std::chrono::steady_clock::now() -
-                     std::chrono::milliseconds(2000);
     while (running_.load()) {
-      // Prefer live LAN IP (Wi‑Fi may arrive after inbox start).
       std::string ip = guess_lan_ipv4();
       if (ip.empty() || ip == "127.0.0.1" || ip == "0.0.0.0") ip = host_ip;
 
-      const auto now = std::chrono::steady_clock::now();
-      if (now - last_scan >= std::chrono::milliseconds(1500)) {
-        last_scan = now;
-        UdpSocket probe;
-        if (setup_socket(probe, nullptr)) {
-          std::vector<std::string> fresh;
-          for (const auto& p : browse(probe, 400)) {
-            if (p.host.empty() || p.host == "0.0.0.0") continue;
-            if (!ip.empty() && p.host == ip) continue;
-            fresh.push_back(p.host);
-          }
-          std::sort(fresh.begin(), fresh.end());
-          fresh.erase(std::unique(fresh.begin(), fresh.end()), fresh.end());
-          peer_hosts = std::move(fresh);
-        }
-      }
-
-      auto extras = discovery_unicast_targets();
-      for (const auto& h : extras) {
-        if (h.empty()) continue;
-        if (!ip.empty() && h == ip) continue;
-        if (std::find(peer_hosts.begin(), peer_hosts.end(), h) == peer_hosts.end())
-          peer_hosts.push_back(h);
-      }
-
-      send_announcement(advert_socket_, profile, port, ip, peer_hosts);
+      send_announcement(advert_socket_, profile, port, ip, discovery_unicast_targets());
       for (int i = 0; i < 10 && running_.load(); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
