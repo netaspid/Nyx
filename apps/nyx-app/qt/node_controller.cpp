@@ -1275,6 +1275,41 @@ void NodeController::openRemoteFile(const QString& hashHex, const QString& fileN
 
 void NodeController::openFilesView() { setMainViewMode(1); }
 
+void NodeController::openChatMediaFolder(const QString& mediaKind) {
+  const QString kind = mediaKind.trimmed().toLower();
+  if (kind != QLatin1String("voice") && kind != QLatin1String("circle"))
+    return;
+
+  QString scope_id;
+  nyx::GroupId scope{};
+  if (active_chat_kind_ == 1) {
+    scope_id = active_chat_ref_id_.trimmed().toLower();
+    if (!nyx::FileIndex::group_id_from_hex(scope_id.toStdString(), scope)) {
+      showToast(QStringLiteral("Не удалось определить хранилище чата"));
+      return;
+    }
+  }
+
+  setFileScopeGroupId(scope_id);
+  setFilesSection(0);
+  refreshFileShareRoots();
+
+  const QString root =
+      QString::fromStdString(nyx::FileIndex::library_root_path(scope));
+  setFileSelectedShareRoot(root);
+  const QString relative =
+      mediaRelativeDir(active_chat_key_, peer_title_, kind);
+  const QString directory = QDir(root).filePath(relative);
+  if (!QDir(directory).exists()) {
+    setMainViewMode(1);
+    showToast(QStringLiteral("В этом чате пока нет сохранённых медиа"));
+    return;
+  }
+
+  browseIntoFolder(relative);
+  setMainViewMode(1);
+}
+
 void NodeController::showChatView() { setMainViewMode(0); }
 
 void NodeController::openFilesDialog() { openFilesView(); }

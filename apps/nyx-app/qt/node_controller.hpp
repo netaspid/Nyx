@@ -4,6 +4,7 @@
 #include "call_video_io.hpp"
 #include "call_frame_provider.hpp"
 #include "chat_media_recorder.hpp"
+#include "chat_video_recorder.hpp"
 #include "chat_list_model.hpp"
 #include "document_viewer.hpp"
 #include "lan_peer_model.hpp"
@@ -106,6 +107,7 @@ class NodeController : public QObject {
   Q_PROPERTY(QString inAppMediaTitle READ inAppMediaTitle NOTIFY inAppMediaChanged)
   Q_PROPERTY(DocumentViewer* documentViewer READ documentViewer CONSTANT)
   Q_PROPERTY(ChatMediaRecorder* chatMediaRecorder READ chatMediaRecorder CONSTANT)
+  Q_PROPERTY(ChatVideoRecorder* chatVideoRecorder READ chatVideoRecorder CONSTANT)
   Q_PROPERTY(QVariantList fileShareRoots READ fileShareRoots NOTIFY filesChanged)
   Q_PROPERTY(QString fileSelectedShareRoot READ fileSelectedShareRoot WRITE setFileSelectedShareRoot
                  NOTIFY filesChanged)
@@ -245,6 +247,7 @@ class NodeController : public QObject {
   QString inAppMediaTitle() const { return in_app_media_title_; }
   DocumentViewer* documentViewer() { return &document_viewer_; }
   ChatMediaRecorder* chatMediaRecorder() { return &chat_media_recorder_; }
+  ChatVideoRecorder* chatVideoRecorder() { return &chat_video_recorder_; }
   QVariantList transferQueue() const { return transfer_queue_; }
   QVariantList fileShareRoots() const { return file_share_roots_; }
   QString fileSelectedShareRoot() const { return file_selected_share_root_; }
@@ -359,6 +362,7 @@ class NodeController : public QObject {
   Q_INVOKABLE void openFieldInfo(const QString& groupIdHex = {});
   Q_INVOKABLE void openPeerInfo(const QString& userIdHex = {});
   Q_INVOKABLE void openFilesView();
+  Q_INVOKABLE void openChatMediaFolder(const QString& mediaKind);
   Q_INVOKABLE void showChatView();
   Q_INVOKABLE void leaveChat();
   Q_INVOKABLE void openFilesDialog();
@@ -760,6 +764,7 @@ class NodeController : public QObject {
   QString in_app_media_title_;
   DocumentViewer document_viewer_;
   ChatMediaRecorder chat_media_recorder_;
+  ChatVideoRecorder chat_video_recorder_;
   int files_section_ = 0;
   bool file_index_progress_visible_ = false;
   int file_index_progress_percent_ = 0;

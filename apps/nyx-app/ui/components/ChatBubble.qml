@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Effects
 import QtMultimedia
 import "."
 import "../js/MarkdownFormat.js" as Md
@@ -402,14 +403,28 @@ Item {
                                         audioOutput: AudioOutput {}
                                         videoOutput: fileVideoOutput
                                     }
-                                    MediaPlaybackControls {
+                                    RowLayout {
                                         Layout.fillWidth: true
                                         visible: fileBlock.localPath.length > 0
                                                  && (fileBlock.isAudio
                                                      || fileBlock.isVideo)
-                                        theme: bubbleRoot.theme
-                                        player: filePlayer
-                                        compact: true
+                                        spacing: 4
+                                        MediaPlaybackControls {
+                                            Layout.fillWidth: true
+                                            theme: bubbleRoot.theme
+                                            player: filePlayer
+                                            compact: true
+                                        }
+                                        IconButton {
+                                            visible: fileBlock.isVoice
+                                            theme: bubbleRoot.theme
+                                            name: "folder"
+                                            btnSize: 28
+                                            flat: true
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: qsTr("Открыть сохранённые голосовые")
+                                            onClicked: bubbleRoot.node.openChatMediaFolder("voice")
+                                        }
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
@@ -489,16 +504,31 @@ Item {
                                 height: width
 
                                 Rectangle {
+                                    id: circleSurface
                                     anchors.fill: parent
                                     radius: width / 2
                                     color: "#11151c"
                                     clip: true
+                                    layer.enabled: true
+                                    layer.effect: MultiEffect {
+                                        maskEnabled: true
+                                        maskSource: circleMask
+                                    }
 
                                     VideoOutput {
                                         id: circleVideoOutput
                                         anchors.fill: parent
                                         fillMode: VideoOutput.PreserveAspectCrop
                                     }
+                                }
+
+                                Rectangle {
+                                    id: circleMask
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: "white"
+                                    visible: false
+                                    layer.enabled: true
                                 }
 
                                 Rectangle {
@@ -558,12 +588,25 @@ Item {
                                 audioOutput: AudioOutput {}
                             }
 
-                            MediaPlaybackControls {
+                            RowLayout {
                                 width: parent.width
                                 visible: fileBlock.localPath.length > 0
-                                theme: bubbleRoot.theme
-                                player: circlePlayer
-                                compact: true
+                                spacing: 4
+                                MediaPlaybackControls {
+                                    Layout.fillWidth: true
+                                    theme: bubbleRoot.theme
+                                    player: circlePlayer
+                                    compact: true
+                                }
+                                IconButton {
+                                    theme: bubbleRoot.theme
+                                    name: "folder"
+                                    btnSize: 28
+                                    flat: true
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: qsTr("Открыть сохранённые видеокружки")
+                                    onClicked: bubbleRoot.node.openChatMediaFolder("circle")
+                                }
                             }
                         }
                     }
