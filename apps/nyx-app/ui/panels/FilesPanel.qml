@@ -12,8 +12,10 @@ ColumnLayout {
     spacing: 0
 
     readonly property int sectionCount: node.fileScopeGroupId.length > 0 ? 3 : 2
+    readonly property bool narrow: width < 720 || Qt.platform.os === "android"
     property string localSearchQuery: ""
     property string remoteSearchQuery: ""
+    property bool mobileFoldersOpen: false
 
     function matchesSearch(entry, query) {
         const q = String(query || "").trim().toLowerCase()
@@ -27,6 +29,24 @@ ColumnLayout {
     function clampSection() {
         if (sectionTabRow.currentIndex >= sectionCount)
             sectionTabRow.currentIndex = 0
+    }
+
+    function openMobileFolders() {
+        if (!narrow) return
+        mobileFoldersOpen = true
+        if (mobileFoldersPopup)
+            mobileFoldersPopup.open()
+    }
+
+    function closeMobileFolders() {
+        mobileFoldersOpen = false
+        if (mobileFoldersPopup)
+            mobileFoldersPopup.close()
+    }
+
+    function selectShareRoot(path) {
+        node.setFileSelectedShareRoot(path)
+        closeMobileFolders()
     }
 
     Rectangle {
@@ -70,7 +90,8 @@ ColumnLayout {
 
             NyxComboBox {
                 id: scopeBox
-                Layout.preferredWidth: 200
+                Layout.preferredWidth: root.narrow ? Math.min(140, root.width * 0.38) : 200
+                Layout.maximumWidth: root.narrow ? 160 : 280
                 theme: root.theme
                 model: scopeModel
                 textRole: "label"
@@ -144,7 +165,7 @@ ColumnLayout {
             anchors.fill: parent
             anchors.margins: 4
             spacing: 4
-            property int currentIndex: 0
+            property int currentIndex: node ? node.filesSection : 0
 
             Repeater {
                 model: root.sectionCount
@@ -173,8 +194,9 @@ ColumnLayout {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: {
-                            sectionTabRow.currentIndex = index
                             node.setFilesSection(index)
+                            if (index !== 0)
+                                root.closeMobileFolders()
                         }
                     }
                 }
@@ -411,126 +433,18 @@ ColumnLayout {
                 spacing: theme.spacing
 
                 Rectangle {
+                    id: shareRootsSidebar
+                    visible: !root.narrow
                     Layout.preferredWidth: 220
                     Layout.fillHeight: true
                     radius: theme.radiusBtn
                     color: theme.bgSidebar
                     border.color: theme.border
 
-                    ColumnLayout {
+                    Loader {
                         anchors.fill: parent
                         anchors.margins: theme.spacing
-                        spacing: 8
-
-                        Label {
-                            text: qsTr("Мои папки")
-                            color: theme.textSecondary
-                            font.pixelSize: 11
-                            font.capitalization: Font.AllUppercase
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            visible: node.fileScopeGroupId.length > 0
-                            wrapMode: Text.WordWrap
-                            text: qsTr("Только ваши share-папки в этом поле. Каталог других участников — вкладка «Ресурсы».")
-                            color: theme.textMuted
-                            font.pixelSize: 10
-                        }
-
-                        ListView {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            clip: true
-                            spacing: 4
-                            model: node.fileShareRoots
-                            delegate: ItemDelegate {
-                                required property var modelData
-                                width: ListView.view.width
-                                implicitHeight: rowLayout.implicitHeight + 16
-                                padding: 8
-                                highlighted: node.fileSelectedShareRoot === modelData.path
-                                background: Rectangle {
-                                    radius: theme.radiusBtn - 2
-                                    color: parent.highlighted ? theme.accentPress
-                                         : parent.hovered ? theme.btnSecondaryHover : theme.btnSecondary
-                                    border.color: parent.highlighted ? theme.accent : theme.border
-                                    border.width: parent.highlighted ? 1 : 0
-                                }
-                                contentItem: RowLayout {
-                                    id: rowLayout
-                                    spacing: 8
-                                    NyxIcon {
-                                        Layout.alignment: Qt.AlignVCenter
-                                        name: "folder"
-                                        width: 18
-                                        height: 18
-                                    }
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        Layout.alignment: Qt.AlignVCenter
-                                        spacing: 1
-                                        Label {
-                                            Layout.fillWidth: true
-                                            text: modelData.displayName || modelData.path
-                                            color: theme.textPrimary
-                                            font.pixelSize: 12
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                            ToolTip.text: modelData.path
-                                            ToolTip.visible: hovered
-                                        }
-                                        Label {
-                                            Layout.fillWidth: true
-                                            visible: (modelData.scopeLabel || "").length > 0
-                                            text: modelData.scopeLabel
-                                            color: theme.textMuted
-                                            font.pixelSize: 9
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-                                    Label {
-                                        Layout.alignment: Qt.AlignVCenter
-                                        text: modelData.fileCount === 0 ? qsTr("пусто")
-                                              : qsTr("%1 ф.").arg(modelData.fileCount)
-                                        color: theme.textMuted
-                                        font.pixelSize: 10
-                                    }
-                                    IconButton {
-                                        Layout.alignment: Qt.AlignVCenter
-                                        theme: root.theme
-                                        name: "delete"
-                                        visible: modelData.canRemove === true
-                                        ToolTip.text: qsTr("Убрать из индекса")
-                                        onClicked: node.removeIndexedFolder(modelData.path)
-                                    }
-                                }
-                                onClicked: node.setFileSelectedShareRoot(modelData.path)
-                                onPressAndHold: {
-                                    rootPathMenu.path = modelData.path
-                                    rootPathMenu.displayName = modelData.displayName || modelData.path
-                                    rootPathMenu.canRemove = modelData.canRemove === true
-                                    rootPathMenu.popup()
-                                }
-                            }
-                        }
-
-                        NyxButtonSecondary {
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            enabled: node.canAddShareFolder
-                            text: Qt.platform.os === "android"
-                                  ? qsTr("Папка для обмена…")
-                                  : qsTr("Добавить папку…")
-                            onClicked: node.addIndexedFolder("")
-                        }
-                        NyxButtonSecondary {
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            enabled: node.canAddShareFolder
-                            text: qsTr("Импортировать файлы…")
-                            onClicked: node.importFiles()
-                        }
+                        sourceComponent: shareRootsPane
                     }
                 }
 
@@ -544,9 +458,11 @@ ColumnLayout {
                         visible: node.fileSelectedShareRoot.length === 0
                                  && node.localFileList.length === 0
                         wrapMode: Text.WordWrap
-                        text: Qt.platform.os === "android"
-                              ? qsTr("Импортируйте файлы или соберите папку для обмена — они появятся здесь и в ресурсах поля.")
-                              : qsTr("Выберите папку слева или добавьте новую.")
+                        text: root.narrow
+                              ? qsTr("Откройте «Мои папки» или импортируйте файлы — они появятся здесь.")
+                              : (Qt.platform.os === "android"
+                                 ? qsTr("Импортируйте файлы или соберите папку для обмена — они появятся здесь и в ресурсах поля.")
+                                 : qsTr("Выберите папку слева или добавьте новую."))
                         color: theme.textMuted
                         font.pixelSize: 11
                     }
@@ -562,22 +478,41 @@ ColumnLayout {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: node.fileSelectedShareRoot.length > 0
                         spacing: 6
 
                         IconButton {
+                            visible: root.narrow
                             theme: root.theme
                             name: "folder"
+                            accent: root.mobileFoldersOpen
+                                    || node.fileSelectedShareRoot.length === 0
+                            ToolTip.visible: hovered
+                            ToolTip.text: qsTr("Мои папки")
+                            onClicked: root.openMobileFolders()
+                        }
+
+                        IconButton {
+                            theme: root.theme
+                            name: "back"
+                            visible: node.fileSelectedShareRoot.length > 0
+                                     || node.fileBrowsePath.length > 0
                             enabled: node.fileBrowsePath.length > 0
                                      || node.fileSelectedShareRoot.length > 0
                             ToolTip.text: node.fileBrowsePath.length > 0
                                           ? qsTr("На уровень выше")
                                           : qsTr("К списку папок")
-                            onClicked: node.browseUp()
+                            onClicked: {
+                                const leaveShare = node.fileBrowsePath.length === 0
+                                        && node.fileSelectedShareRoot.length > 0
+                                node.browseUp()
+                                if (root.narrow && leaveShare)
+                                    root.openMobileFolders()
+                            }
                         }
 
                         Flow {
                             Layout.fillWidth: true
+                            visible: node.fileSelectedShareRoot.length > 0
                             spacing: 4
                             Repeater {
                                 model: node.fileBrowseCrumbs
@@ -610,6 +545,11 @@ ColumnLayout {
                                     }
                                 }
                             }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                            visible: node.fileSelectedShareRoot.length === 0
                         }
 
                         NyxButtonSecondary {
@@ -782,7 +722,204 @@ ColumnLayout {
                             title: qsTr("Папка пуста")
                             hint: qsTr("Положите файлы и нажмите «Переиндексировать» (ПКМ по корню)")
                         }
+
+                        EmptyState {
+                            anchors.centerIn: parent
+                            width: parent.width - 24
+                            visible: root.narrow
+                                     && localList.count === 0
+                                     && node.fileShareRoots.length > 0
+                                     && node.fileSelectedShareRoot.length === 0
+                            theme: root.theme
+                            emoji: "📁"
+                            title: qsTr("Выберите папку")
+                            hint: qsTr("Нажмите значок «Мои папки» сверху")
+                        }
                     }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: shareRootsPane
+
+        ColumnLayout {
+            spacing: 8
+
+            Label {
+                text: qsTr("Мои папки")
+                visible: !root.narrow
+                color: theme.textSecondary
+                font.pixelSize: 11
+                font.capitalization: Font.AllUppercase
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: node.fileScopeGroupId.length > 0
+                wrapMode: Text.WordWrap
+                text: qsTr("Только ваши share-папки в этом поле. Каталог других участников — вкладка «Ресурсы».")
+                color: theme.textMuted
+                font.pixelSize: 10
+            }
+
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 4
+                model: node.fileShareRoots
+                delegate: ItemDelegate {
+                    required property var modelData
+                    width: ListView.view.width
+                    implicitHeight: rowLayout.implicitHeight + 16
+                    padding: 8
+                    highlighted: node.fileSelectedShareRoot === modelData.path
+                    background: Rectangle {
+                        radius: theme.radiusBtn - 2
+                        color: parent.highlighted ? theme.accentPress
+                             : parent.hovered ? theme.btnSecondaryHover : theme.btnSecondary
+                        border.color: parent.highlighted ? theme.accent : theme.border
+                        border.width: parent.highlighted ? 1 : 0
+                    }
+                    contentItem: RowLayout {
+                        id: rowLayout
+                        spacing: 8
+                        NyxIcon {
+                            Layout.alignment: Qt.AlignVCenter
+                            name: "folder"
+                            width: 18
+                            height: 18
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 1
+                            Label {
+                                Layout.fillWidth: true
+                                text: modelData.displayName || modelData.path
+                                color: theme.textPrimary
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                                ToolTip.text: modelData.path
+                                ToolTip.visible: hovered
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                visible: (modelData.scopeLabel || "").length > 0
+                                text: modelData.scopeLabel
+                                color: theme.textMuted
+                                font.pixelSize: 9
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Label {
+                            Layout.alignment: Qt.AlignVCenter
+                            text: modelData.fileCount === 0 ? qsTr("пусто")
+                                  : qsTr("%1 ф.").arg(modelData.fileCount)
+                            color: theme.textMuted
+                            font.pixelSize: 10
+                        }
+                        IconButton {
+                            Layout.alignment: Qt.AlignVCenter
+                            theme: root.theme
+                            name: "delete"
+                            visible: modelData.canRemove === true
+                            ToolTip.text: qsTr("Убрать из индекса")
+                            onClicked: node.removeIndexedFolder(modelData.path)
+                        }
+                    }
+                    onClicked: root.selectShareRoot(modelData.path)
+                    onPressAndHold: {
+                        rootPathMenu.path = modelData.path
+                        rootPathMenu.displayName = modelData.displayName || modelData.path
+                        rootPathMenu.canRemove = modelData.canRemove === true
+                        rootPathMenu.popup()
+                    }
+                }
+            }
+
+            NyxButtonSecondary {
+                Layout.fillWidth: true
+                theme: root.theme
+                enabled: node.canAddShareFolder
+                text: Qt.platform.os === "android"
+                      ? qsTr("Папка для обмена…")
+                      : qsTr("Добавить папку…")
+                onClicked: node.addIndexedFolder("")
+            }
+            NyxButtonSecondary {
+                Layout.fillWidth: true
+                theme: root.theme
+                enabled: node.canAddShareFolder
+                text: qsTr("Импортировать файлы…")
+                onClicked: node.importFiles()
+            }
+        }
+    }
+
+    Item {
+        Layout.preferredWidth: 0
+        Layout.preferredHeight: 0
+        Layout.maximumHeight: 0
+        width: 0
+        height: 0
+
+        Popup {
+            id: mobileFoldersPopup
+            parent: Overlay.overlay
+            modal: true
+            focus: true
+            anchors.centerIn: Overlay.overlay
+            width: Overlay.overlay ? Overlay.overlay.width : root.width
+            height: Overlay.overlay ? Overlay.overlay.height : root.height
+            padding: 0
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+            onClosed: root.mobileFoldersOpen = false
+
+            background: Rectangle { color: theme.bgApp }
+
+            contentItem: ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 52
+                    color: theme.bgChatHeader
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: theme.spacing
+                        spacing: 10
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Мои папки")
+                            color: theme.textPrimary
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                        }
+                        IconButton {
+                            theme: root.theme
+                            name: "close"
+                            onClicked: root.closeMobileFolders()
+                        }
+                    }
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: theme.border
+                    }
+                }
+
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.margins: theme.spacing
+                    active: mobileFoldersPopup.opened
+                    sourceComponent: shareRootsPane
                 }
             }
         }

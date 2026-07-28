@@ -36,7 +36,6 @@ Rectangle {
             property string iconName
             property string label
             property bool active: false
-            property bool accentBtn: false
 
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -52,35 +51,40 @@ Rectangle {
                 }
             }
 
-            contentItem: ColumnLayout {
-                spacing: 2
-                Item {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 34
-                    Layout.preferredHeight: 34
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: width / 2
-                        color: {
-                            if (cell.accentBtn)
-                                return root.theme.accent
-                            if (cell.active)
-                                return root.theme.accent
-                            return "transparent"
+            contentItem: Item {
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 2
+                    width: parent.width
+
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 28
+                        height: 28
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: cell.active ? root.theme.accent : "transparent"
+                        }
+                        NyxIcon {
+                            anchors.centerIn: parent
+                            name: cell.iconName
+                            width: 18
+                            height: 18
                         }
                     }
-                    NyxIcon {
-                        anchors.centerIn: parent
-                        name: cell.iconName
-                        width: 16
-                        height: 16
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: parent.width
+                        height: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: cell.label
+                        color: cell.active ? root.theme.accent : root.theme.textMuted
+                        font.pixelSize: 9
+                        elide: Text.ElideRight
                     }
-                }
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: cell.label
-                    color: cell.active || cell.accentBtn ? root.theme.accent : root.theme.textMuted
-                    font.pixelSize: 9
                 }
             }
         }
@@ -112,7 +116,6 @@ Rectangle {
         NavCell {
             iconName: "link"
             label: qsTr("Связь")
-            accentBtn: true
             active: !!node.connectionPanelOpen
             onClicked: node.connectionPanelOpen = true
         }

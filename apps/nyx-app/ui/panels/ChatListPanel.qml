@@ -41,11 +41,16 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
+            readonly property int navBtnSize: root.width < 300 ? 32 : 36
+
             IconButton {
                 visible: !root.useBottomNav
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: parent.navBtnSize
+                Layout.preferredHeight: parent.navBtnSize
                 theme: root.theme
                 name: "chat"
-                btnSize: root.width < 300 ? 32 : 36
+                btnSize: parent.navBtnSize
                 flat: true
                 active: node.sidebarMode === 0 && node.mainViewMode !== 1
                 ToolTip.visible: hovered
@@ -57,9 +62,12 @@ Rectangle {
             }
             IconButton {
                 visible: !root.useBottomNav
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: parent.navBtnSize
+                Layout.preferredHeight: parent.navBtnSize
                 theme: root.theme
                 name: "people"
-                btnSize: root.width < 300 ? 32 : 36
+                btnSize: parent.navBtnSize
                 flat: true
                 active: node.sidebarMode === 1 && node.mainViewMode !== 1
                 ToolTip.visible: hovered
@@ -71,9 +79,12 @@ Rectangle {
             }
             IconButton {
                 visible: !root.useBottomNav
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: parent.navBtnSize
+                Layout.preferredHeight: parent.navBtnSize
                 theme: root.theme
                 name: "field"
-                btnSize: root.width < 300 ? 32 : 36
+                btnSize: parent.navBtnSize
                 flat: true
                 active: node.sidebarMode === 2 && node.mainViewMode !== 1
                 ToolTip.visible: hovered
@@ -85,9 +96,12 @@ Rectangle {
             }
             IconButton {
                 visible: !root.useBottomNav
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: parent.navBtnSize
+                Layout.preferredHeight: parent.navBtnSize
                 theme: root.theme
                 name: "folder"
-                btnSize: root.width < 300 ? 32 : 36
+                btnSize: parent.navBtnSize
                 flat: true
                 active: node.mainViewMode === 1
                 ToolTip.visible: hovered
@@ -97,10 +111,14 @@ Rectangle {
 
             IconButton {
                 visible: !root.useBottomNav
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: parent.navBtnSize
+                Layout.preferredHeight: parent.navBtnSize
                 theme: root.theme
                 name: "link"
-                btnSize: root.width < 300 ? 32 : 36
-                accent: true
+                btnSize: parent.navBtnSize
+                flat: true
+                active: !!node.connectionPanelOpen
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Связь")
                 onClicked: node.connectionPanelOpen = true
