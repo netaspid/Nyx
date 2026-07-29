@@ -37,6 +37,11 @@ def strip_c_style(text: str) -> str:
                     state = "raw"
                     continue
             if c == "/" and nxt == "/":
+                # Do not treat \/\/.../ regex closers as line comments (QML/JS).
+                if out and out[-1] == "\\":
+                    out.append(c)
+                    i += 1
+                    continue
                 # peek rest of line for keepers
                 eol = text.find("\n", i)
                 if eol < 0:
