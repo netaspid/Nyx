@@ -1,12 +1,14 @@
 #pragma once
 
-// Minimal helpers for the flat JSON files written by the local stores.
-// Escape/unescape rules must stay compatible with data already on disk.
+// Flat JSON store helpers. Escape/unescape must stay compatible with on-disk data.
 
 #include <cctype>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace nyx {
 
@@ -102,6 +104,59 @@ inline std::optional<bool> json_get_bool(const std::string& json, const char* ke
   if (sub.rfind("false", 0) == 0)
     return false;
   return std::nullopt;
+}
+
+inline std::vector<std::string> json_split_objects(const std::string& arr) {
+  std::vector<std::string> out;
+  std::size_t depth = 0;
+  std::size_t start = std::string::npos;
+  for (std::size_t i = 0; i < arr.size(); ++i) {
+    const char c = arr[i];
+    if (c == '{') {
+      if (depth++ == 0)
+        start = i;
+    } else if (c == '}') {
+      if (--depth == 0 && start != std::string::npos) {
+        out.push_back(arr.substr(start, i - start + 1));
+        start = std::string::npos;
+      }
+    }
+  }
+  return out;
+}
+
+inline std::optional<std::pair<std::size_t, std::size_t>> json_array_bounds(const std::string& json,
+                                                                             std::size_t from) {
+  const auto start = json.find('[', from);
+  if (start == std::string::npos)
+    return std::nullopt;
+  int depth = 0;
+  for (std::size_t i = start; i < json.size(); ++i) {
+    const char c = json[i];
+    if (c == '[')
+      ++depth;
+    else if (c == ']') {
+      --depth;
+      if (depth == 0)
+        return std::make_pair(start, i);
+    }
+  }
+  return std::nullopt;
+}
+
+inline void json_parse_object_array(const std::string& obj,
+                                    const char* key,
+                                    const std::function<void(const std::string&)>& on_object) {
+  const std::string needle = std::string("\"") + key + "\":";
+  const auto key_pos = obj.find(needle);
+  if (key_pos == std::string::npos)
+    return;
+  const auto bounds = json_array_bounds(obj, key_pos + needle.size());
+  if (!bounds)
+    return;
+  const auto [as, ae] = *bounds;
+  for (const auto& item : json_split_objects(obj.substr(as, ae - as + 1)))
+    on_object(item);
 }
 
 } // namespace nyx

@@ -1,6 +1,6 @@
 #include "nyx/identity.hpp"
 
-#include "json_text.hpp"
+#include "nyx/json_text.hpp"
 
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"

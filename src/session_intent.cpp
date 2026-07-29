@@ -1,6 +1,6 @@
 #include "nyx/session_intent.hpp"
 
-#include "json_text.hpp"
+#include "nyx/json_text.hpp"
 
 #include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"

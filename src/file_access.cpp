@@ -1,7 +1,7 @@
 #include "nyx/file_access.hpp"
 #include "nyx/group.hpp"
 
-#include "json_text.hpp"
+#include "nyx/json_text.hpp"
 
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
@@ -29,60 +29,6 @@ bool user_id_from_hex(const std::string& hex, UserId& out) {
 
 std::string user_id_hex(const UserId& id) {
   return to_hex(id.data(), id.size());
-}
-
-std::vector<std::string> split_objects(const std::string& arr) {
-  std::vector<std::string> out;
-  std::size_t depth = 0;
-  std::size_t start = std::string::npos;
-  for (std::size_t i = 0; i < arr.size(); ++i) {
-    const char c = arr[i];
-    if (c == '{') {
-      if (depth++ == 0)
-        start = i;
-    } else if (c == '}') {
-      if (--depth == 0 && start != std::string::npos) {
-        out.push_back(arr.substr(start, i - start + 1));
-        start = std::string::npos;
-      }
-    }
-  }
-  return out;
-}
-
-// Indices of the array brackets, searching from `from`.
-std::optional<std::pair<std::size_t, std::size_t>> json_array_bounds(const std::string& json,
-                                                                     std::size_t from) {
-  const auto start = json.find('[', from);
-  if (start == std::string::npos)
-    return std::nullopt;
-  int depth = 0;
-  for (std::size_t i = start; i < json.size(); ++i) {
-    const char c = json[i];
-    if (c == '[')
-      ++depth;
-    else if (c == ']') {
-      --depth;
-      if (depth == 0)
-        return std::make_pair(start, i);
-    }
-  }
-  return std::nullopt;
-}
-
-void parse_object_array(const std::string& obj,
-                        const char* key,
-                        const std::function<void(const std::string&)>& on_object) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto key_pos = obj.find(needle);
-  if (key_pos == std::string::npos)
-    return;
-  const auto bounds = json_array_bounds(obj, key_pos + needle.size());
-  if (!bounds)
-    return;
-  const auto [as, ae] = *bounds;
-  for (const auto& item : split_objects(obj.substr(as, ae - as + 1)))
-    on_object(item);
 }
 
 FileRole parse_role(const std::string& obj) {
@@ -263,22 +209,22 @@ bool parse_group_policy_object(const std::string& obj, GroupFileAccess& policy) 
   if (auto gid = json_get_string(obj, "group_id")) {
     GroupStore::group_id_from_hex(*gid, policy.group_id);
   }
-  parse_object_array(obj, "roles", [&](const std::string& role_obj) {
+  json_parse_object_array(obj, "roles", [&](const std::string& role_obj) {
     auto role = parse_role(role_obj);
     if (!role.id.empty())
       policy.roles.push_back(std::move(role));
   });
-  parse_object_array(obj, "permission_presets", [&](const std::string& p_obj) {
+  json_parse_object_array(obj, "permission_presets", [&](const std::string& p_obj) {
     auto preset = parse_preset(p_obj);
     if (!preset.id.empty())
       policy.permission_presets.push_back(std::move(preset));
   });
-  parse_object_array(obj, "assignments", [&](const std::string& a_obj) {
+  json_parse_object_array(obj, "assignments", [&](const std::string& a_obj) {
     auto a = parse_assignment(a_obj);
     if (!a.role_id.empty())
       policy.assignments.push_back(std::move(a));
   });
-  parse_object_array(obj, "root_grants", [&](const std::string& g_obj) {
+  json_parse_object_array(obj, "root_grants", [&](const std::string& g_obj) {
     auto g = parse_root_grant(g_obj);
     if (!g.root_path.empty())
       policy.root_grants.push_back(std::move(g));
@@ -387,22 +333,22 @@ bool FileAccessStore::load() {
           if (auto gid = json_get_string(obj, "group_id")) {
             GroupStore::group_id_from_hex(*gid, policy.group_id);
           }
-          parse_object_array(obj, "roles", [&](const std::string& role_obj) {
+          json_parse_object_array(obj, "roles", [&](const std::string& role_obj) {
             auto role = parse_role(role_obj);
             if (!role.id.empty())
               policy.roles.push_back(std::move(role));
           });
-          parse_object_array(obj, "permission_presets", [&](const std::string& p_obj) {
+          json_parse_object_array(obj, "permission_presets", [&](const std::string& p_obj) {
             auto preset = parse_preset(p_obj);
             if (!preset.id.empty())
               policy.permission_presets.push_back(std::move(preset));
           });
-          parse_object_array(obj, "assignments", [&](const std::string& a_obj) {
+          json_parse_object_array(obj, "assignments", [&](const std::string& a_obj) {
             auto a = parse_assignment(a_obj);
             if (!a.role_id.empty())
               policy.assignments.push_back(std::move(a));
           });
-          parse_object_array(obj, "root_grants", [&](const std::string& g_obj) {
+          json_parse_object_array(obj, "root_grants", [&](const std::string& g_obj) {
             auto g = parse_root_grant(g_obj);
             if (!g.root_path.empty())
               policy.root_grants.push_back(std::move(g));

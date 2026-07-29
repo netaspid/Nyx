@@ -1,6 +1,6 @@
 #include "nyx/file_index.hpp"
 
-#include "json_text.hpp"
+#include "nyx/json_text.hpp"
 
 #include "nyx/group.hpp"
 #include "nyx/paths.hpp"
@@ -68,25 +68,6 @@ std::string path_to_posix(std::string path) {
       c = '/';
   }
   return path;
-}
-
-std::vector<std::string> split_objects(const std::string& arr) {
-  std::vector<std::string> out;
-  std::size_t depth = 0;
-  std::size_t start = std::string::npos;
-  for (std::size_t i = 0; i < arr.size(); ++i) {
-    const char c = arr[i];
-    if (c == '{') {
-      if (depth++ == 0)
-        start = i;
-    } else if (c == '}') {
-      if (--depth == 0 && start != std::string::npos) {
-        out.push_back(arr.substr(start, i - start + 1));
-        start = std::string::npos;
-      }
-    }
-  }
-  return out;
 }
 
 } // namespace
@@ -597,7 +578,7 @@ bool FileIndex::load() {
     const auto arr_start = json.find('[', roots_key);
     const auto arr_end = json.find(']', arr_start);
     if (arr_start != std::string::npos && arr_end != std::string::npos) {
-      for (const auto& obj : split_objects(json.substr(arr_start, arr_end - arr_start + 1))) {
+      for (const auto& obj : json_split_objects(json.substr(arr_start, arr_end - arr_start + 1))) {
         ShareRoot sr;
         if (auto root = json_get_string(obj, "root")) {
           sr.path = normalize_utf8_path(*root);
@@ -625,7 +606,7 @@ bool FileIndex::load() {
     const auto arr_start = json.find('[', files_key);
     const auto arr_end = json.rfind(']');
     if (arr_start != std::string::npos && arr_end != std::string::npos && arr_end > arr_start) {
-      for (const auto& obj : split_objects(json.substr(arr_start, arr_end - arr_start + 1))) {
+      for (const auto& obj : json_split_objects(json.substr(arr_start, arr_end - arr_start + 1))) {
         FileEntry entry;
         const auto hash_pos = obj.find("\"hash\":\"");
         if (hash_pos == std::string::npos)

@@ -1,6 +1,6 @@
 #include "nyx/group.hpp"
 
-#include "json_text.hpp"
+#include "nyx/json_text.hpp"
 
 #include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"
@@ -18,59 +18,6 @@
 namespace nyx {
 
 namespace {
-
-std::vector<std::string> split_objects(const std::string& arr) {
-  std::vector<std::string> out;
-  std::size_t depth = 0;
-  std::size_t start = std::string::npos;
-  for (std::size_t i = 0; i < arr.size(); ++i) {
-    const char c = arr[i];
-    if (c == '{') {
-      if (depth++ == 0)
-        start = i;
-    } else if (c == '}') {
-      if (--depth == 0 && start != std::string::npos) {
-        out.push_back(arr.substr(start, i - start + 1));
-        start = std::string::npos;
-      }
-    }
-  }
-  return out;
-}
-
-std::optional<std::pair<std::size_t, std::size_t>> json_array_bounds(const std::string& json,
-                                                                     std::size_t from) {
-  const auto start = json.find('[', from);
-  if (start == std::string::npos)
-    return std::nullopt;
-  int depth = 0;
-  for (std::size_t i = start; i < json.size(); ++i) {
-    const char c = json[i];
-    if (c == '[')
-      ++depth;
-    else if (c == ']') {
-      --depth;
-      if (depth == 0)
-        return std::make_pair(start, i);
-    }
-  }
-  return std::nullopt;
-}
-
-void parse_object_array(const std::string& obj,
-                        const char* key,
-                        const std::function<void(const std::string&)>& on_object) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto key_pos = obj.find(needle);
-  if (key_pos == std::string::npos)
-    return;
-  const auto bounds = json_array_bounds(obj, key_pos + needle.size());
-  if (!bounds)
-    return;
-  const auto [as, ae] = *bounds;
-  for (const auto& item : split_objects(obj.substr(as, ae - as + 1)))
-    on_object(item);
-}
 
 GroupMemberRecord parse_member_object(const std::string& obj) {
   GroupMemberRecord member;
@@ -136,7 +83,7 @@ std::optional<GroupRecord> parse_group_object(const std::string& obj) {
     }
   }
 
-  parse_object_array(obj, "members", [&](const std::string& member_obj) {
+  json_parse_object_array(obj, "members", [&](const std::string& member_obj) {
     auto member = parse_member_object(member_obj);
     if (user_id_is_zero(member.user_id))
       return;

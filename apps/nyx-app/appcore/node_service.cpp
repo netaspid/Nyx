@@ -8,6 +8,8 @@
 #include "nyx/rendezvous_pool.hpp"
 #include "nyx/util.hpp"
 
+#include "nyx/json_text.hpp"
+
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -189,25 +191,6 @@ std::string files_ui_state_path() {
   return nyx::data_dir() + "/files_ui.json";
 }
 
-std::optional<std::string> json_get_string_value(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos)
-    return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < json.size()) {
-    const char c = json[i++];
-    if (c == '"')
-      break;
-    if (c == '\\' && i < json.size())
-      out.push_back(json[i++]);
-    else
-      out.push_back(c);
-  }
-  return out;
-}
-
 } // namespace
 
 std::string NodeService::load_files_scope_group_id() const {
@@ -216,7 +199,7 @@ std::string NodeService::load_files_scope_group_id() const {
     return {};
   std::ostringstream ss;
   ss << in.rdbuf();
-  if (auto gid = json_get_string_value(ss.str(), "scope_group_id"))
+  if (auto gid = nyx::json_get_string(ss.str(), "scope_group_id"))
     return *gid;
   return {};
 }
@@ -227,7 +210,7 @@ std::string NodeService::load_files_selected_root() const {
     return {};
   std::ostringstream ss;
   ss << in.rdbuf();
-  if (auto root = json_get_string_value(ss.str(), "selected_root"))
+  if (auto root = nyx::json_get_string(ss.str(), "selected_root"))
     return *root;
   return {};
 }
