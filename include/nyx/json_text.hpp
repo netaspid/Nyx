@@ -12,6 +12,12 @@
 
 namespace nyx {
 
+inline constexpr std::size_t kMaxJsonStoreBytes = 32u * 1024u * 1024u;
+
+inline bool json_store_within_limit(std::size_t bytes) {
+  return bytes <= kMaxJsonStoreBytes;
+}
+
 inline std::string json_escape(const std::string& s) {
   std::string out;
   out.reserve(s.size() + 8);

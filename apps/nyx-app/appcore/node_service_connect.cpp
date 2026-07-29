@@ -205,7 +205,7 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
   }
   if (token_cb)
     token_cb(token_hex);
-  emit_status("invite token: " + token_hex);
+  emit_status("invite token готов (" + token_hex.substr(0, 8) + "…)");
   session->state.store(SessionState::Live);
   emit_sessions_changed();
 

@@ -2586,6 +2586,8 @@ int main() {
     assert(nyx::json_get_uint(obj, "n") == 2u);
     const auto objs = nyx::json_split_objects(R"([{"x":1},{"x":2}])");
     assert(objs.size() == 2);
+    assert(nyx::json_store_within_limit(1024));
+    assert(!nyx::json_store_within_limit(nyx::kMaxJsonStoreBytes + 1));
     std::cout << "json text helpers ok\n";
   }
   nyx::set_base_data_root({});

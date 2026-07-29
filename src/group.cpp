@@ -301,6 +301,8 @@ bool GroupStore::load() {
   std::ostringstream ss;
   ss << file.rdbuf();
   const std::string json = ss.str();
+  if (!json_store_within_limit(json.size()))
+    return false;
 
   const auto arr = json.find("\"groups\":[");
   if (arr == std::string::npos)

@@ -306,6 +306,8 @@ bool FileAccessStore::load() {
   const std::string json = ss.str();
   if (json.empty())
     return true;
+  if (!json_store_within_limit(json.size()))
+    return false;
 
   const auto arr = json.find("\"groups\":[");
   if (arr == std::string::npos)

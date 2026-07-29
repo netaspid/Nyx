@@ -111,6 +111,8 @@ bool ContactBook::load() {
   std::ostringstream ss;
   ss << file.rdbuf();
   const std::string json = ss.str();
+  if (!json_store_within_limit(json.size()))
+    return false;
   std::size_t pos = 0;
   while ((pos = json.find("\"id\":\"", pos)) != std::string::npos) {
     pos += 6;

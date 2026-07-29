@@ -55,6 +55,8 @@ bool SessionIntentStore::load() {
   std::ostringstream ss;
   ss << in.rdbuf();
   const std::string json = ss.str();
+  if (!json_store_within_limit(json.size()))
+    return false;
 
   std::size_t pos = 0;
   while ((pos = json.find("\"key\":\"", pos)) != std::string::npos) {
