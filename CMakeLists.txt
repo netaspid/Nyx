@@ -222,6 +222,7 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/qt/node_controller_wire.cpp
       apps/nyx-app/qt/node_controller_account.cpp
       apps/nyx-app/qt/node_controller_chat.cpp
+      apps/nyx-app/qt/node_controller_media.cpp
       apps/nyx-app/qt/document_viewer.cpp
       apps/nyx-app/qt/win_chrome.cpp
       apps/nyx-app/qt/android_platform.cpp
