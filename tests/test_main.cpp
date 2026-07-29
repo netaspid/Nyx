@@ -1532,6 +1532,130 @@ static void test_avatar_proto_roundtrip() {
   std::cout << "avatar proto roundtrip ok\n";
 }
 
+static void test_control_message_roundtrip() {
+  nyx::ControlMessage ping;
+  ping.kind = nyx::ControlKind::Ping;
+  ping.nonce = 0x1122334455667788ull;
+  const auto ping_w = ping.encode();
+  const auto ping_d = nyx::ControlMessage::decode(ping_w.data(), ping_w.size());
+  assert(ping_d && ping_d->kind == nyx::ControlKind::Ping);
+  assert(ping_d->nonce == ping.nonce);
+
+  nyx::ControlMessage open;
+  open.kind = nyx::ControlKind::OpenStream;
+  open.stream_id = 7;
+  open.stream_type = nyx::StreamType::Bulk;
+  const auto open_w = open.encode();
+  const auto open_d = nyx::ControlMessage::decode(open_w.data(), open_w.size());
+  assert(open_d && open_d->kind == nyx::ControlKind::OpenStream);
+  assert(open_d->stream_id == 7 && open_d->stream_type == nyx::StreamType::Bulk);
+
+  assert(!nyx::ControlMessage::decode(nullptr, 0));
+  const uint8_t junk[] = {0xFF};
+  assert(!nyx::ControlMessage::decode(junk, sizeof(junk)));
+  std::cout << "control message roundtrip ok\n";
+}
+
+static void test_group_join_roundtrip() {
+  nyx::GroupId gid{};
+  gid[0] = 0xAB;
+  gid[31] = 0xCD;
+
+  nyx::GroupJoinMessage join;
+  join.group_id = gid;
+  const auto join_w = join.encode();
+  assert(nyx::is_group_frame(join_w));
+  const auto join_d = nyx::GroupJoinMessage::decode(join_w);
+  assert(join_d && join_d->group_id == gid);
+
+  nyx::GroupJoinAckMessage ack;
+  ack.accepted = true;
+  ack.group_id = gid;
+  ack.group_name = "The Field";
+  nyx::GroupMemberRecord owner;
+  owner.user_id[0] = 1;
+  owner.nickname = "alice";
+  owner.role = nyx::GroupRole::Owner;
+  nyx::GroupMemberRecord member;
+  member.user_id[0] = 2;
+  member.nickname = "боб";
+  ack.members = {owner, member};
+  const auto ack_d = nyx::GroupJoinAckMessage::decode(ack.encode());
+  assert(ack_d && ack_d->accepted && ack_d->group_id == gid);
+  assert(ack_d->group_name == "The Field");
+  assert(ack_d->members.size() == 2);
+  assert(ack_d->members[0].nickname == "alice" && ack_d->members[0].role == nyx::GroupRole::Owner);
+  assert(ack_d->members[1].nickname == "боб" && ack_d->members[1].role == nyx::GroupRole::Member);
+
+  nyx::GroupJoinAckMessage deny;
+  deny.accepted = false;
+  deny.reason = "not invited";
+  const auto deny_d = nyx::GroupJoinAckMessage::decode(deny.encode());
+  assert(deny_d && !deny_d->accepted && deny_d->reason == "not invited");
+
+  nyx::GroupMemberJoinedMessage joined;
+  joined.member = member;
+  const auto joined_d = nyx::GroupMemberJoinedMessage::decode(joined.encode());
+  assert(joined_d && joined_d->member.user_id == member.user_id);
+  assert(joined_d->member.nickname == member.nickname);
+
+  assert(!nyx::GroupJoinMessage::decode({}));
+  assert(!nyx::GroupJoinAckMessage::decode({0x02}));
+  std::cout << "group join roundtrip ok\n";
+}
+
+static void test_file_transfer_proto_roundtrip() {
+  nyx::FileHash h{};
+  for (std::size_t i = 0; i < h.size(); ++i) h[i] = static_cast<uint8_t>(i);
+
+  nyx::FileOffer offer;
+  offer.hash = h;
+  offer.size = 123456789ull;
+  offer.name = "отчёт.pdf";
+  offer.mime = "application/pdf";
+  const auto offer_d = nyx::FileOffer::decode(offer.encode());
+  assert(offer_d && offer_d->hash == h && offer_d->size == offer.size);
+  assert(offer_d->name == offer.name && offer_d->mime == offer.mime);
+
+  nyx::FileChunk chunk;
+  chunk.hash = h;
+  chunk.offset = 0xFFFF0000ull;
+  chunk.data.assign(nyx::kFileChunkSize, 0x5A);
+  const auto chunk_d = nyx::FileChunk::decode(chunk.encode());
+  assert(chunk_d && chunk_d->hash == h && chunk_d->offset == chunk.offset);
+  assert(chunk_d->data.size() == nyx::kFileChunkSize && chunk_d->data[0] == 0x5A);
+
+  nyx::FileComplete complete;
+  complete.hash = h;
+  complete.size = 42;
+  const auto complete_d = nyx::FileComplete::decode(complete.encode());
+  assert(complete_d && complete_d->hash == h && complete_d->size == 42);
+
+  nyx::FileDeny deny;
+  deny.hash = h;
+  deny.reason = "no permission";
+  const auto deny_d = nyx::FileDeny::decode(deny.encode());
+  assert(deny_d && deny_d->hash == h && deny_d->reason == "no permission");
+
+  assert(!nyx::FileOffer::decode({}));
+  assert(!nyx::FileChunk::decode({static_cast<uint8_t>(nyx::FileKind::Chunk)}));
+  std::cout << "file transfer proto roundtrip ok\n";
+}
+
+static void test_avatar_deny_roundtrip() {
+  nyx::FileHash h{};
+  h[0] = 0x77;
+  nyx::AvatarDeny deny;
+  deny.hash = h;
+  deny.reason = "not found";
+  const auto wire = deny.encode();
+  assert(nyx::is_avatar_frame(wire));
+  const auto d = nyx::AvatarDeny::decode(wire);
+  assert(d && d->hash == h && d->reason == "not found");
+  assert(!nyx::AvatarDeny::decode({}));
+  std::cout << "avatar deny roundtrip ok\n";
+}
+
 static void test_markdown_to_html() {
   const auto bold = nyx::markdown_to_html("**hi**");
   assert(bold.find("<b>hi</b>") != std::string::npos);
@@ -2376,6 +2500,10 @@ int main() {
   test_group_member_persistence();
   test_profile_meta_photos_wire();
   test_avatar_proto_roundtrip();
+  test_control_message_roundtrip();
+  test_group_join_roundtrip();
+  test_file_transfer_proto_roundtrip();
+  test_avatar_deny_roundtrip();
   test_markdown_to_html();
   test_group_meta_message();
   test_call_proto_roundtrip();

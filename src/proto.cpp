@@ -199,6 +199,8 @@ std::optional<ControlMessage> ControlMessage::decode(const uint8_t* data,
       if (len < 5) return std::nullopt;
       m.stream_id = read_u32_le(data + 1);
       break;
+    default:
+      return std::nullopt;
   }
   return m;
 }
