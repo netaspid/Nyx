@@ -32,7 +32,7 @@ jobs:
           clang-tidy -p build \
             src/session_intent.cpp src/group.cpp src/identity.cpp src/file_access.cpp \
             src/avatar_store.cpp src/network_config.cpp src/profile_meta.cpp src/file_index.cpp \
-            src/account_store.cpp \
+            src/account_store.cpp apps/nyx-app/appcore/session_types.hpp \
             --checks='-*,misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty,bugprone-use-after-move,bugprone-dangling-handle,bugprone-undefined-memory-manipulation' \
             --warnings-as-errors='misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty,bugprone-use-after-move,bugprone-dangling-handle,bugprone-undefined-memory-manipulation'
       - name: clang-tidy (advisory)
