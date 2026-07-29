@@ -8,14 +8,13 @@
 
 class QProcess;
 
-/** Desktop in-app document viewer (text / PDF / office→PDF). No WebView. */
 class DocumentViewer : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool open READ isOpen NOTIFY changed)
   Q_PROPERTY(QString path READ path NOTIFY changed)
   Q_PROPERTY(QString mime READ mime NOTIFY changed)
   Q_PROPERTY(QString title READ title NOTIFY changed)
-  /** text | pdf | busy | error */
+
   Q_PROPERTY(QString mode READ mode NOTIFY changed)
   Q_PROPERTY(QString text READ text NOTIFY changed)
   Q_PROPERTY(QString status READ status NOTIFY changed)
@@ -57,7 +56,7 @@ public:
   Q_INVOKABLE void zoomOut();
   Q_INVOKABLE bool openExternally();
 
-  /** True when desktop in-app viewer should handle this file. */
+
   static bool canHandle(const QString& path, const QString& mime);
 
 signals:

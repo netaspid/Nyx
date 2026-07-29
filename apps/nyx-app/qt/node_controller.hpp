@@ -29,7 +29,6 @@
 class QMenu;
 class QSystemTrayIcon;
 
-/** Qt wrapper over NodeService: properties and signals for QML. */
 class NodeController : public QObject {
   Q_OBJECT
   Q_PROPERTY(QString profileNickname READ profileNickname WRITE setNickname NOTIFY profileChanged)
@@ -169,12 +168,12 @@ class NodeController : public QObject {
   Q_PROPERTY(QString activeChatKey READ activeChatKey NOTIFY chatChanged)
   Q_PROPERTY(QString sessionSummary READ sessionSummary NOTIFY sessionsChanged)
   Q_PROPERTY(QString dmInboxToken READ dmInboxToken NOTIFY inviteTokenChanged)
-  /** Left list mode: 0=chats, 1=friends, 2=fields. */
+
   Q_PROPERTY(int sidebarMode READ sidebarMode WRITE setSidebarMode NOTIFY sidebarModeChanged)
   Q_PROPERTY(QString profileBio READ profileBio WRITE setProfileBio NOTIFY profileMetaChanged)
   Q_PROPERTY(QString profileInterests READ profileInterests WRITE setProfileInterests NOTIFY
                  profileMetaChanged)
-  /** available | away | busy | invisible */
+
   Q_PROPERTY(QString profileAvailability READ profileAvailability WRITE setProfileAvailability
                  NOTIFY profileMetaChanged)
   Q_PROPERTY(QString profileAvatarPath READ profileAvatarPath NOTIFY profilePhotosChanged)
@@ -333,7 +332,7 @@ public:
   Q_INVOKABLE void signOut();
   Q_INVOKABLE void refreshProfile();
   Q_INVOKABLE void refreshChatList();
-  /** Update live/offline badges without re-reading chat history from disk. */
+
   void refreshChatSessionStates();
   Q_INVOKABLE void refreshGroupList();
   Q_INVOKABLE void refreshContactList();
@@ -352,9 +351,9 @@ public:
   Q_INVOKABLE void showChatView();
   Q_INVOKABLE void leaveChat();
   Q_INVOKABLE QString pickFolder();
-  /** "Save as" dialog; suggestedFileName is the original file name. */
+
   Q_INVOKABLE QString pickSaveFile(const QString& suggestedFileName);
-  /** Folder picker for saving multiple files. */
+
   Q_INVOKABLE QString pickSaveFolder();
   Q_INVOKABLE void refreshFileLists();
   Q_INVOKABLE void refreshFieldRoster();
@@ -410,7 +409,7 @@ public:
   Q_INVOKABLE void disconnectChat(const QString& key);
   Q_INVOKABLE QString sessionStateForKey(const QString& key) const;
   Q_INVOKABLE void sendMessage(const QString& text);
-  /** Starts a call in the active chat (video=false = audio only). */
+
   Q_INVOKABLE void startCall(bool video = false);
   Q_INVOKABLE void acceptCall();
   Q_INVOKABLE void rejectCall();
@@ -452,24 +451,24 @@ public:
   void setSelectedCameraId(const QString& id);
   void setSelectedAudioInputId(const QString& id);
   void setSelectedAudioOutputId(const QString& id);
-  /** Pick photo/video -> library + markdown `![...](nyx-media:hash)`. */
+
   Q_INVOKABLE QString pickChatMediaMarkdown();
-  /** Import captured/recorded media into library+chat_media and send to active chat. */
+
   Q_INVOKABLE bool sendCapturedMedia(const QString& localPath,
                                      const QString& mimeHint = {},
                                      const QString& displayName = {},
                                      const QString& mediaKind = {});
-  /** Import without auto-send; returns markdown (nyx-file:…). */
+
   Q_INVOKABLE QString importChatMediaMarkdown(const QString& localPath,
                                               const QString& mimeHint = {},
                                               const QString& displayName = {});
-  /** Staging path for camera/voice capture under AppData. */
+
   Q_INVOKABLE QString chatCaptureStagingPath(const QString& extension) const;
   Q_INVOKABLE void removeStagingMedia(const QString& path) const;
   Q_INVOKABLE void requestChatCapturePermissions(bool needCamera);
-  /** Resolve nickname for a user id hex (self / contact / field member). */
+
   Q_INVOKABLE QString userDisplayName(const QString& userIdHex) const;
-  /** Open built-in in-app media player overlay. */
+
   Q_INVOKABLE void
   openInAppMedia(const QString& path, const QString& mime = {}, const QString& title = {});
   Q_INVOKABLE void closeInAppMedia();
@@ -479,9 +478,9 @@ public:
   Q_INVOKABLE QString fileLocalPath(const QString& hashHex) const;
   Q_INVOKABLE void ensureFileAvailable(const QString& hashHex, const QString& fileName);
   Q_INVOKABLE QString fileTextPreview(const QString& hashHex) const;
-  /** Open local path with system viewer (FileProvider on Android). */
+
   Q_INVOKABLE bool openLocalFile(const QString& path, const QString& mime = {});
-  /** Ensure cached, then open. Downloads if needed. Optional root/rel for Field shares. */
+
   Q_INVOKABLE void openFileByHash(const QString& hashHex,
                                   const QString& fileName = {},
                                   const QString& mime = {},
@@ -491,13 +490,13 @@ public:
                                   const QString& fileName,
                                   const QString& mime,
                                   qulonglong size);
-  /** Link a directory marker into chat (open in Resources / download folder). */
+
   Q_INVOKABLE void linkFolderToChat(const QString& hashHex,
                                     const QString& folderName,
                                     const QString& rootPath,
                                     const QString& relativePath,
                                     qulonglong size);
-  /** Jump Files → Resources and browse to the folder described by hash/paths. */
+
   Q_INVOKABLE void openFolderInResources(const QString& hashHex,
                                          const QString& rootPath = {},
                                          const QString& relativePath = {});
@@ -519,10 +518,10 @@ public:
                                    const QString& tags,
                                    bool publicListed);
   Q_INVOKABLE QVariantMap contactInfo(const QString& userIdHex) const;
-  /** Removes a chat or field from the local list (dm:/group:/chat: key). */
+
   Q_INVOKABLE void removeConversation(const QString& key);
   Q_INVOKABLE void removeFieldMember(const QString& groupIdHex, const QString& userIdHex);
-  /** role: "host" | "member" — assigns the field call host. */
+
   Q_INVOKABLE void
   setFieldMemberRole(const QString& groupIdHex, const QString& userIdHex, const QString& role);
   Q_INVOKABLE void startFieldHub(const QString& groupIdHex);
@@ -530,7 +529,7 @@ public:
   Q_INVOKABLE void connectActiveField();
   Q_INVOKABLE void copyToClipboard(const QString& text);
   Q_INVOKABLE void clearToast();
-  /** Syncs the system title bar (Windows) with the UI theme. */
+
   Q_INVOKABLE void setNativeChromeDark(bool dark);
 
 signals:
@@ -609,10 +608,10 @@ private:
   void updateFileAccessTargetLabel();
   void refreshFileShareRoots();
   void refreshLocalFileModel();
-  /** Without an argument: from the NodeService cache; with a vector: as given (even empty). */
+
   void refreshRemoteFileModel();
   void refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries);
-  /** Resets browsing when the current remote root vanished from the catalog. */
+
   void reconcileRemoteBrowsePath(const std::vector<nyx::FileEntry>& catalog);
   void runIndexJob(const QString& path, const QString& scopeGroupId, bool rescan);
   void refreshFileAccessLists();
@@ -629,13 +628,13 @@ private:
   void saveMediaDevicePrefs() const;
 
   nyx_app::NodeService service_;
-  // Thread must outlive call_audio_ (declared first → destroyed last).
+
   QThread call_audio_thread_;
   CallAudioIo call_audio_;
-  // Encode/decode off the GUI thread — Camera2 HAL already runs on nyx-camera2.
+
   QThread call_video_thread_;
   CallVideoIo call_video_;
-  CallFrameProvider* call_frames_ = nullptr; // owned by QQmlEngine
+  CallFrameProvider* call_frames_ = nullptr;
   bool call_video_slots_wired_ = false;
   QUrl call_remote_frame_url_;
   QUrl call_local_frame_url_;

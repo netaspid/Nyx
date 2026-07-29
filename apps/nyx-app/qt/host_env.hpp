@@ -5,8 +5,6 @@
 
 namespace nyx_app {
 
-// Bundled Qt LD_LIBRARY_PATH breaks host tools (mutool / soffice / xdg-open),
-// so external processes get the system environment without Qt overrides.
 inline QProcessEnvironment host_process_environment() {
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   env.remove(QStringLiteral("LD_LIBRARY_PATH"));
@@ -17,4 +15,4 @@ inline QProcessEnvironment host_process_environment() {
   return env;
 }
 
-} // namespace nyx_app
+}

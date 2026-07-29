@@ -35,7 +35,7 @@ std::vector<HistoryLine> to_history_lines(const std::vector<nyx::StoredMessage>&
   return lines;
 }
 
-} // namespace
+}
 
 void run_chat_session(nyx::Connection& connection,
                       const nyx::Profile& profile,
@@ -264,4 +264,4 @@ void run_chat_session(nyx::Connection& connection,
   }
 }
 
-} // namespace nyx_node
+}

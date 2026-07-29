@@ -95,7 +95,7 @@ bool terminate_by_name_in_dir(const char* exe_name, const std::string& install_d
   return stopped;
 }
 
-} // namespace
+}
 
 bool stop_nyx_for_install(const std::string& install_dir, std::string* err) {
   (void)err;
@@ -232,7 +232,7 @@ int run_command(const std::string& cmd) {
 }
 
 bool run_privileged(const std::string& inner_cmd, std::string* err) {
-  // Prefer graphical elevation when available.
+
   if (path_exists("/usr/bin/pkexec")) {
     const std::string cmd = "pkexec --disable-internal-agent /bin/sh -c '" + inner_cmd + "'";
     const int rc = run_command(cmd);
@@ -304,7 +304,7 @@ std::string install_command(PackageManager pm, bool need_pdf, bool need_office) 
   return {};
 }
 
-} // namespace
+}
 
 bool ensure_document_dependencies(const std::string& install_dir,
                                   std::string* err,
@@ -320,7 +320,7 @@ bool ensure_document_dependencies(const std::string& install_dir,
       *err = "Не найден пакетный менеджер (apt/dnf/pacman/zypper). "
              "Установите вручную: mutool/pdftoppm и LibreOffice.";
     }
-    // Soft-fail: Nyx itself still installs; document viewer may be limited.
+
     return true;
   }
 
@@ -353,7 +353,7 @@ bool ensure_document_dependencies(const std::string& install_dir,
   if (!run_privileged(cmd, &elev_err)) {
     if (err)
       *err = elev_err;
-    // Soft-fail so Nyx still installs.
+
     return true;
   }
 
@@ -440,4 +440,4 @@ bool repair_installation(const std::vector<std::uint8_t>& blob,
   return verify_installation(install_dir, err);
 }
 
-} // namespace nyx_setup
+}

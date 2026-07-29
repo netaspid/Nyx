@@ -22,7 +22,7 @@ void nyxApplyNativeChromeDark(QWindow* window, bool dark) {
   if (!hwnd)
     return;
   BOOL use_dark = dark ? TRUE : FALSE;
-  // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 20H1+), 19 = pre-20H1
+
   ::DwmSetWindowAttribute(hwnd, 20, &use_dark, sizeof(use_dark));
   ::DwmSetWindowAttribute(hwnd, 19, &use_dark, sizeof(use_dark));
 #else

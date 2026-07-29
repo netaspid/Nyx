@@ -22,7 +22,7 @@ bool ask_yes_no(const char* prompt) {
   return !line.empty() && (line[0] == 'y' || line[0] == 'Y');
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
   std::vector<std::uint8_t> payload;
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
   std::string deps_err;
   const bool skip_deps = (std::getenv("NYX_SKIP_DOC_DEPS") != nullptr);
   if (!skip_deps) {
-    nyx_setup::ensure_document_dependencies(install_dir, &deps_err, /*interactive=*/true);
+    nyx_setup::ensure_document_dependencies(install_dir, &deps_err, true);
     if (!deps_err.empty())
       std::cerr << "Note: " << deps_err << '\n';
   }

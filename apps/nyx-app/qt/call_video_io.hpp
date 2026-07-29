@@ -1,7 +1,5 @@
 #pragma once
 
-/** Video call: capture → AV1 + parity-protected realtime fragments. */
-
 #include <QByteArray>
 #include <QImage>
 #include <QMutex>
@@ -27,7 +25,7 @@ namespace nyx {
 class CallVideoReassembler;
 class Av1Encoder;
 class Av1Decoder;
-} // namespace nyx
+}
 
 class CallVideoIo : public QObject {
   Q_OBJECT

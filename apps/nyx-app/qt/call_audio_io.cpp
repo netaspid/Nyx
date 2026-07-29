@@ -50,7 +50,7 @@ QAudioDevice findInput(const QString& id) {
         return d;
     }
   }
-  // Prefer OS default (USB headset mic etc.), skip pulse "Monitor of …".
+
   const QAudioDevice def = QMediaDevices::defaultAudioInput();
   if (!def.isNull() && !looksLikeMonitor(def))
     return def;
@@ -117,7 +117,7 @@ QAudioFormat makeVoipFormat(const QAudioDevice& dev) {
     want.setSampleFormat(QAudioFormat::Int16);
     return want;
   }
-  // Try common VoIP rates first — USB headsets often reject 48 kHz mono.
+
   const int rates[] = {nyx::kCallAudioSampleRate, 44100, 32000, 16000, 8000};
   for (int rate : rates) {
     QAudioFormat want;
@@ -225,7 +225,7 @@ void resampleMono(
   }
 }
 
-} // namespace
+}
 
 bool CallAudioIo::ensureOnAudioThread(const char* where) {
   if (QThread::currentThread() == thread())
@@ -303,7 +303,7 @@ bool CallAudioIo::openDevices() {
   NYX_AUDIO_LOG("openDevices begin");
 
 #if defined(Q_OS_ANDROID)
-  // Native AudioRecord — Qt QAudioSource is often silent under MODE_IN_COMMUNICATION.
+
   use_android_voice_capture_ = false;
   capture_rate_ = nyx::kCallAudioSampleRate;
   if (!nyx_android::voice_capture_start(nyx::kCallAudioSampleRate, 1)) {
@@ -464,7 +464,7 @@ bool CallAudioIo::start() {
             emit startFailed();
         },
         Qt::QueuedConnection);
-    return true; // async — caller must not assume devices are open yet
+    return true;
   }
   if (running_.load(std::memory_order_acquire))
     return true;
@@ -484,7 +484,7 @@ bool CallAudioIo::start() {
   opus_pcm_.clear();
   running_.store(true, std::memory_order_release);
   timer_->start();
-  // Drain packets that arrived before the audio thread finished opening devices.
+
   while (!pending_remote_.empty()) {
     const auto [peer, pkt] = pending_remote_.front();
     pending_remote_.pop_front();
@@ -620,7 +620,7 @@ void CallAudioIo::onCaptureReady() {
 
 #if defined(Q_OS_ANDROID)
   if (use_android_voice_capture_) {
-    // Drain AudioRecord aggressively so the mic buffer does not overrun.
+
     android_cap_scratch_.resize(static_cast<std::size_t>(nyx::kCallAudioFrameSamples * 4));
     for (int round = 0; round < 8; ++round) {
       const int n = nyx_android::voice_capture_read(android_cap_scratch_.data(),

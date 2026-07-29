@@ -89,7 +89,7 @@ QString mediaRelativeDir(const QString& chatKey, const QString&, const QString& 
   return QStringLiteral("Медиа/") + conversation + QLatin1Char('/') + leaf;
 }
 
-} // namespace
+}
 
 #include <cmath>
 #include <cstring>
@@ -136,7 +136,7 @@ bool parse_user_id_hex(const QString& hex, nyx::UserId& out) {
   return true;
 }
 
-} // namespace
+}
 
 NodeController::NodeController(QObject* parent) : QObject(parent) {
   connect(&document_viewer_,
@@ -155,8 +155,8 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
   service_.set_call_relay_score(800);
 #endif
 
-  // QAudioSource::start() can block for seconds on Android — keep it off the GUI thread
-  // so call controls / hangup UI stay responsive.
+
+
   call_audio_thread_.setObjectName(QStringLiteral("nyx-call-audio"));
   call_audio_.moveToThread(&call_audio_thread_);
   connect(&call_audio_, &CallAudioIo::startFailed, this, [this]() {
@@ -187,7 +187,7 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
   });
   call_audio_thread_.start();
 
-  // Video encode/JPEG decode must not block Answer/rotate UI.
+
   call_video_thread_.setObjectName(QStringLiteral("nyx-call-video"));
   call_video_.moveToThread(&call_video_thread_);
   call_video_thread_.start();
@@ -288,14 +288,14 @@ void NodeController::beginMainSession() {
   refreshChatList();
   refreshGroupList();
   refreshContactList();
-  // File index / access lists can be large — don't stall first paint.
+
   QTimer::singleShot(0, this, [this]() {
     refreshFileLists();
     refreshFileAccessLists();
   });
 #if defined(Q_OS_ANDROID)
   nyx_android::request_notification_permission();
-  // Defer FGS until Activity is fully resumed (Xiaomi/Android 14).
+
   QTimer::singleShot(800, this, []() { nyx_android::start_keepalive_service(); });
   QTimer::singleShot(5000, this, []() { nyx_android::start_keepalive_service(); });
 #endif
@@ -413,14 +413,14 @@ bool NodeController::activeFieldIsOwner() const {
 }
 
 void NodeController::maybeAutoReconnectSessions() {
-  // Own hubs: when the intent is on (ensure_owned_hubs_running enables it after login).
-  // Foreign joins/DMs follow the master switch inside auto_reconnect_all.
+
+
   service_.auto_reconnect_all();
   invite_token_ = QString::fromStdString(service_.dm_inbox_token_hex());
   emit inviteTokenChanged();
   emit listeningChanged();
   emit busyChanged();
-  // Only session badges — full disk rebuild every few seconds freezes the UI.
+
   refreshChatSessionStates();
   emit sessionsChanged();
 }
@@ -1419,7 +1419,7 @@ QVariantList NodeController::entriesToVariant(const std::vector<nyx::FileEntry>&
     if (!std::all_of(e.owner_id.begin(), e.owner_id.end(), [](uint8_t b) { return b == 0; })) {
       owner_hex = QString::fromStdString(nyx::to_hex(e.owner_id.data(), e.owner_id.size()));
     } else if (is_dir && display.size() == 64) {
-      // Owner folder at library root.
+
       bool hex_ok = true;
       for (const QChar c : display) {
         if (!c.isDigit() && (c.toLower() < QLatin1Char('a') || c.toLower() > QLatin1Char('f'))) {
@@ -1537,7 +1537,7 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   if (roots.empty())
     return;
 
-  // Keep current scope; only restore selected root if it belongs to that scope.
+
   if (!file_selected_share_root_.isEmpty()) {
     const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
     for (const auto& r : scope_roots) {
@@ -1556,7 +1556,7 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   if (!scope_roots.empty())
     return;
 
-  // No roots in current scope yet — do not silently jump to another field.
+
 }
 
 void NodeController::setFilesSection(int section) {
@@ -1591,7 +1591,7 @@ NodeController::remoteRootsCatalog(const std::vector<nyx::FileEntry>& all) const
     file_counts[nyx::normalize_utf8_path(e.root_path)]++;
   }
 
-  // Folder markers from the hub first (including empty share roots with 0 files).
+
   std::map<std::string, nyx::FileEntry> by_root;
   for (const auto& e : all) {
     if (!e.is_directory())
@@ -1605,7 +1605,7 @@ NodeController::remoteRootsCatalog(const std::vector<nyx::FileEntry>& all) const
     by_root[norm] = std::move(marker);
   }
 
-  // Roots derived from files only (in case the reply lacks markers).
+
   for (const auto& [path, count] : file_counts) {
     if (by_root.count(path))
       continue;
@@ -1704,7 +1704,7 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
   if (p.isEmpty())
     return;
 
-  // Prefer a root that matches the active scope; never switch scope on click.
+
   QString canonical;
   const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
   for (const auto& r : scope_roots) {
@@ -1748,7 +1748,7 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
       file_remote_browse_path_ = rel;
     }
     syncRemoteBrowseCrumbs();
-    // Fetch the current level from the hub (not the whole node_modules at once).
+
     service_.request_remote_files_at(file_scope_group_id_.toStdString(),
                                      file_resources_root_.toStdString(),
                                      file_remote_browse_path_.toStdString());
@@ -1802,7 +1802,7 @@ void NodeController::browseUp() {
     return;
   }
 
-  // Above a share root: clear the folder selection (the "My folders" list stays on the left).
+
   if (!file_selected_share_root_.isEmpty()) {
     file_selected_share_root_.clear();
     resetFileBrowse();
@@ -1883,8 +1883,8 @@ void NodeController::addDroppedUrls(const QVariantList& urls) {
   }
   runIndexJob(dirs.front(), file_scope_group_id_, false);
   for (int i = 1; i < dirs.size(); ++i) {
-    // Sequential: no queue for the remaining folders after the first one completes;
-    // the user can re-add them. One large folder at a time is enough.
+
+
     Q_UNUSED(i);
   }
   if (dirs.size() > 1) {
@@ -1951,7 +1951,7 @@ void NodeController::refreshFileShareRoots() {
 
 void NodeController::refreshLocalFileModel() {
   if (file_selected_share_root_.isEmpty()) {
-    // Managed library + leftover objects for the active scope.
+
     const auto all = service_.local_files_for_scope(file_scope_group_id_.toStdString());
     const std::string objects_prefix = nyx::normalize_utf8_path(nyx::data_dir() + "/objects") + "/";
     const std::string library_prefix =
@@ -2047,8 +2047,8 @@ void NodeController::refreshFileLists() {
 
 QString NodeController::pickFolder() {
 #if defined(Q_OS_ANDROID)
-  // Android cannot reliably index arbitrary Documents trees; build a managed
-  // share root and fill it from the system file picker (Documents/Downloads…).
+
+
   const QString base =
       QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/shares");
   QDir().mkpath(base);
@@ -2094,7 +2094,7 @@ QString NodeController::pickFolder() {
                                    QLatin1Char('-') + file_name);
       if (!nyx_android::copy_content_uri(url.toString(), source))
         continue;
-      // Already copied into the share folder.
+
       const QString final_path = QDir(path).filePath(file_name);
       if (final_path != source) {
         QFile::remove(final_path);
@@ -2287,7 +2287,7 @@ void NodeController::rescanIndexedFolder(const QString& path) {
 }
 
 void NodeController::refreshRemoteFileList() {
-  // Full browse reset on root updates, or we stay inside a removed folder.
+
   file_resources_root_.clear();
   file_remote_browse_path_.clear();
   syncRemoteBrowseCrumbs();
@@ -2380,7 +2380,7 @@ void NodeController::wireCallbacks() {
             if (main_view_mode_ == 1)
               refreshFileAccessLists();
           }
-          // Lookup/rendezvous/NAT/reconnect goes to the status bar only (avoids toast spam).
+
           const bool progress_noise = lower.contains(QStringLiteral("lookup")) ||
                                       lower.contains(QStringLiteral("rendezvous")) ||
                                       lower.contains(QStringLiteral("register")) ||
@@ -2519,7 +2519,7 @@ void NodeController::wireCallbacks() {
   });
 
   service_.set_on_delivery(
-      [this](const std::string& /*session_id*/, uint64_t message_id, bool delivered) {
+      [this](const std::string& , uint64_t message_id, bool delivered) {
         QMetaObject::invokeMethod(
             this,
             [this, message_id, delivered]() {
@@ -2551,7 +2551,7 @@ void NodeController::wireCallbacks() {
           const bool was_selected = !active_chat_key_.isEmpty() && active_chat_key_ == list_key;
           pending_field_join_notify_ = false;
 
-          // Do not steal active_session / UI from another open chat.
+
           if (user_waiting || was_selected) {
             service_.set_active_session(session_id);
             active_chat_kind_ = static_cast<int>(kind);
@@ -2611,8 +2611,8 @@ void NodeController::wireCallbacks() {
               showToast(QStringLiteral("Эфир закрыт — владелец не в сети"), false);
             }
           }
-          // Auto-retry only on an unexpected Offline with the intent enabled.
-          // Disconnected = the user chose to disconnect; never reconnect.
+
+
           if (sid.startsWith(QStringLiteral("group:")) &&
               !sid.startsWith(QStringLiteral("group:join:"))) {
             const auto st = service_.session_state(session_id);
@@ -2727,7 +2727,7 @@ void NodeController::wireCallbacks() {
         this,
         [this]() {
           emit callChanged();
-          // Stop ringtone / update notify BEFORE opening camera+mic.
+
           syncCallNotifications();
           syncCallAudio();
         },
@@ -2780,9 +2780,9 @@ void NodeController::wireCallbacks() {
             [this, path, files_scanned, finished]() {
               file_index_files_scanned_ = files_scanned;
               if (finished)
-                return; // runIndexJob draws the final state
+                return;
               file_index_progress_visible_ = true;
-              // Smooth indicator without a known total (avoids a frozen look).
+
               const int paced =
                   5 + static_cast<int>(
                           (95.0 * (1.0 - std::exp(-static_cast<double>(files_scanned) / 80.0))));
@@ -3251,7 +3251,7 @@ void NodeController::removeProfilePhoto(const QString& hashHex) {
 
 QString NodeController::peerAvatarPath(const QString& userIdHex) const {
   const QString uid = userIdHex.trimmed().toLower();
-  // Own profile uses local photos, not the contact book.
+
   if (!uid.isEmpty() && uid == profile_user_id_hex_.trimmed().toLower() &&
       !profile_avatar_path_.isEmpty()) {
     return profile_avatar_path_;
@@ -3526,7 +3526,7 @@ void NodeController::openConversation(const QString& key,
   const bool live = service_.is_session_live(key.toStdString());
   const bool is_group = kind == static_cast<int>(nyx::ConversationKind::Group);
 
-  // active_chat_ref_id_ must be set before the activeFieldIsOwner() owner check.
+
   active_chat_kind_ = kind;
   active_chat_ref_id_ = refId;
   const bool owner_field = is_group && activeFieldIsOwner();
@@ -3537,7 +3537,7 @@ void NodeController::openConversation(const QString& key,
   service_.set_active_session(key.toStdString());
   chat_list_.setSelectedKey(key);
 
-  in_chat_ = true; // Show chat UI immediately (narrow layout waits on inChat).
+  in_chat_ = true;
   if (live) {
     peer_status_text_ = is_group ? QStringLiteral("эфир открыт") : QStringLiteral("на связи");
   } else if (owner_field) {
@@ -3551,7 +3551,7 @@ void NodeController::openConversation(const QString& key,
   loadStoredHistory(kind, refId, key);
   chat_list_.clearUnread(key);
   emit chatChanged();
-  // Defer file UI refresh — not needed for chat switch and can stall the UI thread.
+
   QTimer::singleShot(0, this, [this]() { emit filesChanged(); });
 
   if (live)
@@ -3559,11 +3559,11 @@ void NodeController::openConversation(const QString& key,
 
   if (!owner_field) {
     if (is_group) {
-      // Members used to stop here with "эфир закрыт" and never dial the hub.
+
       peer_status_text_ = QStringLiteral("подключение к эфиру…");
       chat_list_.setSessionState(key, QStringLiteral("connecting"));
       emit chatChanged();
-      // Let the chat view paint before hub/join work.
+
       QTimer::singleShot(0, this, [this]() { connectActiveField(); });
       return;
     }
@@ -3571,7 +3571,7 @@ void NodeController::openConversation(const QString& key,
     return;
   }
 
-  // Field owner: open the room and allow writing once Live.
+
   chat_list_.setSessionState(key, QStringLiteral("connecting"));
   showToast(QStringLiteral("Открываем эфир…"));
   QTimer::singleShot(0, this, [this, key]() {
@@ -3604,7 +3604,7 @@ void NodeController::showToast(const QString& text, bool isError) {
   if (text.isEmpty())
     return;
   toast_is_error_ = isError;
-  // Full text wraps inside ToastHost; no truncation to a short snippet.
+
   toast_ = text;
   emit toastChanged();
 }
@@ -3708,13 +3708,13 @@ void NodeController::showGroupInView(const QString& groupIdHex) {
 }
 
 void NodeController::refreshLanPeers() {
-  // Keep browse short — longer waits belong on the worker thread only.
+
   service_.scan_lan_peers(1200);
 }
 
 void NodeController::tickLanDiscovery() {
 #if defined(Q_OS_ANDROID)
-  // Re-hold MulticastLock (Wi‑Fi reconnect / OEM filters drop RX otherwise).
+
   nyx_android::acquire_multicast_lock();
   const std::string wifi = nyx_android::wifi_ipv4();
   if (!wifi.empty())
@@ -4027,7 +4027,7 @@ QString NodeController::mediaLocalPath(const QString& hashHex) const {
     return true;
   };
 
-  // Prefer O(1) index lookup — never scan the whole listing on the UI thread.
+
   if (const auto object = service_.find_file_object(hex.toStdString())) {
     const QString path = QString::fromStdString(object->absolute_path());
     if (is_verified_path(path))
@@ -4101,7 +4101,7 @@ QString NodeController::fileTextPreview(const QString& hashHex) const {
   const QString path = fileLocalPath(hashHex);
   if (path.isEmpty() || path.endsWith(QLatin1String(".part")))
     return {};
-  // Only preview from verified object catalog / completed downloads.
+
   if (!service_.find_file_object(hashHex.trimmed().toLower().toStdString()) &&
       !path.contains(QStringLiteral("/objects/")) && !path.contains(QStringLiteral("/library/")) &&
       !path.contains(QStringLiteral("/chat_media/")) &&
@@ -4129,7 +4129,7 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
   }
   QString use_mime = mime.trimmed();
   if (use_mime.isEmpty()) {
-    // MatchExtension avoids reading file contents (can stall on big/network files).
+
     use_mime = QMimeDatabase().mimeTypeForFile(local, QMimeDatabase::MatchExtension).name();
   }
   if (use_mime.startsWith(QLatin1String("image/")) ||
@@ -4165,7 +4165,7 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
     return true;
   if (launch(QStringLiteral("/usr/bin/gio"), {QStringLiteral("open"), abs}))
     return true;
-  // Last resort (may still inherit bad env via QDesktopServices).
+
   if (QDesktopServices::openUrl(QUrl::fromLocalFile(abs)))
     return true;
   showToast(QStringLiteral("Не удалось открыть файл"), true);
@@ -4189,7 +4189,7 @@ void NodeController::openFileByHash(const QString& hashHex,
     return;
   }
   QString path = fileLocalPath(hex);
-  // Field share roots: UI already knows root+rel — use them if index lookup misses.
+
   if (path.isEmpty() && !rootPath.trimmed().isEmpty() && !relativePath.trimmed().isEmpty()) {
     const QString candidate = QDir(rootPath.trimmed()).filePath(relativePath.trimmed());
     if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile()) {
@@ -4199,7 +4199,7 @@ void NodeController::openFileByHash(const QString& hashHex,
   if (path.isEmpty()) {
     ensureFileAvailable(hex, fileName);
     showToast(QStringLiteral("Файл загружается — откроется, когда будет готов"));
-    // Retry open shortly after download lands in cache.
+
     QTimer::singleShot(1200, this, [this, hex, fileName, mime, rootPath, relativePath]() {
       QString ready = fileLocalPath(hex);
       if (ready.isEmpty() && !rootPath.trimmed().isEmpty() && !relativePath.trimmed().isEmpty()) {
@@ -4225,7 +4225,7 @@ void NodeController::openFileByHash(const QString& hashHex,
 }
 
 int NodeController::fileSyncState(const QString& hashHex) const {
-  // 0 = remote only, 1 = downloading, 2 = local/synced
+
   const QString hex = hashHex.trimmed().toLower();
   if (hex.size() != 64)
     return 0;
@@ -4325,7 +4325,7 @@ void NodeController::openFolderInResources(const QString& hashHex,
     return;
   }
   file_resources_root_ = root;
-  // Directory marker relative_path is the folder itself — browse into it.
+
   file_remote_browse_path_ = rel;
   if (fileExchangeReady()) {
     service_.request_remote_files_at(
@@ -4544,8 +4544,8 @@ bool NodeController::callIsFieldRoom() const {
 void NodeController::startCall(bool video) {
   const std::string key = active_chat_key_.toStdString();
   if (!service_.is_session_up(key)) {
-    // Keep-alive drop leaves "offline" while UI still offers call buttons —
-    // reconnect first so invite can leave the wire.
+
+
     if (service_.ensure_session(key)) {
       showToast(QStringLiteral("Нет связи — переподключаюсь. Позвоните ещё раз через пару секунд."),
                 false);
@@ -4593,7 +4593,7 @@ void NodeController::startCall(bool video) {
 void NodeController::acceptCall() {
   answering_call_ = true;
 #if defined(Q_OS_ANDROID)
-  // Stop ringtone immediately on tap — do not wait for permissions/camera.
+
   nyx_android::stop_ringtone();
 #endif
   struct Ctx {
@@ -4647,14 +4647,14 @@ void NodeController::syncCallAudio() {
     nyx_android::set_speakerphone(call_speakerphone_);
 #endif
     const bool mic_muted = service_.call_mic_muted();
-    // Open mic/speaker on the audio thread — never block the GUI event loop.
+
     call_audio_.setMuted(mic_muted);
     call_audio_.setSendFn([this](const std::vector<uint8_t>& packet) {
       const bool ok =
           service_.send_call_media(nyx::CallMediaType::Opus, packet, call_audio_.localVoiceLevel());
       if (!ok) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
-        // Grace: channel may not be ready for the first ~1.5s after accept.
+
         if (now - last_send_fail_toast_ms_ > 4000 && now - call_media_started_ms_ > 1500) {
           last_send_fail_toast_ms_ = now;
           QMetaObject::invokeMethod(
@@ -4666,7 +4666,7 @@ void NodeController::syncCallAudio() {
       return ok;
     });
     call_media_started_ms_ = QDateTime::currentMSecsSinceEpoch();
-    call_audio_.start(); // marshals to call_audio_thread_
+    call_audio_.start();
     if (video) {
       const bool small_field =
           service_.call_is_field_room() && service_.call_participants().size() <= 2;
@@ -4720,7 +4720,7 @@ void NodeController::syncCallAudio() {
       }
       if (!call_video_.running()) {
 #if defined(Q_OS_ANDROID)
-        // Native Camera2 ImageReader (no Qt SurfaceView): camera ON by default.
+
         service_.set_call_camera_on(true);
         call_video_.setCameraEnabled(true);
         call_video_.start();
@@ -4862,7 +4862,7 @@ void NodeController::startMicTest() {
 #if defined(Q_OS_ANDROID)
   nyx_android::request_call_permissions(
       false,
-      [](bool mic_ok, bool /*cam_ok*/, void* ctx) {
+      [](bool mic_ok, bool , void* ctx) {
         auto* self = static_cast<NodeController*>(ctx);
         if (!mic_ok) {
           QMetaObject::invokeMethod(
@@ -5037,7 +5037,7 @@ void NodeController::setCallCameraOn(bool on) {
   auto* ctx = new Ctx {this};
   nyx_android::request_call_permissions(
       true,
-      [](bool /*mic_ok*/, bool cam_ok, void* p) {
+      [](bool , bool cam_ok, void* p) {
         auto* c = static_cast<Ctx*>(p);
         NodeController* self = c->self;
         delete c;
@@ -5274,7 +5274,7 @@ void NodeController::startFieldHub(const QString& groupIdHex) {
     showToast(QStringLiteral("Неверный id поля"));
     return;
   }
-  // Already viewing this field — don't rebuild chat UI / reload history.
+
   if (active_chat_key_ != QStringLiteral("group:") + gid || !in_chat_) {
     showGroupInView(gid);
   }
@@ -5297,7 +5297,7 @@ void NodeController::joinField(const QString& inviteHex) {
   }
   pending_field_join_notify_ = true;
 
-  // Enable the intent right away, or the list stays offline after the owner appears.
+
   nyx::InviteToken token {};
   if (nyx::GroupStore::invite_from_hex(normalized.toStdString(), token)) {
     nyx::GroupStore store;
@@ -5426,7 +5426,7 @@ void NodeController::syncCallNotifications() {
   QString key;
   switch (st) {
   case nyx::CallState::Incoming:
-    // Include call_id so a second invite from the same peer re-alerts.
+
     key = QStringLiteral("incoming:%1:%2").arg(title, cid);
     break;
   case nyx::CallState::Active:

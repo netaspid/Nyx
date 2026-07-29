@@ -61,7 +61,7 @@ std::string client_ip(const sockaddr_in& from) {
   return buf;
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
   nyx::log_init();

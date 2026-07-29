@@ -50,4 +50,4 @@ std::wstring default_install_dir();
 
 bool browse_for_folder(HWND owner, std::wstring& path);
 
-} // namespace nyx_setup
+}

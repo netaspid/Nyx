@@ -27,7 +27,7 @@ QProcessEnvironment tool_env_for(const QString& program) {
   QProcessEnvironment env = nyx_app::host_process_environment();
   const QFileInfo fi(program);
   const QString tools_dir = fi.absolutePath();
-  // Installer may ship tools/ + tools/lib next to nyx-app.
+
   if (tools_dir.endsWith(QStringLiteral("/tools")) ||
       tools_dir.endsWith(QStringLiteral("\\tools"))) {
     const QString lib = QDir(tools_dir).filePath(QStringLiteral("lib"));
@@ -63,7 +63,6 @@ void ensure_bundled_tools_executable() {
   }
 }
 
-/** Run a host tool off the UI thread (caller must not be the GUI thread). */
 QByteArray
 run_tool_capture(const QString& program, const QStringList& args, int timeout_ms, int* exit_code) {
   if (exit_code)
@@ -159,7 +158,7 @@ QString windows_soffice_path() {
 }
 #endif
 
-} // namespace
+}
 
 DocumentViewer::DocumentViewer(QObject* parent) : QObject(parent) {
   ensure_bundled_tools_executable();
@@ -435,7 +434,7 @@ void DocumentViewer::beginOfficeConvert(const QString& path) {
     const QString base = QFileInfo(source_path_).completeBaseName() + QStringLiteral(".pdf");
     const QString out = QDir(cache_dir_).filePath(base);
     if (!QFileInfo::exists(out)) {
-      // LibreOffice may sanitize the file name; pick any pdf in cache.
+
       const auto pdfs = QDir(cache_dir_).entryList({QStringLiteral("*.pdf")}, QDir::Files);
       if (pdfs.isEmpty()) {
         setError(QStringLiteral("PDF после конвертации не найден"));
@@ -478,7 +477,7 @@ void DocumentViewer::queryPageCount() {
   const int gen = ++render_gen_;
   const QString pdf = pdf_path_;
 
-  // Wait on a worker thread so a stalled UI event loop cannot leave us stuck on "reading".
+
   std::thread([this, program, args, gen, pdf]() {
     int code = -1;
     const QByteArray out = run_tool_capture(program, args, 15000, &code);

@@ -26,7 +26,7 @@ QImage CallFrameProvider::requestImage(const QString& id, QSize* size, const QSi
     placeholder.fill(Qt::transparent);
     return placeholder;
   }
-  // Detach: render thread may still use the buffer after setLocal replaces it.
+
   return img.copy();
 }
 

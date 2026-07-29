@@ -77,10 +77,6 @@ QImage applyMetaOrientation(QImage img, const QVideoFrame& frame) {
   return img;
 }
 
-/**
- * Many Android cameras deliver landscape buffers with rotationAngle=0.
- * Rotate so a portrait-held phone shows an upright person.
- */
 QImage uprightForDevice(QImage img, bool front_camera) {
   if (img.isNull())
     return img;
@@ -125,12 +121,11 @@ bool isCpuFriendly(QVideoFrameFormat::PixelFormat fmt) {
 }
 #endif
 
-/** Prefer CPU-friendly conversion; deep-copy while frame bits are still valid. */
 QImage frameToImage(QVideoFrame frame) {
   if (!frame.isValid())
     return {};
 
-  // Fast path: already a CPU image (common on desktop).
+
   {
     QImage img = frame.toImage();
     if (!img.isNull())
@@ -141,7 +136,7 @@ QImage frameToImage(QVideoFrame frame) {
     return {};
   QImage img = frame.toImage();
   if (img.isNull()) {
-    // Build from plane 0 when toImage fails but map succeeded (some Android paths).
+
     const QVideoFrameFormat fmt = frame.surfaceFormat();
     const int w = frame.width();
     const int h = frame.height();
@@ -171,7 +166,7 @@ QImage frameToImage(QVideoFrame frame) {
       }
     }
   } else {
-    img = img.copy(); // deep copy while mapped
+    img = img.copy();
   }
   frame.unmap();
   return img;
@@ -300,7 +295,7 @@ QImage i420ToImage(const nyx::Av1Decoder::Frame& frame) {
   return out;
 }
 
-} // namespace
+}
 
 int CallVideoIo::encodeWidth() const {
   return nyx::kCallVideoWidth;
@@ -529,8 +524,8 @@ void CallVideoIo::handleCameraFrame(const QVideoFrame&) {}
 void CallVideoIo::wireVideoSink() {}
 
 bool CallVideoIo::openCamera(const QCameraDevice& device) {
-  // Qt Multimedia Camera2 ANRs / freezes UI on this device family.
-  // Native Camera2 + ImageReader runs on nyx-camera2 HandlerThread — no SurfaceView.
+
+
   Q_UNUSED(device);
   NYX_VIDEO_LOG("openCamera native prefer_front=%d thr=%p gui=%p",
                 front_camera_.load() ? 1 : 0,
@@ -540,14 +535,14 @@ bool CallVideoIo::openCamera(const QCameraDevice& device) {
                                        : nullptr));
   const bool prefer_front =
       preferred_camera_id_.isEmpty() ? true : front_camera_.load(std::memory_order_relaxed);
-  // If preferred id looks like back, use back.
+
   bool front = prefer_front;
   if (!device.isNull()) {
     front = device.position() != QCameraDevice::BackFace;
   }
   front_camera_.store(front, std::memory_order_relaxed);
   last_ingest_ms_.store(0, std::memory_order_relaxed);
-  capturing_.store(true, std::memory_order_release); // optimistic; cleared on error
+  capturing_.store(true, std::memory_order_release);
   nyx_android::native_camera_start(front);
   emit cameraChanged();
 
@@ -696,7 +691,7 @@ bool CallVideoIo::start() {
 
   if (camera_enabled_.load(std::memory_order_acquire)) {
 #if defined(Q_OS_ANDROID)
-    // Defer Camera2 so Answer UI / ringtone stop paint first.
+
     QTimer::singleShot(350, this, [this]() {
       if (!running_.load(std::memory_order_acquire))
         return;
@@ -846,7 +841,7 @@ void CallVideoIo::setCameraEnabled(bool on) {
     return;
   }
   emit cameraChanged();
-  // Defer open so the UI click handler returns before Camera2 negotiates.
+
   QTimer::singleShot(50, this, [this]() {
     if (!running_.load(std::memory_order_acquire))
       return;
@@ -914,7 +909,7 @@ QStringList CallVideoIo::videoPeerIds() const {
 }
 
 CallVideoIo::PeerDecoder& CallVideoIo::peerDecoder(const QString& peerId) {
-  // Caller must hold frames_mutex_. Do NOT emit signals here (non-recursive mutex).
+
   const std::string key = peerId.toStdString();
   auto it = peers_.find(key);
   if (it != peers_.end())
@@ -949,7 +944,7 @@ void CallVideoIo::onEncodeTick() {
   if (!running_.load(std::memory_order_acquire))
     return;
   if (encode_busy_)
-    return; // previous tick still encoding — skip rather than stall
+    return;
   encode_busy_ = true;
 
   QImage frame;

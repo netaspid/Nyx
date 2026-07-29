@@ -27,7 +27,7 @@ QImage uprightPreview(QImage image, bool front) {
   return image;
 }
 
-} // namespace
+}
 
 ChatVideoRecorder::ChatVideoRecorder(QObject* parent) : QObject(parent) {
   elapsed_timer_.setInterval(100);

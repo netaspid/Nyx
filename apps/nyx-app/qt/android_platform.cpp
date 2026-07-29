@@ -17,7 +17,6 @@
 #include <mutex>
 #include <string>
 
-// Native camera callbacks (JNI → Qt GUI). File scope for JNI exports.
 static nyx_android::NativeCameraJpegFn g_cam_jpeg = nullptr;
 static nyx_android::NativeCameraErrorFn g_cam_error = nullptr;
 static nyx_android::NativeCameraStartedFn g_cam_started = nullptr;
@@ -80,7 +79,7 @@ std::string ipv4_from_link_properties(const QJniObject& lp) {
       continue;
     if (inet.callMethod<jboolean>("isLoopbackAddress"))
       continue;
-    // Prefer Inet4Address
+
     QJniEnvironment env;
     jclass v4 = env.findClass("java/net/Inet4Address");
     if (!v4 || !env->IsInstanceOf(inet.object<jobject>(), v4))
@@ -90,7 +89,7 @@ std::string ipv4_from_link_properties(const QJniObject& lp) {
       continue;
     const QString s = host.toString();
     if (s.contains(QLatin1Char(':')))
-      continue; // IPv6 literal
+      continue;
     return s.toStdString();
   }
   return {};
@@ -185,7 +184,7 @@ std::string wifi_ipv4_legacy_dhcp() {
   return buf;
 }
 
-} // namespace
+}
 
 void acquire_multicast_lock() {
   std::lock_guard lock(g_lock_mutex);
@@ -194,7 +193,7 @@ void acquire_multicast_lock() {
     nyx::log_write(nyx::LogLevel::Warn, "MulticastLock: no Android context");
     return;
   }
-  // Refresh: if already held, keep; else create. Force release when not held.
+
   if (g_multicast_held && g_multicast_lock.isValid()) {
     if (g_multicast_lock.callMethod<jboolean>("isHeld"))
       return;
@@ -398,10 +397,10 @@ void bring_app_to_foreground() {
                           activity.object<jstring>());
   intent.callObjectMethod("addFlags",
                           "(I)Landroid/content/Intent;",
-                          jint(0x10000000)); // FLAG_ACTIVITY_NEW_TASK
+                          jint(0x10000000));
   intent.callObjectMethod("addFlags",
                           "(I)Landroid/content/Intent;",
-                          jint(0x20000000)); // FLAG_ACTIVITY_SINGLE_TOP
+                          jint(0x20000000));
   ctx.callMethod<void>("startActivity", "(Landroid/content/Intent;)V", intent.object<jobject>());
 }
 
@@ -454,9 +453,9 @@ void set_hangup_handler(void (*fn)()) {
   g_hangup_fn = fn;
 }
 
-void show_native_hangup_overlay(bool /*show*/) {
-  // DecorView overlays break Qt touch dispatch on Android; hangup is via
-  // notification action + QML controls instead.
+void show_native_hangup_overlay(bool ) {
+
+
 }
 
 void invoke_hangup_handler() {
@@ -677,7 +676,7 @@ bool open_file(const QString& path, const QString& mime) {
       mime_arg.object<jstring>());
 }
 
-} // namespace nyx_android
+}
 
 #include <QMetaObject>
 #include <QObject>
@@ -699,7 +698,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_nyx_app_NyxCameraCapture_nativeOnJpeg
   auto* fn = g_cam_jpeg;
   void* ctx = g_cam_ctx;
   const bool is_front = front;
-  // Dispatch onto the CallVideoIo object thread (video worker), not the GUI.
+
   auto* obj = static_cast<QObject*>(ctx);
   if (!obj)
     return;
@@ -845,7 +844,7 @@ std::string wifi_ipv4() {
   return {};
 }
 
-void request_call_permissions(bool /*need_camera*/,
+void request_call_permissions(bool ,
                               void (*done)(bool mic_ok, bool cam_ok, void* ctx),
                               void* ctx) {
   done(true, true, ctx);
@@ -913,6 +912,6 @@ bool open_file(const QString&, const QString&) {
   return false;
 }
 
-} // namespace nyx_android
+}
 
 #endif

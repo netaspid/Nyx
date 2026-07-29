@@ -1,7 +1,5 @@
 #pragma once
 
-/** Image provider for call video frames (avoids JPEG temp-file bridge). */
-
 #include <QHash>
 #include <QImage>
 #include <QMutex>

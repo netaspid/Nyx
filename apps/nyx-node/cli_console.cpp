@@ -102,4 +102,4 @@ void CliConsole::print_status(const std::string& peer_nickname,
             << std::flush;
 }
 
-} // namespace nyx_node
+}

@@ -23,7 +23,7 @@ QString formatListTime(quint64 ms) {
   return dt.toString(QStringLiteral("dd.MM"));
 }
 
-} // namespace
+}
 
 ChatListModel::ChatListModel(QObject* parent) : QAbstractListModel(parent) {}
 
@@ -152,7 +152,7 @@ void ChatListModel::setSessionState(const QString& key, const QString& state) {
   const int idx = indexForKey(key);
   if (idx >= 0) {
     rows_[idx].sessionState = state;
-    // Wider than one role: some Qt 6 delegates fail to repaint the status label otherwise.
+
     emit dataChanged(
         index(idx), index(idx), {SessionStateRole, PreviewRole, TitleRole, SelectedRole});
   }

@@ -5,7 +5,6 @@
 #include <QString>
 #include <QVariant>
 
-/** Chat list (contacts + fields) for the QML left column. */
 class ChatListModel : public QAbstractListModel {
   Q_OBJECT
 

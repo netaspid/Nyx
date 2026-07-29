@@ -167,7 +167,7 @@ bool terminate_by_name_in_dir(const wchar_t* exe_name, const std::wstring& insta
   return stopped;
 }
 
-} // namespace
+}
 
 bool stop_nyx_for_install(const std::wstring& install_dir, std::wstring* err) {
   (void)err;
@@ -314,7 +314,6 @@ bool can_load_library(const std::wstring& full_path) {
   return true;
 }
 
-/** Real OS version (IsWindows10OrGreater lies without an app manifest). */
 bool windows_build_at_least(DWORD major, DWORD minor, DWORD build) {
   using RtlGetVersionFn = LONG(WINAPI*)(OSVERSIONINFOEXW*);
   const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
@@ -336,7 +335,7 @@ bool windows_build_at_least(DWORD major, DWORD minor, DWORD build) {
   return ver.dwBuildNumber >= build;
 }
 
-} // namespace
+}
 
 bool ensure_system_prerequisites(std::wstring* err) {
   if (!windows_build_at_least(10, 0, 0)) {
@@ -479,7 +478,7 @@ bool winget_available() {
 }
 
 bool winget_install(const wchar_t* package_id) {
-  // Use cmd so winget from App Installer resolves on PATH.
+
   const std::wstring cmd =
       std::wstring(L"cmd.exe /C winget install --id ") + package_id +
       L" -e --accept-package-agreements --accept-source-agreements --disable-interactivity";
@@ -504,7 +503,7 @@ bool expand_archive_ps(const std::wstring& zip, const std::wstring& dest_dir) {
 }
 
 bool find_and_copy_mutool(const std::wstring& extract_root, const std::wstring& tools_dir) {
-  // Recursively look for mutool.exe under extract_root (limited depth via PowerShell).
+
   const std::wstring cmd =
       L"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
       L"\"$f = Get-ChildItem -Path '" +
@@ -528,7 +527,7 @@ bool install_mupdf_tools(const std::wstring& install_dir, std::wstring* err) {
     return true;
 
   if (winget_available()) {
-    // Best-effort package ids; ignore failure and fall through to download.
+
     winget_install(L"ArtifexSoftware.MuPDF");
     if (has_pdf_tools_w(install_dir))
       return true;
@@ -547,7 +546,7 @@ bool install_mupdf_tools(const std::wstring& install_dir, std::wstring* err) {
   const std::wstring extract = std::wstring(temp_path) + L"nyx-mupdf";
   const std::wstring tools = install_dir + L"\\tools";
 
-  // Official MuPDF Windows build (includes mutool.exe).
+
   const std::wstring url =
       L"https://github.com/ArtifexSoftware/mupdf-downloads/releases/download/1.28.0/"
       L"mupdf-1.28.0-windows.zip";
@@ -593,7 +592,7 @@ bool install_libreoffice(std::wstring* err) {
   return false;
 }
 
-} // namespace
+}
 
 bool ensure_document_dependencies(const std::wstring& install_dir,
                                   std::wstring* err,
@@ -625,7 +624,7 @@ bool ensure_document_dependencies(const std::wstring& install_dir,
 
   if (err)
     *err = notes;
-  // Soft-fail: Nyx install succeeds even if optional document deps are incomplete.
+
   return true;
 }
 
@@ -739,4 +738,4 @@ bool browse_for_folder(HWND owner, std::wstring& path) {
   return true;
 }
 
-} // namespace nyx_setup
+}

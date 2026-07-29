@@ -17,8 +17,6 @@ bool register_install_manifest(const std::string& install_dir);
 
 bool launch_app(const std::string& exe_path);
 
-/** Install PDF/Office viewer deps via the distro package manager when missing.
- *  Skips PDF packages if install_dir/tools already has mutool/pdftoppm. */
 bool ensure_document_dependencies(const std::string& install_dir,
                                   std::string* err = nullptr,
                                   bool interactive = true);
@@ -33,4 +31,4 @@ std::string default_install_dir();
 
 std::string data_root();
 
-} // namespace nyx_setup
+}

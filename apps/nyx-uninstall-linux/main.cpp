@@ -31,7 +31,7 @@ std::string read_install_dir() {
   return path.parent_path().string();
 }
 
-} // namespace
+}
 
 int main() {
   const std::string install_dir = read_install_dir();

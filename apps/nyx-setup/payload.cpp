@@ -91,7 +91,7 @@ bool write_file_bytes(const std::filesystem::path& path,
   return false;
 }
 
-} // namespace
+}
 
 bool read_self_payload(std::vector<std::uint8_t>& out) {
 #ifdef _WIN32
@@ -215,4 +215,4 @@ bool extract_payload(const std::vector<std::uint8_t>& blob,
   return true;
 }
 
-} // namespace nyx_setup
+}
