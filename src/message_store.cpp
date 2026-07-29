@@ -2,6 +2,8 @@
 #include "nyx/group.hpp"
 #include "nyx/message_store.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
 
@@ -14,73 +16,6 @@
 namespace nyx {
 
 namespace {
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  out.reserve(s.size() + 8);
-  for (char c : s) {
-    switch (c) {
-      case '\\':
-        out += "\\\\";
-        break;
-      case '"':
-        out += "\\\"";
-        break;
-      case '\n':
-        out += "\\n";
-        break;
-      case '\r':
-        out += "\\r";
-        break;
-      default:
-        out += c;
-        break;
-    }
-  }
-  return out;
-}
-
-std::optional<std::string> json_field(const std::string& line, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = line.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < line.size()) {
-    const char c = line[i++];
-    if (c == '"') break;
-    if (c == '\\' && i < line.size()) {
-      const char esc = line[i++];
-      if (esc == 'n')
-        out.push_back('\n');
-      else if (esc == 'r')
-        out.push_back('\r');
-      else
-        out.push_back(esc);
-    } else {
-      out.push_back(c);
-    }
-  }
-  return out;
-}
-
-uint64_t json_field_u64(const std::string& line, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto pos = line.find(needle);
-  if (pos == std::string::npos) return 0;
-  try {
-    return std::stoull(line.substr(pos + needle.size()));
-  } catch (const std::exception&) {
-    return 0;
-  }
-}
-
-bool json_field_bool(const std::string& line, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto pos = line.find(needle);
-  if (pos == std::string::npos) return false;
-  return line.compare(pos + needle.size(), 4, "true") == 0;
-}
 
 std::string to_lower_ascii(std::string s) {
   for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -130,15 +65,15 @@ bool MessageStore::load_from_disk() const {
   while (std::getline(file, line)) {
     if (line.empty()) continue;
     StoredMessage msg;
-    msg.id = json_field_u64(line, "id");
-    msg.timestamp_ms = json_field_u64(line, "ts");
-    if (auto author = json_field(line, "author")) msg.author = *author;
-    if (auto author_id = json_field(line, "author_id")) {
+    msg.id = json_get_u64(line, "id");
+    msg.timestamp_ms = json_get_u64(line, "ts");
+    if (auto author = json_get_string(line, "author")) msg.author = *author;
+    if (auto author_id = json_get_string(line, "author_id")) {
       msg.author_id_hex = *author_id;
     }
-    if (auto chat_id = json_field(line, "chat_id")) msg.chat_id_hex = *chat_id;
-    if (auto text = json_field(line, "text")) msg.text = *text;
-    msg.outgoing = json_field_bool(line, "out");
+    if (auto chat_id = json_get_string(line, "chat_id")) msg.chat_id_hex = *chat_id;
+    if (auto text = json_get_string(line, "text")) msg.text = *text;
+    msg.outgoing = json_get_bool(line, "out").value_or(false);
     cache_.push_back(std::move(msg));
   }
   return true;

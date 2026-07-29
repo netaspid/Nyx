@@ -1,5 +1,7 @@
 #include "nyx/identity.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
 
@@ -15,58 +17,6 @@
 namespace nyx {
 
 namespace {
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  out.reserve(s.size() + 8);
-  for (char c : s) {
-    switch (c) {
-      case '\\':
-        out += "\\\\";
-        break;
-      case '"':
-        out += "\\\"";
-        break;
-      case '\n':
-        out += "\\n";
-        break;
-      case '\r':
-        out += "\\r";
-        break;
-      default:
-        out += c;
-        break;
-    }
-  }
-  return out;
-}
-
-std::optional<std::string> json_get_string(const std::string& json,
-                                           const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < json.size()) {
-    const char c = json[i++];
-    if (c == '"') break;
-    if (c == '\\' && i < json.size()) {
-      const char esc = json[i++];
-      if (esc == 'n')
-        out.push_back('\n');
-      else if (esc == 'r')
-        out.push_back('\r');
-      else if (esc == 't')
-        out.push_back('\t');
-      else
-        out.push_back(esc);
-    } else {
-      out.push_back(c);
-    }
-  }
-  return out;
-}
 
 bool parse_key_hex(const std::string& hex, std::array<uint8_t, 32>& out) {
   ByteBuffer bytes;

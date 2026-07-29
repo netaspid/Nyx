@@ -1,5 +1,7 @@
 #include "nyx/profile_meta.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
 
@@ -27,36 +29,6 @@ constexpr std::size_t kMaxBioLen = 280;
 constexpr std::size_t kMaxInterestsLen = 200;
 
 std::string meta_path() { return data_dir() + "/profile_meta.json"; }
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  for (char c : s) {
-    if (c == '\\')
-      out += "\\\\";
-    else if (c == '"')
-      out += "\\\"";
-    else
-      out += c;
-  }
-  return out;
-}
-
-std::optional<std::string> json_get_string(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < json.size()) {
-    const char c = json[i++];
-    if (c == '"') break;
-    if (c == '\\' && i < json.size())
-      out.push_back(json[i++]);
-    else
-      out.push_back(c);
-  }
-  return out;
-}
 
 void clamp_meta(ProfileMeta& m) {
   if (m.bio.size() > kMaxBioLen) m.bio.resize(kMaxBioLen);

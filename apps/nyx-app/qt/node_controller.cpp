@@ -1,6 +1,7 @@
 #include "node_controller.hpp"
 #include "android_platform.hpp"
 #include "document_viewer.hpp"
+#include "host_env.hpp"
 #include "win_chrome.hpp"
 
 #include "nyx/account_store.hpp"
@@ -3965,14 +3966,8 @@ bool NodeController::openLocalFile(const QString& path, const QString& mime) {
   showToast(QStringLiteral("Не удалось открыть файл"), true);
   return false;
 #elif defined(Q_OS_LINUX)
-  // Wrapper sets LD_LIBRARY_PATH to bundled Qt — inherited xdg-open often fails.
   const QString abs = QFileInfo(local).absoluteFilePath();
-  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-  env.remove(QStringLiteral("LD_LIBRARY_PATH"));
-  env.remove(QStringLiteral("QT_PLUGIN_PATH"));
-  env.remove(QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH"));
-  env.remove(QStringLiteral("QML2_IMPORT_PATH"));
-  env.remove(QStringLiteral("QML_IMPORT_PATH"));
+  const QProcessEnvironment env = nyx_app::host_process_environment();
 
   auto launch = [&](const QString& program, const QStringList& args) -> bool {
     QProcess proc;

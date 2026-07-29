@@ -1,5 +1,7 @@
 #include "nyx/session_intent.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
@@ -12,58 +14,6 @@
 namespace nyx {
 
 namespace {
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  out.reserve(s.size());
-  for (char c : s) {
-    if (c == '\\')
-      out += "\\\\";
-    else if (c == '"')
-      out += "\\\"";
-    else
-      out += c;
-  }
-  return out;
-}
-
-std::optional<std::string> json_get_string(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < json.size()) {
-    const char c = json[i++];
-    if (c == '"') break;
-    if (c == '\\' && i < json.size())
-      out.push_back(json[i++]);
-    else
-      out.push_back(c);
-  }
-  return out;
-}
-
-bool json_get_bool(const std::string& json, const char* key, bool def) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return def;
-  const auto rest = json.substr(pos + needle.size(), 5);
-  if (rest.rfind("true", 0) == 0) return true;
-  if (rest.rfind("false", 0) == 0) return false;
-  return def;
-}
-
-uint64_t json_get_u64(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return 0;
-  try {
-    return std::stoull(json.substr(pos + needle.size()));
-  } catch (...) {
-    return 0;
-  }
-}
 
 std::string kind_to_str(SessionIntentKind k) {
   switch (k) {
@@ -112,7 +62,7 @@ bool SessionIntentStore::load() {
     if (auto r = json_get_string(obj, "ref")) intent.ref_id_hex = *r;
     if (auto inv = json_get_string(obj, "invite")) intent.invite_hex = *inv;
     if (auto kind = json_get_string(obj, "kind")) intent.kind = kind_from_str(*kind);
-    intent.enabled = json_get_bool(obj, "enabled", true);
+    intent.enabled = json_get_bool(obj, "enabled").value_or(true);
     intent.updated_ms = json_get_u64(obj, "updated");
     if (!intent.key.empty()) intents_.push_back(std::move(intent));
     pos = obj_end;

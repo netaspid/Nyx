@@ -1,5 +1,7 @@
 #include "nyx/group.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/paths.hpp"
 #include "nyx/messaging.hpp"
 #include "nyx/util.hpp"
@@ -16,35 +18,6 @@
 namespace nyx {
 
 namespace {
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  for (char c : s) {
-    if (c == '\\')
-      out += "\\\\";
-    else if (c == '"')
-      out += "\\\"";
-    else
-      out += c;
-  }
-  return out;
-}
-
-std::optional<std::string> json_get_string(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < json.size()) {
-    const char c = json[i++];
-    if (c == '"') break;
-    if (c == '\\' && i < json.size()) out.push_back(json[i++]);
-    else
-      out.push_back(c);
-  }
-  return out;
-}
 
 std::vector<std::string> split_objects(const std::string& arr) {
   std::vector<std::string> out;

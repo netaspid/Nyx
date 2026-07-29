@@ -1,5 +1,7 @@
 #include "nyx/file_index.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/group.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
@@ -17,46 +19,6 @@
 namespace nyx {
 
 namespace {
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  for (char c : s) {
-    if (c == '\\')
-      out += "\\\\";
-    else if (c == '"')
-      out += "\\\"";
-    else
-      out += c;
-  }
-  return out;
-}
-
-std::optional<std::string> json_get_string(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < json.size()) {
-    const char c = json[i++];
-    if (c == '"') break;
-    if (c == '\\' && i < json.size()) out.push_back(json[i++]);
-    else
-      out.push_back(c);
-  }
-  return out;
-}
-
-uint64_t json_get_u64(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return 0;
-  try {
-    return std::stoull(json.substr(pos + needle.size()));
-  } catch (const std::exception&) {
-    return 0;
-  }
-}
 
 bool group_id_is_zero(const GroupId& id) {
   return std::all_of(id.begin(), id.end(), [](uint8_t b) { return b == 0; });

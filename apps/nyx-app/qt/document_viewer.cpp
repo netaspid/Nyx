@@ -1,5 +1,7 @@
 #include "document_viewer.hpp"
 
+#include "host_env.hpp"
+
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -21,19 +23,8 @@
 
 namespace {
 
-QProcessEnvironment clean_tool_env() {
-  // Bundled Qt LD_LIBRARY_PATH breaks host tools (mutool / soffice / xdg-open).
-  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-  env.remove(QStringLiteral("LD_LIBRARY_PATH"));
-  env.remove(QStringLiteral("QT_PLUGIN_PATH"));
-  env.remove(QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH"));
-  env.remove(QStringLiteral("QML2_IMPORT_PATH"));
-  env.remove(QStringLiteral("QML_IMPORT_PATH"));
-  return env;
-}
-
 QProcessEnvironment tool_env_for(const QString& program) {
-  QProcessEnvironment env = clean_tool_env();
+  QProcessEnvironment env = nyx_app::host_process_environment();
   const QFileInfo fi(program);
   const QString tools_dir = fi.absolutePath();
   // Installer may ship tools/ + tools/lib next to nyx-app.

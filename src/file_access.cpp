@@ -1,6 +1,8 @@
 #include "nyx/file_access.hpp"
 #include "nyx/group.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
 
@@ -16,57 +18,6 @@
 namespace nyx {
 
 namespace {
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  for (char c : s) {
-    if (c == '\\')
-      out += "\\\\";
-    else if (c == '"')
-      out += "\\\"";
-    else
-      out += c;
-  }
-  return out;
-}
-
-std::optional<std::string> json_get_string(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":\"";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  std::string out;
-  while (i < json.size()) {
-    const char c = json[i++];
-    if (c == '"') break;
-    if (c == '\\' && i < json.size()) out.push_back(json[i++]);
-    else
-      out.push_back(c);
-  }
-  return out;
-}
-
-std::optional<uint32_t> json_get_uint(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  std::size_t i = pos + needle.size();
-  while (i < json.size() && std::isspace(static_cast<unsigned char>(json[i]))) ++i;
-  std::size_t j = i;
-  while (j < json.size() && std::isdigit(static_cast<unsigned char>(json[j]))) ++j;
-  if (j == i) return std::nullopt;
-  return static_cast<uint32_t>(std::stoul(json.substr(i, j - i)));
-}
-
-std::optional<bool> json_get_bool(const std::string& json, const char* key) {
-  const std::string needle = std::string("\"") + key + "\":";
-  const auto pos = json.find(needle);
-  if (pos == std::string::npos) return std::nullopt;
-  const auto sub = json.substr(pos + needle.size(), 8);
-  if (sub.rfind("true", 0) == 0) return true;
-  if (sub.rfind("false", 0) == 0) return false;
-  return std::nullopt;
-}
 
 bool user_id_from_hex(const std::string& hex, UserId& out) {
   ByteBuffer buf;

@@ -1,5 +1,7 @@
 #include "nyx/avatar_store.hpp"
 
+#include "json_text.hpp"
+
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
 
@@ -17,19 +19,6 @@ namespace {
 uint64_t wall_ms() {
   using namespace std::chrono;
   return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-}
-
-std::string json_escape(const std::string& s) {
-  std::string out;
-  for (char c : s) {
-    if (c == '\\')
-      out += "\\\\";
-    else if (c == '"')
-      out += "\\\"";
-    else
-      out += c;
-  }
-  return out;
 }
 
 std::string ext_for_mime(const std::string& mime) {

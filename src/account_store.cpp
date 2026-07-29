@@ -1,6 +1,7 @@
 #include "nyx/account_store.hpp"
 
 #include "nyx/identity.hpp"
+#include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/profile_crypto.hpp"
 #include "nyx/recovery_phrase.hpp"
@@ -40,13 +41,6 @@ std::string trim_ascii(std::string s) {
   while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
   while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
   return s;
-}
-
-uint64_t now_ms() {
-  return static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
-          .count());
 }
 
 std::string account_id_from_profile(const Profile& profile) {
