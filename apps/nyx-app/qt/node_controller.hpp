@@ -1,13 +1,13 @@
 #pragma once
 
 #include "../appcore/node_service.hpp"
-#include "call_audio_io.hpp"
 #include "call_frame_provider.hpp"
-#include "call_video_io.hpp"
+#include "call_ui.hpp"
 #include "chat_list_model.hpp"
 #include "chat_media_recorder.hpp"
 #include "chat_video_recorder.hpp"
 #include "document_viewer.hpp"
+#include "files_ui.hpp"
 #include "lan_peer_model.hpp"
 #include "message_model.hpp"
 
@@ -16,14 +16,11 @@
 
 #include <QObject>
 #include <QString>
-#include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 
-#include <atomic>
-#include <thread>
 #include <vector>
 
 class QMenu;
@@ -227,44 +224,44 @@ public:
   QString networkStatus() const { return network_status_; }
   QString toast() const { return toast_; }
   bool windowActive() const { return window_active_; }
-  QString fileProgressLabel() const { return file_progress_label_; }
-  int fileProgressPercent() const { return file_progress_percent_; }
-  bool fileProgressVisible() const { return file_progress_visible_; }
-  QVariantList localFileList() const { return local_file_list_; }
-  QVariantList remoteFileList() const { return remote_file_list_; }
-  bool inAppMediaOpen() const { return in_app_media_open_; }
-  QString inAppMediaPath() const { return in_app_media_path_; }
-  QString inAppMediaMime() const { return in_app_media_mime_; }
-  QString inAppMediaTitle() const { return in_app_media_title_; }
+  QString fileProgressLabel() const { return files_ui_.file_progress_label_; }
+  int fileProgressPercent() const { return files_ui_.file_progress_percent_; }
+  bool fileProgressVisible() const { return files_ui_.file_progress_visible_; }
+  QVariantList localFileList() const { return files_ui_.local_file_list_; }
+  QVariantList remoteFileList() const { return files_ui_.remote_file_list_; }
+  bool inAppMediaOpen() const { return files_ui_.in_app_media_open_; }
+  QString inAppMediaPath() const { return files_ui_.in_app_media_path_; }
+  QString inAppMediaMime() const { return files_ui_.in_app_media_mime_; }
+  QString inAppMediaTitle() const { return files_ui_.in_app_media_title_; }
   DocumentViewer* documentViewer() { return &document_viewer_; }
   ChatMediaRecorder* chatMediaRecorder() { return &chat_media_recorder_; }
   ChatVideoRecorder* chatVideoRecorder() { return &chat_video_recorder_; }
-  QVariantList transferQueue() const { return transfer_queue_; }
-  QVariantList fileShareRoots() const { return file_share_roots_; }
-  QString fileSelectedShareRoot() const { return file_selected_share_root_; }
-  QString fileBrowsePath() const { return file_browse_path_; }
-  QVariantList fileBrowseCrumbs() const { return file_browse_crumbs_; }
-  QString fileResourcesRoot() const { return file_resources_root_; }
-  QVariantList fileRemoteBrowseCrumbs() const { return file_remote_browse_crumbs_; }
-  int filesSection() const { return files_section_; }
+  QVariantList transferQueue() const { return files_ui_.transfer_queue_; }
+  QVariantList fileShareRoots() const { return files_ui_.file_share_roots_; }
+  QString fileSelectedShareRoot() const { return files_ui_.file_selected_share_root_; }
+  QString fileBrowsePath() const { return files_ui_.file_browse_path_; }
+  QVariantList fileBrowseCrumbs() const { return files_ui_.file_browse_crumbs_; }
+  QString fileResourcesRoot() const { return files_ui_.file_resources_root_; }
+  QVariantList fileRemoteBrowseCrumbs() const { return files_ui_.file_remote_browse_crumbs_; }
+  int filesSection() const { return files_ui_.files_section_; }
   bool canFileList() const;
-  QString fileScopeGroupId() const { return file_scope_group_id_; }
-  QString fileScopeLabel() const { return file_scope_label_; }
+  QString fileScopeGroupId() const { return files_ui_.file_scope_group_id_; }
+  QString fileScopeLabel() const { return files_ui_.file_scope_label_; }
   bool fileExchangeReady() const;
   QString fileExchangeHint() const;
-  bool fileIndexProgressVisible() const { return file_index_progress_visible_; }
-  int fileIndexProgressPercent() const { return file_index_progress_percent_; }
-  QString fileIndexProgressLabel() const { return file_index_progress_label_; }
+  bool fileIndexProgressVisible() const { return files_ui_.file_index_progress_visible_; }
+  int fileIndexProgressPercent() const { return files_ui_.file_index_progress_percent_; }
+  QString fileIndexProgressLabel() const { return files_ui_.file_index_progress_label_; }
   int mainViewMode() const { return main_view_mode_; }
-  QVariantList fileRoleList() const { return file_role_list_; }
-  QVariantList filePermissionPresetList() const { return file_permission_preset_list_; }
-  QVariantList fileMemberAccess() const { return file_member_access_; }
-  QVariantList filePathMemberAccess() const { return file_path_member_access_; }
-  QString filePathRoleId() const { return file_path_role_id_; }
-  QString filePathRoleInheritedFrom() const { return file_path_role_inherited_from_; }
-  QString fileAccessTargetLabel() const { return file_access_target_label_; }
-  QString fileAccessTargetRoot() const { return file_access_target_root_; }
-  QString fileAccessTargetRel() const { return file_access_target_rel_; }
+  QVariantList fileRoleList() const { return files_ui_.file_role_list_; }
+  QVariantList filePermissionPresetList() const { return files_ui_.file_permission_preset_list_; }
+  QVariantList fileMemberAccess() const { return files_ui_.file_member_access_; }
+  QVariantList filePathMemberAccess() const { return files_ui_.file_path_member_access_; }
+  QString filePathRoleId() const { return files_ui_.file_path_role_id_; }
+  QString filePathRoleInheritedFrom() const { return files_ui_.file_path_role_inherited_from_; }
+  QString fileAccessTargetLabel() const { return files_ui_.file_access_target_label_; }
+  QString fileAccessTargetRoot() const { return files_ui_.file_access_target_root_; }
+  QString fileAccessTargetRel() const { return files_ui_.file_access_target_rel_; }
   bool toastIsError() const { return toast_is_error_; }
   bool canManageFileRoles() const;
   bool canFileUpload() const;
@@ -635,26 +632,9 @@ private:
   void saveMediaDevicePrefs() const;
 
   nyx_app::NodeService service_;
-
-  QThread call_audio_thread_;
-  CallAudioIo call_audio_;
-
-  QThread call_video_thread_;
-  CallVideoIo call_video_;
-  CallFrameProvider* call_frames_ = nullptr;
-  bool call_video_slots_wired_ = false;
-  QUrl call_remote_frame_url_;
-  QUrl call_local_frame_url_;
-  int call_frame_epoch_ = 0;
-  bool call_speakerphone_ = true;
-  QString last_call_notify_key_;
-  bool answering_call_ = false;
-  bool resume_call_camera_ = false;
-  QString suspended_call_id_;
-  QString manual_call_focus_;
-  qint64 manual_call_focus_until_ms_ = 0;
+  CallUi call_ui_;
+  FilesUi files_ui_;
   qint64 last_send_fail_toast_ms_ = 0;
-  qint64 call_media_started_ms_ = 0;
   MessageModel messages_;
   ChatListModel chat_list_;
   LanPeerModel lan_peers_;
@@ -711,47 +691,12 @@ private:
   QVariantList profile_photo_list_;
   QString profile_interests_;
   QString profile_availability_ = QStringLiteral("available");
-  QString file_progress_label_;
   void loadProfileMeta();
   void persistProfileMeta();
-  int file_progress_percent_ = 0;
-  bool file_progress_visible_ = false;
   int main_view_mode_ = 0;
-  QString file_scope_group_id_;
-  QString file_scope_label_;
-  QVariantList file_share_roots_;
-  QString file_selected_share_root_;
-  QString file_browse_path_;
-  QVariantList file_browse_crumbs_;
-  QString file_resources_root_;
-  QString file_remote_browse_path_;
-  QVariantList file_remote_browse_crumbs_;
-  QVariantList local_file_list_;
-  QVariantList remote_file_list_;
-  QVariantList transfer_queue_;
-  bool in_app_media_open_ = false;
-  QString in_app_media_path_;
-  QString in_app_media_mime_;
-  QString in_app_media_title_;
   DocumentViewer document_viewer_;
   ChatMediaRecorder chat_media_recorder_;
   ChatVideoRecorder chat_video_recorder_;
-  int files_section_ = 0;
-  bool file_index_progress_visible_ = false;
-  int file_index_progress_percent_ = 0;
-  QString file_index_progress_label_;
-  int file_index_files_scanned_ = 0;
-  std::atomic<bool> file_index_busy_ {false};
-  std::thread file_index_thread_;
-  QVariantList file_role_list_;
-  QVariantList file_permission_preset_list_;
-  QVariantList file_member_access_;
-  QVariantList file_path_member_access_;
-  QString file_path_role_id_;
-  QString file_path_role_inherited_from_;
-  QString file_access_target_root_;
-  QString file_access_target_rel_;
-  QString file_access_target_label_;
   QSystemTrayIcon* tray_icon_ = nullptr;
   QMenu* tray_menu_ = nullptr;
 

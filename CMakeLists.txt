@@ -217,6 +217,8 @@ if(NYX_BUILD_GUI)
     qt_add_executable(nyx-app
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
+      apps/nyx-app/qt/files_ui.cpp
+      apps/nyx-app/qt/call_ui.cpp
       apps/nyx-app/qt/node_controller_files.cpp
       apps/nyx-app/qt/node_controller_files_access.cpp
       apps/nyx-app/qt/node_controller_files_transfer.cpp

@@ -100,7 +100,7 @@ void NodeController::startCall(bool video) {
 }
 
 void NodeController::acceptCall() {
-  answering_call_ = true;
+  call_ui_.answering_call_ = true;
 #if defined(Q_OS_ANDROID)
 
   nyx_android::stop_ringtone();
@@ -118,8 +118,8 @@ void NodeController::acceptCall() {
         NodeController* self = c->self;
         delete c;
         if (!mic_ok) {
-          self->answering_call_ = false;
-          self->last_call_notify_key_.clear();
+          self->call_ui_.answering_call_ = false;
+          self->call_ui_.last_call_notify_key_.clear();
           self->syncCallNotifications();
           self->showToast(QStringLiteral("Нужен доступ к микрофону"), true);
           return;
@@ -128,8 +128,8 @@ void NodeController::acceptCall() {
           self->showToast(QStringLiteral("Нет доступа к камере — только приём видео"), false);
         }
         if (!self->service_.accept_call()) {
-          self->answering_call_ = false;
-          self->last_call_notify_key_.clear();
+          self->call_ui_.answering_call_ = false;
+          self->call_ui_.last_call_notify_key_.clear();
           self->syncCallNotifications();
           self->showToast(QStringLiteral("Не удалось войти в комнату"), true);
         }
@@ -149,22 +149,22 @@ void NodeController::syncCallAudio() {
   const auto st = service_.call_state();
   const bool video = service_.call_mode() == nyx::CallMode::AudioVideo;
   if (st == nyx::CallState::Active) {
-    if (call_audio_.micTestActive())
-      call_audio_.stopMicLevelTest();
+    if (call_ui_.call_audio_.micTestActive())
+      call_ui_.call_audio_.stopMicLevelTest();
 #if defined(Q_OS_ANDROID)
     nyx_android::set_voip_audio_mode(true);
-    nyx_android::set_speakerphone(call_speakerphone_);
+    nyx_android::set_speakerphone(call_ui_.call_speakerphone_);
 #endif
     const bool mic_muted = service_.call_mic_muted();
 
-    call_audio_.setMuted(mic_muted);
-    call_audio_.setSendFn([this](const std::vector<uint8_t>& packet) {
-      const bool ok =
-          service_.send_call_media(nyx::CallMediaType::Opus, packet, call_audio_.localVoiceLevel());
+    call_ui_.call_audio_.setMuted(mic_muted);
+    call_ui_.call_audio_.setSendFn([this](const std::vector<uint8_t>& packet) {
+      const bool ok = service_.send_call_media(
+          nyx::CallMediaType::Opus, packet, call_ui_.call_audio_.localVoiceLevel());
       if (!ok) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-        if (now - last_send_fail_toast_ms_ > 4000 && now - call_media_started_ms_ > 1500) {
+        if (now - last_send_fail_toast_ms_ > 4000 && now - call_ui_.call_media_started_ms_ > 1500) {
           last_send_fail_toast_ms_ = now;
           QMetaObject::invokeMethod(
               this,
@@ -174,65 +174,69 @@ void NodeController::syncCallAudio() {
       }
       return ok;
     });
-    call_media_started_ms_ = QDateTime::currentMSecsSinceEpoch();
-    call_audio_.start();
+    call_ui_.call_media_started_ms_ = QDateTime::currentMSecsSinceEpoch();
+    call_ui_.call_audio_.start();
     if (video) {
       const bool small_field =
           service_.call_is_field_room() && service_.call_participants().size() <= 2;
-      call_video_.setTransmitEnabled(!service_.call_is_field_room() || small_field ||
-                                     call_audio_.localVoiceActive());
-      call_video_.setSendFn([this](const QByteArray& frag) {
+      call_ui_.call_video_.setTransmitEnabled(!service_.call_is_field_room() || small_field ||
+                                              call_ui_.call_audio_.localVoiceActive());
+      call_ui_.call_video_.setSendFn([this](const QByteArray& frag) {
         const nyx::ByteBuffer buf(frag.begin(), frag.end());
         return service_.send_call_media(nyx::CallMediaType::Video, buf);
       });
-      if (!call_video_slots_wired_) {
-        call_video_slots_wired_ = true;
+      if (!call_ui_.call_video_slots_wired_) {
+        call_ui_.call_video_slots_wired_ = true;
         connect(
-            &call_video_, &CallVideoIo::remoteFrameChanged, this, [this](const QString& peerId) {
-              const QImage img = call_video_.peerFrame(peerId);
+            &call_ui_.call_video_,
+            &CallVideoIo::remoteFrameChanged,
+            this,
+            [this](const QString& peerId) {
+              const QImage img = call_ui_.call_video_.peerFrame(peerId);
               if (img.isNull())
                 return;
-              if (call_frames_) {
-                call_frames_->setRemote(peerId, img);
-                call_frames_->setPrimaryRemoteKey(call_video_.focusedPeerId());
+              if (call_ui_.call_frames_) {
+                call_ui_.call_frames_->setRemote(peerId, img);
+                call_ui_.call_frames_->setPrimaryRemoteKey(call_ui_.call_video_.focusedPeerId());
               }
-              if (peerId == call_video_.focusedPeerId() || call_video_.focusedPeerId().isEmpty()) {
-                ++call_frame_epoch_;
-                call_remote_frame_url_ =
-                    QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_frame_epoch_));
+              if (peerId == call_ui_.call_video_.focusedPeerId() ||
+                  call_ui_.call_video_.focusedPeerId().isEmpty()) {
+                ++call_ui_.call_frame_epoch_;
+                call_ui_.call_remote_frame_url_ = QUrl(
+                    QStringLiteral("image://nyxcall/remote/%1").arg(call_ui_.call_frame_epoch_));
                 emit callRemoteFrameChanged();
               }
               emit callVideoPeersChanged();
             });
-        connect(&call_video_, &CallVideoIo::localFrameChanged, this, [this]() {
-          const QImage img = call_video_.lastLocalFrame();
-          if (call_frames_)
-            call_frames_->setLocal(img);
-          ++call_frame_epoch_;
+        connect(&call_ui_.call_video_, &CallVideoIo::localFrameChanged, this, [this]() {
+          const QImage img = call_ui_.call_video_.lastLocalFrame();
+          if (call_ui_.call_frames_)
+            call_ui_.call_frames_->setLocal(img);
+          ++call_ui_.call_frame_epoch_;
           if (img.isNull()) {
-            call_local_frame_url_.clear();
+            call_ui_.call_local_frame_url_.clear();
           } else {
-            call_local_frame_url_ =
-                QUrl(QStringLiteral("image://nyxcall/local/%1").arg(call_frame_epoch_));
+            call_ui_.call_local_frame_url_ =
+                QUrl(QStringLiteral("image://nyxcall/local/%1").arg(call_ui_.call_frame_epoch_));
           }
           emit callLocalFrameChanged();
         });
-        connect(&call_video_,
+        connect(&call_ui_.call_video_,
                 &CallVideoIo::videoPeersChanged,
                 this,
                 &NodeController::callVideoPeersChanged);
-        connect(&call_video_, &CallVideoIo::cameraChanged, this, [this]() {
+        connect(&call_ui_.call_video_, &CallVideoIo::cameraChanged, this, [this]() {
           saveMediaDevicePrefs();
           emit mediaDevicesChanged();
           emit callChanged();
         });
       }
-      if (!call_video_.running()) {
+      if (!call_ui_.call_video_.running()) {
 #if defined(Q_OS_ANDROID)
 
         service_.set_call_camera_on(true);
-        call_video_.setCameraEnabled(true);
-        call_video_.start();
+        call_ui_.call_video_.setCameraEnabled(true);
+        call_ui_.call_video_.start();
         emit callChanged();
         emit mediaDevicesChanged();
         QTimer::singleShot(800, this, [this]() {
@@ -240,9 +244,9 @@ void NodeController::syncCallAudio() {
             return;
           if (service_.call_mode() != nyx::CallMode::AudioVideo)
             return;
-          if (!call_video_.running())
+          if (!call_ui_.call_video_.running())
             return;
-          if (call_video_.capturing())
+          if (call_ui_.call_video_.capturing())
             return;
           showToast(QStringLiteral("Камера недоступна — только приём видео"), false);
           service_.set_call_camera_on(false);
@@ -251,38 +255,38 @@ void NodeController::syncCallAudio() {
         });
 #else
         service_.set_call_camera_on(true);
-        call_video_.setCameraEnabled(true);
-        call_video_.start();
+        call_ui_.call_video_.setCameraEnabled(true);
+        call_ui_.call_video_.start();
         emit callChanged();
         emit mediaDevicesChanged();
-        if (!call_video_.capturing()) {
+        if (!call_ui_.call_video_.capturing()) {
           QTimer::singleShot(500, this, [this]() {
             if (service_.call_state() != nyx::CallState::Active)
               return;
             if (service_.call_mode() != nyx::CallMode::AudioVideo)
               return;
-            if (!call_video_.running())
+            if (!call_ui_.call_video_.running())
               return;
-            if (call_video_.capturing())
+            if (call_ui_.call_video_.capturing())
               return;
-            call_video_.setCameraEnabled(true);
+            call_ui_.call_video_.setCameraEnabled(true);
             emit callChanged();
             emit mediaDevicesChanged();
-            if (!call_video_.capturing()) {
+            if (!call_ui_.call_video_.capturing()) {
               showToast(QStringLiteral("Камера недоступна — только приём видео"), false);
             }
           });
         }
 #endif
       }
-    } else if (call_video_slots_wired_ || call_video_.running()) {
-      disconnect(&call_video_, nullptr, this, nullptr);
-      call_video_slots_wired_ = false;
-      call_video_.stop();
-      if (call_frames_)
-        call_frames_->clear();
-      call_remote_frame_url_.clear();
-      call_local_frame_url_.clear();
+    } else if (call_ui_.call_video_slots_wired_ || call_ui_.call_video_.running()) {
+      disconnect(&call_ui_.call_video_, nullptr, this, nullptr);
+      call_ui_.call_video_slots_wired_ = false;
+      call_ui_.call_video_.stop();
+      if (call_ui_.call_frames_)
+        call_ui_.call_frames_->clear();
+      call_ui_.call_remote_frame_url_.clear();
+      call_ui_.call_local_frame_url_.clear();
       emit callRemoteFrameChanged();
       emit callLocalFrameChanged();
     }
@@ -290,15 +294,15 @@ void NodeController::syncCallAudio() {
 #if defined(Q_OS_ANDROID)
     nyx_android::set_voip_audio_mode(false);
 #endif
-    disconnect(&call_video_, nullptr, this, nullptr);
-    call_video_slots_wired_ = false;
-    call_audio_.stop();
-    call_video_.stop();
-    if (call_frames_)
-      call_frames_->clear();
-    call_remote_frame_url_.clear();
-    call_local_frame_url_.clear();
-    call_frame_epoch_ = 0;
+    disconnect(&call_ui_.call_video_, nullptr, this, nullptr);
+    call_ui_.call_video_slots_wired_ = false;
+    call_ui_.call_audio_.stop();
+    call_ui_.call_video_.stop();
+    if (call_ui_.call_frames_)
+      call_ui_.call_frames_->clear();
+    call_ui_.call_remote_frame_url_.clear();
+    call_ui_.call_local_frame_url_.clear();
+    call_ui_.call_frame_epoch_ = 0;
     emit callRemoteFrameChanged();
     emit callLocalFrameChanged();
     emit callVideoPeersChanged();
@@ -307,19 +311,19 @@ void NodeController::syncCallAudio() {
 }
 
 QUrl NodeController::callRemoteFrameUrl() const {
-  return call_remote_frame_url_;
+  return call_ui_.call_remote_frame_url_;
 }
 
 QUrl NodeController::callLocalFrameUrl() const {
-  return call_local_frame_url_;
+  return call_ui_.call_local_frame_url_;
 }
 
 bool NodeController::callCanSwitchCamera() const {
-  return call_video_.canSwitchCamera();
+  return call_ui_.call_video_.canSwitchCamera();
 }
 
 void NodeController::setCallFrameProvider(CallFrameProvider* provider) {
-  call_frames_ = provider;
+  call_ui_.call_frames_ = provider;
 }
 
 void NodeController::loadMediaDevicePrefs() {
@@ -328,23 +332,23 @@ void NodeController::loadMediaDevicePrefs() {
   const QString cam = s.value(QStringLiteral("cameraId")).toString();
   const QString ain = s.value(QStringLiteral("audioInputId")).toString();
   const QString aout = s.value(QStringLiteral("audioOutputId")).toString();
-  call_speakerphone_ = s.value(QStringLiteral("speakerphone"), true).toBool();
+  call_ui_.call_speakerphone_ = s.value(QStringLiteral("speakerphone"), true).toBool();
   s.endGroup();
   if (!cam.isEmpty())
-    call_video_.setPreferredCameraId(cam);
+    call_ui_.call_video_.setPreferredCameraId(cam);
   if (!ain.isEmpty())
-    call_audio_.setPreferredInputId(ain);
+    call_ui_.call_audio_.setPreferredInputId(ain);
   if (!aout.isEmpty())
-    call_audio_.setPreferredOutputId(aout);
+    call_ui_.call_audio_.setPreferredOutputId(aout);
 }
 
 void NodeController::saveMediaDevicePrefs() const {
   QSettings s;
   s.beginGroup(QStringLiteral("callMedia"));
-  s.setValue(QStringLiteral("cameraId"), call_video_.preferredCameraId());
-  s.setValue(QStringLiteral("audioInputId"), call_audio_.preferredInputId());
-  s.setValue(QStringLiteral("audioOutputId"), call_audio_.preferredOutputId());
-  s.setValue(QStringLiteral("speakerphone"), call_speakerphone_);
+  s.setValue(QStringLiteral("cameraId"), call_ui_.call_video_.preferredCameraId());
+  s.setValue(QStringLiteral("audioInputId"), call_ui_.call_audio_.preferredInputId());
+  s.setValue(QStringLiteral("audioOutputId"), call_ui_.call_audio_.preferredOutputId());
+  s.setValue(QStringLiteral("speakerphone"), call_ui_.call_speakerphone_);
   s.endGroup();
 }
 
@@ -353,11 +357,11 @@ void NodeController::refreshMediaDevices() {
 }
 
 float NodeController::audioTestLevel() const {
-  return call_audio_.micLevel();
+  return call_ui_.call_audio_.micLevel();
 }
 
 bool NodeController::audioTestActive() const {
-  return call_audio_.micTestActive();
+  return call_ui_.call_audio_.micTestActive();
 }
 
 void NodeController::startMicTest() {
@@ -383,20 +387,20 @@ void NodeController::startMicTest() {
         QMetaObject::invokeMethod(
             self,
             [self]() {
-              if (!self->call_audio_.startMicLevelTest())
+              if (!self->call_ui_.call_audio_.startMicLevelTest())
                 self->showToast(QStringLiteral("Не удалось открыть микрофон"), true);
             },
             Qt::QueuedConnection);
       },
       this);
 #else
-  if (!call_audio_.startMicLevelTest())
+  if (!call_ui_.call_audio_.startMicLevelTest())
     showToast(QStringLiteral("Не удалось открыть микрофон"), true);
 #endif
 }
 
 void NodeController::stopAudioTest() {
-  call_audio_.stopMicLevelTest();
+  call_ui_.call_audio_.stopMicLevelTest();
 }
 
 void NodeController::playSpeakerTest() {
@@ -404,7 +408,7 @@ void NodeController::playSpeakerTest() {
     showToast(QStringLiteral("Сначала завершите звонок"), true);
     return;
   }
-  call_audio_.playSpeakerTestTone();
+  call_ui_.call_audio_.playSpeakerTestTone();
 }
 
 QVariantList NodeController::cameraDeviceList() const {
@@ -420,32 +424,32 @@ QVariantList NodeController::audioOutputDeviceList() const {
 }
 
 QString NodeController::selectedCameraId() const {
-  return call_video_.preferredCameraId();
+  return call_ui_.call_video_.preferredCameraId();
 }
 
 QString NodeController::selectedAudioInputId() const {
-  return call_audio_.preferredInputId();
+  return call_ui_.call_audio_.preferredInputId();
 }
 
 QString NodeController::selectedAudioOutputId() const {
-  return call_audio_.preferredOutputId();
+  return call_ui_.call_audio_.preferredOutputId();
 }
 
 void NodeController::setSelectedCameraId(const QString& id) {
-  call_video_.setPreferredCameraId(id);
+  call_ui_.call_video_.setPreferredCameraId(id);
   saveMediaDevicePrefs();
   emit mediaDevicesChanged();
   emit callChanged();
 }
 
 void NodeController::setSelectedAudioInputId(const QString& id) {
-  call_audio_.setPreferredInputId(id);
+  call_ui_.call_audio_.setPreferredInputId(id);
   saveMediaDevicePrefs();
   emit mediaDevicesChanged();
 }
 
 void NodeController::setSelectedAudioOutputId(const QString& id) {
-  call_audio_.setPreferredOutputId(id);
+  call_ui_.call_audio_.setPreferredOutputId(id);
   saveMediaDevicePrefs();
   emit mediaDevicesChanged();
 }
@@ -469,11 +473,11 @@ QString NodeController::resolveCallPeerName(const QString& peerIdHex) const {
 
 QVariantList NodeController::callVideoPeers() const {
   QVariantList out;
-  for (const QString& id : call_video_.videoPeerIds()) {
+  for (const QString& id : call_ui_.call_video_.videoPeerIds()) {
     QVariantMap row;
     row.insert(QStringLiteral("userId"), id);
     row.insert(QStringLiteral("nickname"), resolveCallPeerName(id));
-    row.insert(QStringLiteral("focused"), id == call_video_.focusedPeerId());
+    row.insert(QStringLiteral("focused"), id == call_ui_.call_video_.focusedPeerId());
     out.append(row);
   }
   return out;
@@ -494,7 +498,7 @@ QVariantList NodeController::callRosterPeers() const {
     QVariantMap row;
     row.insert(QStringLiteral("userId"), id);
     row.insert(QStringLiteral("nickname"), resolveCallPeerName(id));
-    row.insert(QStringLiteral("focused"), id == call_video_.focusedPeerId());
+    row.insert(QStringLiteral("focused"), id == call_ui_.call_video_.focusedPeerId());
     out.append(row);
   }
   if (!out.isEmpty())
@@ -516,7 +520,7 @@ bool NodeController::callMicMuted() const {
 
 void NodeController::setCallMicMuted(bool muted) {
   service_.set_call_mic_muted(muted);
-  call_audio_.setMuted(muted);
+  call_ui_.call_audio_.setMuted(muted);
   emit callChanged();
 }
 
@@ -525,16 +529,16 @@ void NodeController::toggleCallMicMuted() {
 }
 
 bool NodeController::callCameraOn() const {
-  return service_.call_camera_on() && call_video_.cameraEnabled();
+  return service_.call_camera_on() && call_ui_.call_video_.cameraEnabled();
 }
 
 void NodeController::setCallCameraOn(bool on) {
   if (!on) {
     service_.set_call_camera_on(false);
-    call_video_.setCameraEnabled(false);
-    if (call_frames_)
-      call_frames_->setLocal(QImage());
-    call_local_frame_url_.clear();
+    call_ui_.call_video_.setCameraEnabled(false);
+    if (call_ui_.call_frames_)
+      call_ui_.call_frames_->setLocal(QImage());
+    call_ui_.call_local_frame_url_.clear();
     emit callLocalFrameChanged();
     emit callChanged();
     return;
@@ -553,18 +557,18 @@ void NodeController::setCallCameraOn(bool on) {
         if (!cam_ok) {
           self->showToast(QStringLiteral("Нужен доступ к камере"), true);
           self->service_.set_call_camera_on(false);
-          self->call_video_.setCameraEnabled(false);
+          self->call_ui_.call_video_.setCameraEnabled(false);
           emit self->callChanged();
           return;
         }
         self->service_.set_call_camera_on(true);
-        self->call_video_.setCameraEnabled(true);
+        self->call_ui_.call_video_.setCameraEnabled(true);
         emit self->callChanged();
       },
       ctx);
 #else
   service_.set_call_camera_on(true);
-  call_video_.setCameraEnabled(true);
+  call_ui_.call_video_.setCameraEnabled(true);
   emit callChanged();
 #endif
 }
@@ -574,11 +578,11 @@ void NodeController::toggleCallCamera() {
 }
 
 bool NodeController::callSpeakerphone() const {
-  return call_speakerphone_;
+  return call_ui_.call_speakerphone_;
 }
 
 void NodeController::setCallSpeakerphone(bool on) {
-  call_speakerphone_ = on;
+  call_ui_.call_speakerphone_ = on;
 #if defined(Q_OS_ANDROID)
   nyx_android::set_speakerphone(on);
 #endif
@@ -591,7 +595,7 @@ void NodeController::toggleCallSpeakerphone() {
 }
 
 void NodeController::switchCallCamera() {
-  if (!call_video_.switchCamera()) {
+  if (!call_ui_.call_video_.switchCamera()) {
     showToast(QStringLiteral("Другая камера недоступна"), true);
     return;
   }
@@ -604,20 +608,21 @@ void NodeController::setCallFocusedPeer(const QString& peerIdHex) {
   const QString id = peerIdHex.trimmed().toLower();
   if (id.isEmpty())
     return;
-  manual_call_focus_ = id;
-  manual_call_focus_until_ms_ = QDateTime::currentMSecsSinceEpoch() + 10000;
-  call_video_.setFocusedPeerId(id);
-  if (call_frames_)
-    call_frames_->setPrimaryRemoteKey(id);
-  const QImage img = call_video_.peerFrame(id);
+  call_ui_.manual_call_focus_ = id;
+  call_ui_.manual_call_focus_until_ms_ = QDateTime::currentMSecsSinceEpoch() + 10000;
+  call_ui_.call_video_.setFocusedPeerId(id);
+  if (call_ui_.call_frames_)
+    call_ui_.call_frames_->setPrimaryRemoteKey(id);
+  const QImage img = call_ui_.call_video_.peerFrame(id);
   if (img.isNull()) {
     emit callVideoPeersChanged();
     return;
   }
-  if (call_frames_)
-    call_frames_->setRemote(id, img);
-  ++call_frame_epoch_;
-  call_remote_frame_url_ = QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_frame_epoch_));
+  if (call_ui_.call_frames_)
+    call_ui_.call_frames_->setRemote(id, img);
+  ++call_ui_.call_frame_epoch_;
+  call_ui_.call_remote_frame_url_ =
+      QUrl(QStringLiteral("image://nyxcall/remote/%1").arg(call_ui_.call_frame_epoch_));
   emit callRemoteFrameChanged();
   emit callVideoPeersChanged();
 }

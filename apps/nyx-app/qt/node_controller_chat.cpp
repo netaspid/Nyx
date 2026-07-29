@@ -305,8 +305,8 @@ void NodeController::enterChat(const QString& peerName,
     peer_status_text_ = QStringLiteral("эфир открыт");
     active_chat_key_ = QStringLiteral("group:") + refId;
     const QString gid = refId.trimmed().toLower();
-    if (file_scope_group_id_ != gid) {
-      file_scope_group_id_ = gid;
+    if (files_ui_.file_scope_group_id_ != gid) {
+      files_ui_.file_scope_group_id_ = gid;
       syncFileScopeLabel();
     }
   } else {
@@ -330,9 +330,9 @@ void NodeController::endLiveSession() {
              peer_status_text_ == QStringLiteral("в сети")) {
     peer_status_text_ = QStringLiteral("не на связи");
   }
-  file_progress_visible_ = false;
-  file_progress_percent_ = 0;
-  file_progress_label_.clear();
+  files_ui_.file_progress_visible_ = false;
+  files_ui_.file_progress_percent_ = 0;
+  files_ui_.file_progress_label_.clear();
   emit fileProgressChanged();
   emit chatChanged();
   emit busyChanged();
@@ -352,9 +352,9 @@ void NodeController::leaveChat() {
   active_chat_ref_id_.clear();
   active_chat_kind_ = 0;
   messages_.clear();
-  file_progress_visible_ = false;
-  file_progress_percent_ = 0;
-  file_progress_label_.clear();
+  files_ui_.file_progress_visible_ = false;
+  files_ui_.file_progress_percent_ = 0;
+  files_ui_.file_progress_label_.clear();
   emit fileProgressChanged();
   emit chatChanged();
   emit busyChanged();

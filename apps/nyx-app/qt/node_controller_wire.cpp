@@ -414,9 +414,9 @@ void NodeController::wireCallCallbacks() {
             this,
             [this, type, packet, peer]() {
               if (type == nyx::CallMediaType::Opus) {
-                call_audio_.onRemoteOpus(peer, packet);
+                call_ui_.call_audio_.onRemoteOpus(peer, packet);
               } else if (type == nyx::CallMediaType::Video) {
-                call_video_.onRemoteVideo(peer, packet);
+                call_ui_.call_video_.onRemoteVideo(peer, packet);
               }
             },
             Qt::QueuedConnection);
@@ -428,13 +428,13 @@ void NodeController::wireFileCallbacks() {
     QMetaObject::invokeMethod(
         this,
         [this, label, percent]() {
-          file_progress_label_ = QString::fromStdString(label);
-          file_progress_percent_ = percent;
-          file_progress_visible_ = percent > 0 && percent < 100;
+          files_ui_.file_progress_label_ = QString::fromStdString(label);
+          files_ui_.file_progress_percent_ = percent;
+          files_ui_.file_progress_visible_ = percent > 0 && percent < 100;
           emit fileProgressChanged();
           if (percent >= 100) {
             QTimer::singleShot(1500, this, [this]() {
-              file_progress_visible_ = false;
+              files_ui_.file_progress_visible_ = false;
               emit fileProgressChanged();
             });
           }
@@ -447,17 +447,17 @@ void NodeController::wireFileCallbacks() {
         QMetaObject::invokeMethod(
             this,
             [this, path, files_scanned, finished]() {
-              file_index_files_scanned_ = files_scanned;
+              files_ui_.file_index_files_scanned_ = files_scanned;
               if (finished)
                 return;
-              file_index_progress_visible_ = true;
+              files_ui_.file_index_progress_visible_ = true;
 
               const int paced =
                   5 + static_cast<int>(
                           (95.0 * (1.0 - std::exp(-static_cast<double>(files_scanned) / 80.0))));
-              file_index_progress_percent_ = qBound(5, paced, 95);
+              files_ui_.file_index_progress_percent_ = qBound(5, paced, 95);
               const QString name = QString::fromStdString(path);
-              file_index_progress_label_ =
+              files_ui_.file_index_progress_label_ =
                   name.isEmpty() ? QStringLiteral("Сканирование… %1 файлов").arg(files_scanned)
                                  : QStringLiteral("%1 · %2").arg(name).arg(files_scanned);
               emit fileIndexProgressChanged();
@@ -468,7 +468,7 @@ void NodeController::wireFileCallbacks() {
     QMetaObject::invokeMethod(
         this,
         [this]() {
-          transfer_queue_.clear();
+          files_ui_.transfer_queue_.clear();
           for (const auto& task : service_.transfer_queue()) {
             QVariantMap item;
             item.insert(QStringLiteral("hash"), QString::fromStdString(task.hash_hex));
@@ -481,7 +481,7 @@ void NodeController::wireFileCallbacks() {
             item.insert(QStringLiteral("paused"), task.paused);
             item.insert(QStringLiteral("error"), QString::fromStdString(task.error));
             item.insert(QStringLiteral("direction"), QString::fromStdString(task.direction));
-            transfer_queue_.append(item);
+            files_ui_.transfer_queue_.append(item);
           }
           emit filesChanged();
         },
@@ -494,8 +494,8 @@ void NodeController::wireFileCallbacks() {
         [this, entries]() {
           refreshRemoteFileModel(entries);
           emit filesChanged();
-          const int n = static_cast<int>(remote_file_list_.size());
-          if (file_resources_root_.isEmpty()) {
+          const int n = static_cast<int>(files_ui_.remote_file_list_.size());
+          if (files_ui_.file_resources_root_.isEmpty()) {
             showToast(n == 0 ? QStringLiteral("Ресурсы поля: папок нет")
                              : QStringLiteral("Ресурсы поля: %1 папок").arg(n));
           } else {

@@ -109,20 +109,20 @@ void NodeController::openInAppMedia(const QString& path,
     return;
   }
   document_viewer_.close();
-  in_app_media_path_ = path;
-  in_app_media_mime_ = mime;
-  in_app_media_title_ = title;
-  in_app_media_open_ = true;
+  files_ui_.in_app_media_path_ = path;
+  files_ui_.in_app_media_mime_ = mime;
+  files_ui_.in_app_media_title_ = title;
+  files_ui_.in_app_media_open_ = true;
   emit inAppMediaChanged();
 }
 
 void NodeController::closeInAppMedia() {
-  if (!in_app_media_open_ && in_app_media_path_.isEmpty())
+  if (!files_ui_.in_app_media_open_ && files_ui_.in_app_media_path_.isEmpty())
     return;
-  in_app_media_open_ = false;
-  in_app_media_path_.clear();
-  in_app_media_mime_.clear();
-  in_app_media_title_.clear();
+  files_ui_.in_app_media_open_ = false;
+  files_ui_.in_app_media_path_.clear();
+  files_ui_.in_app_media_mime_.clear();
+  files_ui_.in_app_media_title_.clear();
   emit inAppMediaChanged();
 }
 
@@ -157,8 +157,8 @@ QString NodeController::importChatMediaMarkdown(const QString& localPath,
   QString scope;
   if (active_chat_kind_ == 1)
     scope = active_chat_ref_id_;
-  else if (!file_scope_group_id_.isEmpty())
-    scope = file_scope_group_id_;
+  else if (!files_ui_.file_scope_group_id_.isEmpty())
+    scope = files_ui_.file_scope_group_id_;
 
   const auto object = service_.import_file_object(src.toStdString(),
                                                   name.toStdString(),

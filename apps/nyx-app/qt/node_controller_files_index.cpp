@@ -133,38 +133,38 @@ void NodeController::runIndexJob(const QString& path, const QString& scopeGroupI
   if (p.isEmpty())
     return;
   bool expected = false;
-  if (!file_index_busy_.compare_exchange_strong(expected, true)) {
+  if (!files_ui_.file_index_busy_.compare_exchange_strong(expected, true)) {
     showToast(QStringLiteral("Индексация уже выполняется"));
     return;
   }
 
-  file_index_progress_visible_ = true;
-  file_index_progress_percent_ = 5;
-  file_index_progress_label_ = QStringLiteral("Подготовка сканирования…");
-  file_index_files_scanned_ = 0;
+  files_ui_.file_index_progress_visible_ = true;
+  files_ui_.file_index_progress_percent_ = 5;
+  files_ui_.file_index_progress_label_ = QStringLiteral("Подготовка сканирования…");
+  files_ui_.file_index_files_scanned_ = 0;
   emit fileIndexProgressChanged();
 
   const QString scope = scopeGroupId;
-  if (file_index_thread_.joinable())
-    file_index_thread_.join();
-  file_index_thread_ = std::thread([this, p, scope, rescan]() {
+  if (files_ui_.file_index_thread_.joinable())
+    files_ui_.file_index_thread_.join();
+  files_ui_.file_index_thread_ = std::thread([this, p, scope, rescan]() {
     const bool ok = rescan ? service_.rescan_share_root(p.toStdString(), scope.toStdString())
                            : service_.index_folder(p.toStdString(), scope.toStdString());
     const int count = ok ? service_.file_count_in_root(p.toStdString(), scope.toStdString()) : 0;
     QMetaObject::invokeMethod(
         this,
         [this, ok, count, p, rescan]() {
-          file_index_busy_.store(false);
-          file_index_progress_visible_ = true;
-          file_index_progress_percent_ = 100;
+          files_ui_.file_index_busy_.store(false);
+          files_ui_.file_index_progress_visible_ = true;
+          files_ui_.file_index_progress_percent_ = 100;
           if (!ok) {
-            file_index_progress_label_ = QStringLiteral("Ошибка индексации");
+            files_ui_.file_index_progress_label_ = QStringLiteral("Ошибка индексации");
             showToast(status_text_.isEmpty()
                           ? (rescan ? QStringLiteral("Не удалось переиндексировать")
                                     : QStringLiteral("Не удалось проиндексировать папку"))
                           : status_text_);
           } else {
-            file_index_progress_label_ = QStringLiteral("Готово: %1 файлов").arg(count);
+            files_ui_.file_index_progress_label_ = QStringLiteral("Готово: %1 файлов").arg(count);
             refreshFileLists();
             if (!rescan) {
               setFileSelectedShareRoot(p);
@@ -180,8 +180,8 @@ void NodeController::runIndexJob(const QString& path, const QString& scopeGroupI
           }
           emit fileIndexProgressChanged();
           QTimer::singleShot(1400, this, [this]() {
-            if (!file_index_busy_.load()) {
-              file_index_progress_visible_ = false;
+            if (!files_ui_.file_index_busy_.load()) {
+              files_ui_.file_index_progress_visible_ = false;
               emit fileIndexProgressChanged();
             }
           });
@@ -203,14 +203,14 @@ void NodeController::addIndexedFolder(const QString& path) {
   }
   if (p.startsWith(QStringLiteral("file:///")))
     p = QUrl(p).toLocalFile();
-  runIndexJob(p, file_scope_group_id_, false);
+  runIndexJob(p, files_ui_.file_scope_group_id_, false);
 }
 
 void NodeController::removeIndexedFolder(const QString& path) {
   if (path.trimmed().isEmpty())
     return;
 
-  QString scope = file_scope_group_id_;
+  QString scope = files_ui_.file_scope_group_id_;
   for (const auto& r : service_.all_share_roots()) {
     if (!shareRootPathsEqual(path, QString::fromStdString(r.path)))
       continue;
@@ -230,17 +230,17 @@ void NodeController::removeIndexedFolder(const QString& path) {
     showToast(status_text_.isEmpty() ? QStringLiteral("Не удалось убрать папку") : status_text_);
     return;
   }
-  if (shareRootPathsEqual(file_selected_share_root_, path)) {
-    file_selected_share_root_.clear();
+  if (shareRootPathsEqual(files_ui_.file_selected_share_root_, path)) {
+    files_ui_.file_selected_share_root_.clear();
     resetFileBrowse();
     service_.save_files_selected_root({});
   }
-  if (shareRootPathsEqual(file_resources_root_, path)) {
-    file_resources_root_.clear();
-    file_remote_browse_path_.clear();
+  if (shareRootPathsEqual(files_ui_.file_resources_root_, path)) {
+    files_ui_.file_resources_root_.clear();
+    files_ui_.file_remote_browse_path_.clear();
   }
   refreshFileLists();
-  if (files_section_ == 1 && fileExchangeReady())
+  if (files_ui_.files_section_ == 1 && fileExchangeReady())
     refreshRemoteFileList();
   showToast(QStringLiteral("Папка убрана из индекса"));
 }
@@ -248,7 +248,7 @@ void NodeController::removeIndexedFolder(const QString& path) {
 void NodeController::rescanIndexedFolder(const QString& path) {
   if (path.trimmed().isEmpty())
     return;
-  QString scope = file_scope_group_id_;
+  QString scope = files_ui_.file_scope_group_id_;
   for (const auto& r : service_.all_share_roots()) {
     if (!shareRootPathsEqual(path, QString::fromStdString(r.path)))
       continue;

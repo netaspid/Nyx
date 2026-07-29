@@ -80,7 +80,8 @@ QString NodeController::joinFileRelPath(const QString& browseRel, const QString&
 QVariantList NodeController::entriesToVariant(const std::vector<nyx::FileEntry>& entries,
                                               bool remote) const {
   QVariantList list;
-  const QString browse_rel = remote ? file_remote_browse_path_ : file_browse_path_;
+  const QString browse_rel =
+      remote ? files_ui_.file_remote_browse_path_ : files_ui_.file_browse_path_;
   for (const auto& e : entries) {
     QVariantMap m;
     const std::string leaf = e.leaf_name();
@@ -149,7 +150,7 @@ QVariantList NodeController::entriesToVariant(const std::vector<nyx::FileEntry>&
 }
 
 void NodeController::resetFileBrowse() {
-  file_browse_path_.clear();
+  files_ui_.file_browse_path_.clear();
   syncFileBrowseCrumbs();
 }
 
@@ -171,10 +172,10 @@ bool NodeController::shareRootPathsEqual(const QString& a, const QString& b) con
 
 void NodeController::setFileScopeGroupId(const QString& groupIdHex) {
   const QString gid = groupIdHex.trimmed().toLower();
-  if (file_scope_group_id_ == gid)
+  if (files_ui_.file_scope_group_id_ == gid)
     return;
-  file_scope_group_id_ = gid;
-  file_selected_share_root_.clear();
+  files_ui_.file_scope_group_id_ = gid;
+  files_ui_.file_selected_share_root_.clear();
   resetFileBrowse();
   syncFileScopeLabel();
   service_.save_files_scope_group_id(gid.toStdString());
@@ -191,8 +192,8 @@ void NodeController::setFileScopeGroupId(const QString& groupIdHex) {
 }
 
 bool NodeController::fileExchangeReady() const {
-  if (!file_scope_group_id_.isEmpty()) {
-    return !service_.file_exchange_session_id(file_scope_group_id_.toStdString()).empty();
+  if (!files_ui_.file_scope_group_id_.isEmpty()) {
+    return !service_.file_exchange_session_id(files_ui_.file_scope_group_id_.toStdString()).empty();
   }
   return service_.can_request_remote_files();
 }
@@ -231,19 +232,19 @@ bool NodeController::canRemoveShareRoot(const nyx::ShareRoot& root) const {
 }
 
 void NodeController::resetFilesUiState() {
-  file_scope_group_id_.clear();
-  file_selected_share_root_.clear();
-  file_share_roots_.clear();
-  file_role_list_.clear();
-  file_member_access_.clear();
-  file_browse_path_.clear();
-  file_browse_crumbs_.clear();
-  file_resources_root_.clear();
-  file_remote_browse_path_.clear();
-  file_remote_browse_crumbs_.clear();
-  local_file_list_.clear();
-  remote_file_list_.clear();
-  file_scope_label_ = QStringLiteral("Личные файлы");
+  files_ui_.file_scope_group_id_.clear();
+  files_ui_.file_selected_share_root_.clear();
+  files_ui_.file_share_roots_.clear();
+  files_ui_.file_role_list_.clear();
+  files_ui_.file_member_access_.clear();
+  files_ui_.file_browse_path_.clear();
+  files_ui_.file_browse_crumbs_.clear();
+  files_ui_.file_resources_root_.clear();
+  files_ui_.file_remote_browse_path_.clear();
+  files_ui_.file_remote_browse_crumbs_.clear();
+  files_ui_.local_file_list_.clear();
+  files_ui_.remote_file_list_.clear();
+  files_ui_.file_scope_label_ = QStringLiteral("Личные файлы");
 }
 
 void NodeController::syncFileScopeFromSavedOrRoots() {
@@ -251,21 +252,23 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   if (roots.empty())
     return;
 
-  if (!file_selected_share_root_.isEmpty()) {
-    const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
+  if (!files_ui_.file_selected_share_root_.isEmpty()) {
+    const auto scope_roots =
+        service_.share_roots_for_scope(files_ui_.file_scope_group_id_.toStdString());
     for (const auto& r : scope_roots) {
       const QString path = QString::fromStdString(r.path);
-      if (!shareRootPathsEqual(file_selected_share_root_, path))
+      if (!shareRootPathsEqual(files_ui_.file_selected_share_root_, path))
         continue;
-      file_selected_share_root_ = path;
+      files_ui_.file_selected_share_root_ = path;
       service_.save_files_selected_root(path.toStdString());
       return;
     }
-    file_selected_share_root_.clear();
+    files_ui_.file_selected_share_root_.clear();
     service_.save_files_selected_root({});
   }
 
-  const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
+  const auto scope_roots =
+      service_.share_roots_for_scope(files_ui_.file_scope_group_id_.toStdString());
   if (!scope_roots.empty())
     return;
 }
@@ -275,12 +278,12 @@ void NodeController::setFilesSection(int section) {
     section = 0;
   if (section > 2)
     section = 2;
-  if (files_section_ == section && section != 2)
+  if (files_ui_.files_section_ == section && section != 2)
     return;
-  files_section_ = section;
-  if (files_section_ == 1 && fileExchangeReady())
+  files_ui_.files_section_ = section;
+  if (files_ui_.files_section_ == 1 && fileExchangeReady())
     refreshRemoteFileList();
-  if (files_section_ == 2) {
+  if (files_ui_.files_section_ == 2) {
     refreshGroupList();
     refreshFileAccessLists();
   }
@@ -291,8 +294,8 @@ void NodeController::setFilesSection(int section) {
 std::vector<nyx::FileEntry>
 NodeController::remoteRootsCatalog(const std::vector<nyx::FileEntry>& all) const {
   nyx::GroupId scope {};
-  if (!file_scope_group_id_.isEmpty()) {
-    nyx::GroupStore::group_id_from_hex(file_scope_group_id_.toStdString(), scope);
+  if (!files_ui_.file_scope_group_id_.isEmpty()) {
+    nyx::GroupStore::group_id_from_hex(files_ui_.file_scope_group_id_.toStdString(), scope);
   }
 
   std::map<std::string, int> file_counts;
@@ -332,18 +335,19 @@ NodeController::remoteRootsCatalog(const std::vector<nyx::FileEntry>& all) const
 }
 
 void NodeController::syncFileBrowseCrumbs() {
-  file_browse_crumbs_.clear();
-  if (file_selected_share_root_.isEmpty())
+  files_ui_.file_browse_crumbs_.clear();
+  if (files_ui_.file_selected_share_root_.isEmpty())
     return;
 
-  const QFileInfo rootInfo(file_selected_share_root_);
+  const QFileInfo rootInfo(files_ui_.file_selected_share_root_);
   QVariantMap rootCrumb;
   rootCrumb.insert(QStringLiteral("label"),
-                   rootInfo.fileName().isEmpty() ? file_selected_share_root_ : rootInfo.fileName());
+                   rootInfo.fileName().isEmpty() ? files_ui_.file_selected_share_root_
+                                                 : rootInfo.fileName());
   rootCrumb.insert(QStringLiteral("path"), QString());
-  file_browse_crumbs_.append(rootCrumb);
+  files_ui_.file_browse_crumbs_.append(rootCrumb);
 
-  QString rel = file_browse_path_;
+  QString rel = files_ui_.file_browse_path_;
   if (rel.isEmpty())
     return;
   rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
@@ -357,7 +361,7 @@ void NodeController::syncFileBrowseCrumbs() {
       QVariantMap crumb;
       crumb.insert(QStringLiteral("label"), segment);
       crumb.insert(QStringLiteral("path"), built);
-      file_browse_crumbs_.append(crumb);
+      files_ui_.file_browse_crumbs_.append(crumb);
     }
     if (slash < 0)
       break;
@@ -366,26 +370,27 @@ void NodeController::syncFileBrowseCrumbs() {
 }
 
 void NodeController::syncRemoteBrowseCrumbs() {
-  file_remote_browse_crumbs_.clear();
+  files_ui_.file_remote_browse_crumbs_.clear();
 
   QVariantMap top;
   top.insert(QStringLiteral("label"), QStringLiteral("Ресурсы"));
   top.insert(QStringLiteral("path"), QString());
   top.insert(QStringLiteral("isRoots"), true);
-  file_remote_browse_crumbs_.append(top);
+  files_ui_.file_remote_browse_crumbs_.append(top);
 
-  if (file_resources_root_.isEmpty())
+  if (files_ui_.file_resources_root_.isEmpty())
     return;
 
-  const QFileInfo rootInfo(file_resources_root_);
+  const QFileInfo rootInfo(files_ui_.file_resources_root_);
   QVariantMap rootCrumb;
   rootCrumb.insert(QStringLiteral("label"),
-                   rootInfo.fileName().isEmpty() ? file_resources_root_ : rootInfo.fileName());
+                   rootInfo.fileName().isEmpty() ? files_ui_.file_resources_root_
+                                                 : rootInfo.fileName());
   rootCrumb.insert(QStringLiteral("path"), QString());
   rootCrumb.insert(QStringLiteral("isRoots"), false);
-  file_remote_browse_crumbs_.append(rootCrumb);
+  files_ui_.file_remote_browse_crumbs_.append(rootCrumb);
 
-  QString rel = file_remote_browse_path_;
+  QString rel = files_ui_.file_remote_browse_path_;
   if (rel.isEmpty())
     return;
   rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
@@ -400,7 +405,7 @@ void NodeController::syncRemoteBrowseCrumbs() {
       crumb.insert(QStringLiteral("label"), segment);
       crumb.insert(QStringLiteral("path"), built);
       crumb.insert(QStringLiteral("isRoots"), false);
-      file_remote_browse_crumbs_.append(crumb);
+      files_ui_.file_remote_browse_crumbs_.append(crumb);
     }
     if (slash < 0)
       break;
@@ -414,7 +419,8 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
     return;
 
   QString canonical;
-  const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
+  const auto scope_roots =
+      service_.share_roots_for_scope(files_ui_.file_scope_group_id_.toStdString());
   for (const auto& r : scope_roots) {
     const QString rp = QString::fromStdString(r.path);
     if (!shareRootPathsEqual(p, rp))
@@ -424,10 +430,10 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
   }
   if (canonical.isEmpty())
     return;
-  if (file_selected_share_root_ == canonical)
+  if (files_ui_.file_selected_share_root_ == canonical)
     return;
 
-  file_selected_share_root_ = canonical;
+  files_ui_.file_selected_share_root_ = canonical;
   resetFileBrowse();
   refreshLocalFileModel();
   service_.save_files_selected_root(canonical.toStdString());
@@ -435,8 +441,8 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
 }
 
 void NodeController::browseIntoFolder(const QString& navPath, const QString& itemRootPath) {
-  if (files_section_ == 1) {
-    if (file_resources_root_.isEmpty()) {
+  if (files_ui_.files_section_ == 1) {
+    if (files_ui_.file_resources_root_.isEmpty()) {
       QString root = itemRootPath.trimmed();
       if (root.isEmpty())
         root = navPath.trimmed();
@@ -448,18 +454,18 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
           break;
         }
       }
-      file_resources_root_ = root;
-      file_remote_browse_path_.clear();
+      files_ui_.file_resources_root_ = root;
+      files_ui_.file_remote_browse_path_.clear();
     } else {
       QString rel = navPath.trimmed();
       rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
-      file_remote_browse_path_ = rel;
+      files_ui_.file_remote_browse_path_ = rel;
     }
     syncRemoteBrowseCrumbs();
 
-    service_.request_remote_files_at(file_scope_group_id_.toStdString(),
-                                     file_resources_root_.toStdString(),
-                                     file_remote_browse_path_.toStdString());
+    service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(),
+                                     files_ui_.file_resources_root_.toStdString(),
+                                     files_ui_.file_remote_browse_path_.toStdString());
     refreshRemoteFileModel();
     emit filesChanged();
     return;
@@ -469,29 +475,29 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
     return;
   QString rel = navPath.trimmed();
   rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
-  file_browse_path_ = rel;
+  files_ui_.file_browse_path_ = rel;
   syncFileBrowseCrumbs();
   refreshLocalFileModel();
   emit filesChanged();
 }
 
 void NodeController::browseUp() {
-  if (files_section_ == 1) {
-    if (!file_remote_browse_path_.isEmpty()) {
-      QString rel = file_remote_browse_path_;
+  if (files_ui_.files_section_ == 1) {
+    if (!files_ui_.file_remote_browse_path_.isEmpty()) {
+      QString rel = files_ui_.file_remote_browse_path_;
       rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
       const int slash = rel.lastIndexOf(QLatin1Char('/'));
-      file_remote_browse_path_ = slash < 0 ? QString() : rel.left(slash);
+      files_ui_.file_remote_browse_path_ = slash < 0 ? QString() : rel.left(slash);
       syncRemoteBrowseCrumbs();
-      service_.request_remote_files_at(file_scope_group_id_.toStdString(),
-                                       file_resources_root_.toStdString(),
-                                       file_remote_browse_path_.toStdString());
+      service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(),
+                                       files_ui_.file_resources_root_.toStdString(),
+                                       files_ui_.file_remote_browse_path_.toStdString());
       refreshRemoteFileModel();
-    } else if (!file_resources_root_.isEmpty()) {
-      file_resources_root_.clear();
+    } else if (!files_ui_.file_resources_root_.isEmpty()) {
+      files_ui_.file_resources_root_.clear();
       syncRemoteBrowseCrumbs();
       if (fileExchangeReady()) {
-        service_.request_remote_files_at(file_scope_group_id_.toStdString(), {}, {});
+        service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(), {}, {});
       }
       refreshRemoteFileModel();
     }
@@ -499,19 +505,19 @@ void NodeController::browseUp() {
     return;
   }
 
-  if (!file_browse_path_.isEmpty()) {
-    QString rel = file_browse_path_;
+  if (!files_ui_.file_browse_path_.isEmpty()) {
+    QString rel = files_ui_.file_browse_path_;
     rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
     const int slash = rel.lastIndexOf(QLatin1Char('/'));
-    file_browse_path_ = slash < 0 ? QString() : rel.left(slash);
+    files_ui_.file_browse_path_ = slash < 0 ? QString() : rel.left(slash);
     syncFileBrowseCrumbs();
     refreshLocalFileModel();
     emit filesChanged();
     return;
   }
 
-  if (!file_selected_share_root_.isEmpty()) {
-    file_selected_share_root_.clear();
+  if (!files_ui_.file_selected_share_root_.isEmpty()) {
+    files_ui_.file_selected_share_root_.clear();
     resetFileBrowse();
     service_.save_files_selected_root({});
     refreshLocalFileModel();
@@ -520,41 +526,41 @@ void NodeController::browseUp() {
 }
 
 void NodeController::browseToCrumb(int index) {
-  if (files_section_ == 1) {
-    if (index < 0 || index >= file_remote_browse_crumbs_.size())
+  if (files_ui_.files_section_ == 1) {
+    if (index < 0 || index >= files_ui_.file_remote_browse_crumbs_.size())
       return;
-    const QVariantMap crumb = file_remote_browse_crumbs_.at(index).toMap();
+    const QVariantMap crumb = files_ui_.file_remote_browse_crumbs_.at(index).toMap();
     if (crumb.value(QStringLiteral("isRoots")).toBool() || index == 0) {
-      file_resources_root_.clear();
-      file_remote_browse_path_.clear();
+      files_ui_.file_resources_root_.clear();
+      files_ui_.file_remote_browse_path_.clear();
       syncRemoteBrowseCrumbs();
       if (fileExchangeReady()) {
-        service_.request_remote_files_at(file_scope_group_id_.toStdString(), {}, {});
+        service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(), {}, {});
       }
       refreshRemoteFileModel();
       emit filesChanged();
       return;
     }
     if (index == 1) {
-      file_remote_browse_path_.clear();
+      files_ui_.file_remote_browse_path_.clear();
     } else {
-      file_remote_browse_path_ = crumb.value(QStringLiteral("path")).toString();
+      files_ui_.file_remote_browse_path_ = crumb.value(QStringLiteral("path")).toString();
     }
     syncRemoteBrowseCrumbs();
-    if (!file_resources_root_.isEmpty() && fileExchangeReady()) {
-      service_.request_remote_files_at(file_scope_group_id_.toStdString(),
-                                       file_resources_root_.toStdString(),
-                                       file_remote_browse_path_.toStdString());
+    if (!files_ui_.file_resources_root_.isEmpty() && fileExchangeReady()) {
+      service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(),
+                                       files_ui_.file_resources_root_.toStdString(),
+                                       files_ui_.file_remote_browse_path_.toStdString());
     }
     refreshRemoteFileModel();
     emit filesChanged();
     return;
   }
 
-  if (index < 0 || index >= file_browse_crumbs_.size())
+  if (index < 0 || index >= files_ui_.file_browse_crumbs_.size())
     return;
-  file_browse_path_ =
-      file_browse_crumbs_.at(index).toMap().value(QStringLiteral("path")).toString();
+  files_ui_.file_browse_path_ =
+      files_ui_.file_browse_crumbs_.at(index).toMap().value(QStringLiteral("path")).toString();
   syncFileBrowseCrumbs();
   refreshLocalFileModel();
   emit filesChanged();
@@ -567,7 +573,7 @@ void NodeController::addDroppedUrls(const QVariantList& urls) {
     showToast(QStringLiteral("Нет права добавлять папки в эту область"));
     return;
   }
-  if (file_index_busy_.load()) {
+  if (files_ui_.file_index_busy_.load()) {
     showToast(QStringLiteral("Индексация уже выполняется"));
     return;
   }
@@ -588,7 +594,7 @@ void NodeController::addDroppedUrls(const QVariantList& urls) {
     showToast(QStringLiteral("Не удалось добавить из перетаскивания"));
     return;
   }
-  runIndexJob(dirs.front(), file_scope_group_id_, false);
+  runIndexJob(dirs.front(), files_ui_.file_scope_group_id_, false);
   for (int i = 1; i < dirs.size(); ++i) {
 
     Q_UNUSED(i);
@@ -599,23 +605,23 @@ void NodeController::addDroppedUrls(const QVariantList& urls) {
 }
 
 void NodeController::syncFileScopeLabel() {
-  if (file_scope_group_id_.isEmpty()) {
-    file_scope_label_ = QStringLiteral("Личные файлы");
+  if (files_ui_.file_scope_group_id_.isEmpty()) {
+    files_ui_.file_scope_label_ = QStringLiteral("Личные файлы");
     return;
   }
   for (const QVariant& v : group_list_) {
     const QVariantMap m = v.toMap();
-    if (m.value(QStringLiteral("groupId")).toString() == file_scope_group_id_) {
-      file_scope_label_ = m.value(QStringLiteral("name")).toString();
+    if (m.value(QStringLiteral("groupId")).toString() == files_ui_.file_scope_group_id_) {
+      files_ui_.file_scope_label_ = m.value(QStringLiteral("name")).toString();
       return;
     }
   }
-  file_scope_label_ = file_scope_group_id_.left(8) + QStringLiteral("…");
+  files_ui_.file_scope_label_ = files_ui_.file_scope_group_id_.left(8) + QStringLiteral("…");
 }
 
 void NodeController::refreshFileShareRoots() {
-  file_share_roots_.clear();
-  const auto roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
+  files_ui_.file_share_roots_.clear();
+  const auto roots = service_.share_roots_for_scope(files_ui_.file_scope_group_id_.toStdString());
   for (const auto& r : roots) {
     const QString path = QString::fromStdString(r.path);
     const QString scopeId =
@@ -630,41 +636,41 @@ void NodeController::refreshFileShareRoots() {
     m.insert(QStringLiteral("scopeGroupId"), scopeId);
     m.insert(QStringLiteral("scopeLabel"), scopeLabelForGroupId(scopeId));
     m.insert(QStringLiteral("fileCount"),
-             service_.file_count_in_root(r.path, file_scope_group_id_.toStdString()));
+             service_.file_count_in_root(r.path, files_ui_.file_scope_group_id_.toStdString()));
     m.insert(QStringLiteral("canRemove"), canRemoveShareRoot(r));
-    file_share_roots_.append(m);
+    files_ui_.file_share_roots_.append(m);
   }
 
-  if (!file_selected_share_root_.isEmpty()) {
+  if (!files_ui_.file_selected_share_root_.isEmpty()) {
     bool found = false;
-    for (const QVariant& v : file_share_roots_) {
+    for (const QVariant& v : files_ui_.file_share_roots_) {
       const QString rp = v.toMap().value(QStringLiteral("path")).toString();
-      if (shareRootPathsEqual(rp, file_selected_share_root_)) {
-        file_selected_share_root_ = rp;
+      if (shareRootPathsEqual(rp, files_ui_.file_selected_share_root_)) {
+        files_ui_.file_selected_share_root_ = rp;
         found = true;
         break;
       }
     }
     if (!found)
-      file_selected_share_root_.clear();
+      files_ui_.file_selected_share_root_.clear();
   }
-  if (file_selected_share_root_.isEmpty() && !file_share_roots_.isEmpty()) {
-    file_selected_share_root_ =
-        file_share_roots_.first().toMap().value(QStringLiteral("path")).toString();
+  if (files_ui_.file_selected_share_root_.isEmpty() && !files_ui_.file_share_roots_.isEmpty()) {
+    files_ui_.file_selected_share_root_ =
+        files_ui_.file_share_roots_.first().toMap().value(QStringLiteral("path")).toString();
     resetFileBrowse();
   }
 }
 
 void NodeController::refreshLocalFileModel() {
-  if (file_selected_share_root_.isEmpty()) {
+  if (files_ui_.file_selected_share_root_.isEmpty()) {
 
-    const auto all = service_.local_files_for_scope(file_scope_group_id_.toStdString());
+    const auto all = service_.local_files_for_scope(files_ui_.file_scope_group_id_.toStdString());
     const std::string objects_prefix = nyx::normalize_utf8_path(nyx::data_dir() + "/objects") + "/";
     const std::string library_prefix =
         nyx::normalize_utf8_path(nyx::FileIndex::library_root_path([&] {
           nyx::GroupId scope {};
-          if (!file_scope_group_id_.isEmpty()) {
-            nyx::GroupStore::group_id_from_hex(file_scope_group_id_.toStdString(), scope);
+          if (!files_ui_.file_scope_group_id_.isEmpty()) {
+            nyx::GroupStore::group_id_from_hex(files_ui_.file_scope_group_id_.toStdString(), scope);
           }
           return scope;
         }()));
@@ -679,44 +685,46 @@ void NodeController::refreshLocalFileModel() {
         managed.push_back(e);
       }
     }
-    local_file_list_ = entriesToVariant(managed, false);
+    files_ui_.local_file_list_ = entriesToVariant(managed, false);
     return;
   }
-  std::string root_path = file_selected_share_root_.toStdString();
+  std::string root_path = files_ui_.file_selected_share_root_.toStdString();
   for (const auto& r : service_.all_share_roots()) {
-    if (shareRootPathsEqual(file_selected_share_root_, QString::fromStdString(r.path))) {
+    if (shareRootPathsEqual(files_ui_.file_selected_share_root_, QString::fromStdString(r.path))) {
       root_path = r.path;
       break;
     }
   }
-  const auto entries = service_.local_files_at_root(
-      root_path, file_browse_path_.toStdString(), file_scope_group_id_.toStdString());
-  local_file_list_ = entriesToVariant(entries, false);
+  const auto entries = service_.local_files_at_root(root_path,
+                                                    files_ui_.file_browse_path_.toStdString(),
+                                                    files_ui_.file_scope_group_id_.toStdString());
+  files_ui_.local_file_list_ = entriesToVariant(entries, false);
 }
 
 void NodeController::reconcileRemoteBrowsePath(const std::vector<nyx::FileEntry>& catalog) {
-  if (file_resources_root_.isEmpty())
+  if (files_ui_.file_resources_root_.isEmpty())
     return;
   bool found = false;
   for (const auto& e : catalog) {
     if (e.root_path.empty())
       continue;
-    if (shareRootPathsEqual(file_resources_root_, QString::fromStdString(e.root_path))) {
+    if (shareRootPathsEqual(files_ui_.file_resources_root_, QString::fromStdString(e.root_path))) {
       found = true;
       break;
     }
   }
   if (!found) {
     for (const auto& e : remoteRootsCatalog(catalog)) {
-      if (shareRootPathsEqual(file_resources_root_, QString::fromStdString(e.root_path))) {
+      if (shareRootPathsEqual(files_ui_.file_resources_root_,
+                              QString::fromStdString(e.root_path))) {
         found = true;
         break;
       }
     }
   }
   if (!found) {
-    file_resources_root_.clear();
-    file_remote_browse_path_.clear();
+    files_ui_.file_resources_root_.clear();
+    files_ui_.file_remote_browse_path_.clear();
   }
 }
 
@@ -727,20 +735,21 @@ void NodeController::refreshRemoteFileModel() {
 void NodeController::refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries) {
   reconcileRemoteBrowsePath(entries);
   std::vector<nyx::FileEntry> level;
-  if (file_resources_root_.isEmpty()) {
+  if (files_ui_.file_resources_root_.isEmpty()) {
     level = remoteRootsCatalog(entries);
   } else {
-    std::string root_path = file_resources_root_.toStdString();
+    std::string root_path = files_ui_.file_resources_root_.toStdString();
     for (const auto& e : entries) {
-      if (shareRootPathsEqual(file_resources_root_, QString::fromStdString(e.root_path))) {
+      if (shareRootPathsEqual(files_ui_.file_resources_root_,
+                              QString::fromStdString(e.root_path))) {
         root_path = e.root_path;
         break;
       }
     }
-    level =
-        nyx::FileIndex::listing_level(entries, root_path, file_remote_browse_path_.toStdString());
+    level = nyx::FileIndex::listing_level(
+        entries, root_path, files_ui_.file_remote_browse_path_.toStdString());
   }
-  remote_file_list_ = entriesToVariant(level, true);
+  files_ui_.remote_file_list_ = entriesToVariant(level, true);
   syncRemoteBrowseCrumbs();
 }
 

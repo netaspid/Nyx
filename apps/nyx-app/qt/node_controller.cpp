@@ -64,7 +64,7 @@ QIcon makeTrayIcon() {
 
 } // namespace
 
-NodeController::NodeController(QObject* parent) : QObject(parent) {
+NodeController::NodeController(QObject* parent) : QObject(parent), call_ui_(this), files_ui_(this) {
   connect(&document_viewer_,
           &DocumentViewer::toast,
           this,
@@ -81,39 +81,46 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
   service_.set_call_relay_score(800);
 #endif
 
-  call_audio_thread_.setObjectName(QStringLiteral("nyx-call-audio"));
-  call_audio_.moveToThread(&call_audio_thread_);
-  connect(&call_audio_, &CallAudioIo::startFailed, this, [this]() {
+  call_ui_.call_audio_thread_.setObjectName(QStringLiteral("nyx-call-audio"));
+  call_ui_.call_audio_.moveToThread(&call_ui_.call_audio_thread_);
+  connect(&call_ui_.call_audio_, &CallAudioIo::startFailed, this, [this]() {
     showToast(QStringLiteral("Микрофон/динамик недоступны — только сигналинг"), true);
   });
+  connect(&call_ui_.call_audio_,
+          &CallAudioIo::micLevelChanged,
+          this,
+          &NodeController::audioTestLevelChanged);
   connect(
-      &call_audio_, &CallAudioIo::micLevelChanged, this, &NodeController::audioTestLevelChanged);
-  connect(&call_audio_, &CallAudioIo::micTestChanged, this, &NodeController::audioTestChanged);
-  connect(&call_audio_, &CallAudioIo::localVoiceActiveChanged, this, [this](bool active) {
+      &call_ui_.call_audio_, &CallAudioIo::micTestChanged, this, &NodeController::audioTestChanged);
+  connect(&call_ui_.call_audio_, &CallAudioIo::localVoiceActiveChanged, this, [this](bool active) {
     const bool small_field =
         service_.call_is_field_room() && service_.call_participants().size() <= 2;
-    call_video_.setTransmitEnabled(!service_.call_is_field_room() || small_field || active);
+    call_ui_.call_video_.setTransmitEnabled(!service_.call_is_field_room() || small_field ||
+                                            active);
   });
-  connect(&call_audio_, &CallAudioIo::dominantSpeakerChanged, this, [this](const QString& peerId) {
-    if (!service_.call_is_field_room())
-      return;
-    if (QDateTime::currentMSecsSinceEpoch() < manual_call_focus_until_ms_)
-      return;
-    manual_call_focus_.clear();
-    call_video_.setFocusedPeerId(peerId);
-    if (peerId.isEmpty()) {
-      if (call_frames_)
-        call_frames_->setPrimaryRemoteKey(QString());
-      call_remote_frame_url_.clear();
-      emit callRemoteFrameChanged();
-    }
-    emit callVideoPeersChanged();
-  });
-  call_audio_thread_.start();
+  connect(&call_ui_.call_audio_,
+          &CallAudioIo::dominantSpeakerChanged,
+          this,
+          [this](const QString& peerId) {
+            if (!service_.call_is_field_room())
+              return;
+            if (QDateTime::currentMSecsSinceEpoch() < call_ui_.manual_call_focus_until_ms_)
+              return;
+            call_ui_.manual_call_focus_.clear();
+            call_ui_.call_video_.setFocusedPeerId(peerId);
+            if (peerId.isEmpty()) {
+              if (call_ui_.call_frames_)
+                call_ui_.call_frames_->setPrimaryRemoteKey(QString());
+              call_ui_.call_remote_frame_url_.clear();
+              emit callRemoteFrameChanged();
+            }
+            emit callVideoPeersChanged();
+          });
+  call_ui_.call_audio_thread_.start();
 
-  call_video_thread_.setObjectName(QStringLiteral("nyx-call-video"));
-  call_video_.moveToThread(&call_video_thread_);
-  call_video_thread_.start();
+  call_ui_.call_video_thread_.setObjectName(QStringLiteral("nyx-call-video"));
+  call_ui_.call_video_.moveToThread(&call_ui_.call_video_thread_);
+  call_ui_.call_video_thread_.start();
 
 #if defined(Q_OS_ANDROID)
   connect(
@@ -122,33 +129,33 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
             state == Qt::ApplicationInactive) {
           if (service_.call_state() == nyx::CallState::Active &&
               service_.call_mode() == nyx::CallMode::AudioVideo && service_.call_camera_on()) {
-            resume_call_camera_ = true;
-            suspended_call_id_ = QString::fromStdString(service_.call_id_hex());
-            call_video_.setCameraEnabled(false);
+            call_ui_.resume_call_camera_ = true;
+            call_ui_.suspended_call_id_ = QString::fromStdString(service_.call_id_hex());
+            call_ui_.call_video_.setCameraEnabled(false);
           }
           return;
         }
-        if (state != Qt::ApplicationActive || !resume_call_camera_)
+        if (state != Qt::ApplicationActive || !call_ui_.resume_call_camera_)
           return;
         const QString current = QString::fromStdString(service_.call_id_hex());
         const bool restore = service_.call_state() == nyx::CallState::Active &&
-                             current == suspended_call_id_ && service_.call_camera_on();
-        resume_call_camera_ = false;
-        suspended_call_id_.clear();
+                             current == call_ui_.suspended_call_id_ && service_.call_camera_on();
+        call_ui_.resume_call_camera_ = false;
+        call_ui_.suspended_call_id_.clear();
         if (restore) {
           QTimer::singleShot(150, this, [this]() {
             if (service_.call_state() != nyx::CallState::Active || !service_.call_camera_on()) {
               return;
             }
-            call_video_.setCameraEnabled(true);
-            call_video_.start();
+            call_ui_.call_video_.setCameraEnabled(true);
+            call_ui_.call_video_.start();
             emit callChanged();
           });
         }
       });
 #endif
 
-  connect(&call_video_, &CallVideoIo::cameraOpenFailed, this, [this]() {
+  connect(&call_ui_.call_video_, &CallVideoIo::cameraOpenFailed, this, [this]() {
     service_.set_call_camera_on(false);
     showToast(QStringLiteral("Не удалось открыть камеру"), true);
     emit callChanged();
@@ -194,11 +201,11 @@ void NodeController::beginMainSession() {
 
   const std::string saved_scope = service_.load_files_scope_group_id();
   if (!saved_scope.empty()) {
-    file_scope_group_id_ = QString::fromStdString(saved_scope).trimmed().toLower();
+    files_ui_.file_scope_group_id_ = QString::fromStdString(saved_scope).trimmed().toLower();
   }
   const std::string saved_root = service_.load_files_selected_root();
   if (!saved_root.empty()) {
-    file_selected_share_root_ = QString::fromStdString(saved_root);
+    files_ui_.file_selected_share_root_ = QString::fromStdString(saved_root);
   }
   syncFileScopeFromSavedOrRoots();
   syncFileScopeLabel();
@@ -245,8 +252,8 @@ void NodeController::beginMainSession() {
 NodeController::~NodeController() {
   lan_discovery_timer_.stop();
   session_reconnect_timer_.stop();
-  if (file_index_thread_.joinable())
-    file_index_thread_.join();
+  if (files_ui_.file_index_thread_.joinable())
+    files_ui_.file_index_thread_.join();
 #if defined(Q_OS_ANDROID)
   nyx_android::stop_keepalive_service();
   nyx_android::cancel_call_notifications();
@@ -254,31 +261,31 @@ NodeController::~NodeController() {
   if (tray_icon_) {
     tray_icon_->hide();
   }
-  if (call_audio_thread_.isRunning()) {
+  if (call_ui_.call_audio_thread_.isRunning()) {
     QMetaObject::invokeMethod(
-        &call_audio_,
+        &call_ui_.call_audio_,
         [this]() {
-          call_audio_.stop();
-          call_audio_thread_.quit();
+          call_ui_.call_audio_.stop();
+          call_ui_.call_audio_thread_.quit();
         },
         Qt::QueuedConnection);
-    if (!call_audio_thread_.wait(5000))
-      call_audio_thread_.wait();
+    if (!call_ui_.call_audio_thread_.wait(5000))
+      call_ui_.call_audio_thread_.wait();
   } else {
-    call_audio_.stop();
+    call_ui_.call_audio_.stop();
   }
-  if (call_video_thread_.isRunning()) {
+  if (call_ui_.call_video_thread_.isRunning()) {
     QMetaObject::invokeMethod(
-        &call_video_,
+        &call_ui_.call_video_,
         [this]() {
-          call_video_.stop();
-          call_video_thread_.quit();
+          call_ui_.call_video_.stop();
+          call_ui_.call_video_thread_.quit();
         },
         Qt::QueuedConnection);
-    if (!call_video_thread_.wait(5000))
-      call_video_thread_.wait();
+    if (!call_ui_.call_video_thread_.wait(5000))
+      call_ui_.call_video_thread_.wait();
   } else {
-    call_video_.stop();
+    call_ui_.call_video_.stop();
   }
   service_.stop();
   nyx::lock_session();
@@ -653,17 +660,17 @@ void NodeController::syncCallNotifications() {
     key = QStringLiteral("idle");
     break;
   }
-  if (key == last_call_notify_key_)
+  if (key == call_ui_.last_call_notify_key_)
     return;
-  last_call_notify_key_ = key;
+  call_ui_.last_call_notify_key_ = key;
 
 #if defined(Q_OS_ANDROID)
-  if (st == nyx::CallState::Incoming && answering_call_) {
+  if (st == nyx::CallState::Incoming && call_ui_.answering_call_) {
     nyx_android::stop_ringtone();
     return;
   }
   if (st != nyx::CallState::Incoming)
-    answering_call_ = false;
+    call_ui_.answering_call_ = false;
   if (st == nyx::CallState::Incoming) {
     nyx_android::cancel_call_notifications();
     nyx_android::acquire_call_wake_lock();

@@ -30,10 +30,10 @@
 
 void NodeController::refreshRemoteFileList() {
 
-  file_resources_root_.clear();
-  file_remote_browse_path_.clear();
+  files_ui_.file_resources_root_.clear();
+  files_ui_.file_remote_browse_path_.clear();
   syncRemoteBrowseCrumbs();
-  if (!service_.request_remote_files_at(file_scope_group_id_.toStdString(), {}, {})) {
+  if (!service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(), {}, {})) {
     refreshRemoteFileModel();
     emit filesChanged();
     showToast(fileExchangeHint().isEmpty() ? QStringLiteral("Не удалось запросить файлы")
@@ -262,7 +262,7 @@ int NodeController::fileSyncState(const QString& hashHex) const {
     return 0;
   if (!fileLocalPath(hex).isEmpty())
     return 2;
-  for (const auto& item : transfer_queue_) {
+  for (const auto& item : files_ui_.transfer_queue_) {
     const QVariantMap m = item.toMap();
     if (m.value(QStringLiteral("hash")).toString() != hex)
       continue;
@@ -342,7 +342,8 @@ void NodeController::openFolderInResources(const QString& hashHex,
       break;
     }
     if (root.isEmpty()) {
-      for (const auto& e : service_.local_files_for_scope(file_scope_group_id_.toStdString())) {
+      for (const auto& e :
+           service_.local_files_for_scope(files_ui_.file_scope_group_id_.toStdString())) {
         if (nyx::hash_hex(e.hash) != hex.toStdString())
           continue;
         root = QString::fromStdString(e.root_path);
@@ -355,12 +356,12 @@ void NodeController::openFolderInResources(const QString& hashHex,
     showToast(QStringLiteral("Папка не найдена в ресурсах"), true);
     return;
   }
-  file_resources_root_ = root;
+  files_ui_.file_resources_root_ = root;
 
-  file_remote_browse_path_ = rel;
+  files_ui_.file_remote_browse_path_ = rel;
   if (fileExchangeReady()) {
     service_.request_remote_files_at(
-        file_scope_group_id_.toStdString(), root.toStdString(), rel.toStdString());
+        files_ui_.file_scope_group_id_.toStdString(), root.toStdString(), rel.toStdString());
   }
   refreshRemoteFileModel();
   emit filesChanged();
@@ -418,7 +419,7 @@ void NodeController::importFiles() {
     const auto object = service_.import_file_object(source.toStdString(),
                                                     name.toStdString(),
                                                     mime.toStdString(),
-                                                    file_scope_group_id_.toStdString());
+                                                    files_ui_.file_scope_group_id_.toStdString());
     if (temporary)
       QFile::remove(source);
     if (object)
