@@ -14,17 +14,9 @@
 
 ---
 
-**Nyx** is a peer-to-peer messenger. Messages, files, and calls travel node to node — not through a company cloud that reads your traffic.
+**Nyx** is a peer-to-peer messenger. Messages, files, and calls travel node to node - not through a company cloud that reads your traffic.
 
-A small rendezvous helper can introduce peers across the internet. After that, the conversation is yours.
-
-## Why Nyx
-
-| | |
-| :--- | :--- |
-| **Yours alone** | End-to-end Noise encryption. No accounts farmed for ads. |
-| **Peer to peer** | Chats and media go between nodes. The network is the people using it. |
-| **Built for real use** | DMs, group fields, file exchange, and live calls in one place. |
+A small rendezvous helper can introduce peers across the internet.
 
 ## What you get
 
@@ -45,5 +37,5 @@ Crafted in C++ with a Qt Quick interface. Crypto via [Noise](https://noiseprotoc
 </p>
 
 <p align="center">
-  <sub>Copyright © the project owners. All rights reserved.</sub>
+  <sub>Copyright © netaspid.</sub>
 </p>
