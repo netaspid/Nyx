@@ -525,8 +525,12 @@ void NodeService::abandon_session_worker(const std::shared_ptr<NetSession>& sess
     return;
   session->running.store(false);
 
-  if (session->worker.joinable() && session->worker.get_id() != std::this_thread::get_id()) {
+  if (!session->worker.joinable())
+    return;
+  if (session->worker.get_id() == std::this_thread::get_id()) {
     session->worker.detach();
+  } else {
+    session->worker.join();
   }
 }
 
