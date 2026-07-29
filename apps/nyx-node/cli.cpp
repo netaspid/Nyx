@@ -38,20 +38,19 @@ NodeConfig parse_config(int argc, char** argv, int start_index) {
 }
 
 void print_usage() {
-  std::cout
-      << "Nyx node — P2P узел\n\n"
-      << "  nyx-node listen [--rendezvous host:port[,host2:port]] [--bind 0.0.0.0:0]\n"
-      << "                   [--nickname NAME] [--profile PATH] [--no-lan]\n"
-      << "  nyx-node connect --token <hex> | --peer HOST:PORT\n"
-      << "                    [--rendezvous host:port[,host2:port]]\n"
-      << "                    [--nickname NAME] [--profile PATH]\n"
-      << "  nyx-node browse [--timeout MS]\n\n"
-      << "  nyx-node group create <имя> [--profile PATH]\n"
-      << "  nyx-node group hub --group <group_id_hex> [--rendezvous ...]\n"
-      << "  nyx-node group join --token <invite_hex> [--rendezvous ...]\n\n"
-      << "  --no-lan  не публиковать узел в LAN (по умолчанию mDNS включён)\n"
-      << "  Rendezvous: UDP bootstrap для интернет-связи. См. docs/DEPLOY_RENDEZVOUS.md\n\n"
-      << "В чате: текст + Enter. Команды: /help /who /status /history /quit\n";
+  std::cout << "Nyx node — P2P узел\n\n"
+            << "  nyx-node listen [--rendezvous host:port[,host2:port]] [--bind 0.0.0.0:0]\n"
+            << "                   [--nickname NAME] [--profile PATH] [--no-lan]\n"
+            << "  nyx-node connect --token <hex> | --peer HOST:PORT\n"
+            << "                    [--rendezvous host:port[,host2:port]]\n"
+            << "                    [--nickname NAME] [--profile PATH]\n"
+            << "  nyx-node browse [--timeout MS]\n\n"
+            << "  nyx-node group create <имя> [--profile PATH]\n"
+            << "  nyx-node group hub --group <group_id_hex> [--rendezvous ...]\n"
+            << "  nyx-node group join --token <invite_hex> [--rendezvous ...]\n\n"
+            << "  --no-lan  не публиковать узел в LAN (по умолчанию mDNS включён)\n"
+            << "  Rendezvous: UDP bootstrap для интернет-связи. См. docs/ADMIN.md\n\n"
+            << "В чате: текст + Enter. Команды: /help /who /status /history /quit\n";
 }
 
-}  // namespace nyx_node
+} // namespace nyx_node

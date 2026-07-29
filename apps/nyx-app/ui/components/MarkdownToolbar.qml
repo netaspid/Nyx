@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Компактное облачко форматирования в потоке layout (не Overlay). */
 Item {
     id: root
     required property var theme
@@ -81,7 +80,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            // Не забирать фокус у TextArea — иначе тулбар «прыгает»/сбрасывается
+
                             preventStealing: true
                             ToolTip.visible: containsMouse
                             ToolTip.text: modelData.tip

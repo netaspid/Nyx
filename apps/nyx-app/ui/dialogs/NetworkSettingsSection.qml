@@ -3,7 +3,6 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "../controls"
 
-/** Настройки обнаружения: rendezvous, режим LAN/Интернет. */
 ColumnLayout {
     id: root
     required property var theme

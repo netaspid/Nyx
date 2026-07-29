@@ -35,19 +35,25 @@ void push_if_newer(std::vector<ConversationSummary>& out, ConversationSummary it
 std::optional<StoredMessage> last_message(const std::string& store_path) {
   MessageStore store(store_path);
   const auto recent = store.recent(1);
-  if (recent.empty()) return std::nullopt;
+  if (recent.empty())
+    return std::nullopt;
   return recent.back();
 }
 
-}  // namespace
+} // namespace
 
 std::string format_last_seen(uint64_t last_seen_ms, uint64_t now_ms) {
-  if (last_seen_ms == 0) return "не в сети";
-  if (now_ms <= last_seen_ms) return "в сети";
+  if (last_seen_ms == 0)
+    return "не в сети";
+  if (now_ms <= last_seen_ms)
+    return "в сети";
   const uint64_t delta_sec = (now_ms - last_seen_ms) / 1000;
-  if (delta_sec < 120) return "был(а) только что";
-  if (delta_sec < 3600) return "был(а) " + std::to_string(delta_sec / 60) + " мин назад";
-  if (delta_sec < 86400) return "был(а) " + std::to_string(delta_sec / 3600) + " ч назад";
+  if (delta_sec < 120)
+    return "был(а) только что";
+  if (delta_sec < 3600)
+    return "был(а) " + std::to_string(delta_sec / 60) + " мин назад";
+  if (delta_sec < 86400)
+    return "был(а) " + std::to_string(delta_sec / 3600) + " ч назад";
   return "был(а) " + std::to_string(delta_sec / 86400) + " дн назад";
 }
 
@@ -58,7 +64,8 @@ std::vector<ConversationSummary> list_conversations(const UserId& self) {
   ContactBook book(default_contacts_path());
   book.load();
   for (const auto& contact : book.contacts()) {
-    if (contact.user_id == self) continue;
+    if (contact.user_id == self)
+      continue;
     const ChatId cid = dm_chat_id(self, contact.user_id);
     known_chat_stems.insert(chat_id_hex(cid));
     const std::string path = MessageStore::path_for_chat(cid);
@@ -98,10 +105,13 @@ std::vector<ConversationSummary> list_conversations(const UserId& self) {
   const std::string chats_dir = data_dir() + "/chats";
   if (std::filesystem::is_directory(chats_dir, ec)) {
     for (const auto& entry : std::filesystem::directory_iterator(chats_dir, ec)) {
-      if (!entry.is_regular_file(ec)) continue;
-      if (entry.path().extension() != ".jsonl") continue;
+      if (!entry.is_regular_file(ec))
+        continue;
+      if (entry.path().extension() != ".jsonl")
+        continue;
       const std::string stem = entry.path().stem().string();
-      if (known_chat_stems.count(stem) != 0) continue;
+      if (known_chat_stems.count(stem) != 0)
+        continue;
       if (auto last = last_message(entry.path().string())) {
         ConversationSummary item;
         item.key = "chat:" + stem;
@@ -119,10 +129,11 @@ std::vector<ConversationSummary> list_conversations(const UserId& self) {
   }
 
   std::sort(out.begin(), out.end(), [](const ConversationSummary& a, const ConversationSummary& b) {
-    if (a.timestamp_ms != b.timestamp_ms) return a.timestamp_ms > b.timestamp_ms;
+    if (a.timestamp_ms != b.timestamp_ms)
+      return a.timestamp_ms > b.timestamp_ms;
     return a.title < b.title;
   });
   return out;
 }
 
-}  // namespace nyx
+} // namespace nyx

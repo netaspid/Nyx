@@ -4,20 +4,15 @@ import QtQuick.Layouts
 import "../controls"
 import "../components"
 
-/**
- * Call overlay.
- * DM video → fullscreen; Field → compact first, expand for fullscreen.
- * Tool chrome uses fixed dark colors so light theme never washes icons out.
- */
 Item {
     id: root
     required property var theme
     required property var node
     property bool narrow: false
 
-    readonly property bool visibleCall: node.callState !== "idle" && node.callState !== "ended"
-    readonly property bool isVideoActive: node.callVideo && node.callState === "active"
-    readonly property bool preferFullscreen: isVideoActive && (!node.callIsFieldRoom || expanded)
+    readonly property bool visibleCall: node.call.callState !== "idle" && node.call.callState !== "ended"
+    readonly property bool isVideoActive: node.call.callVideo && node.call.callState === "active"
+    readonly property bool preferFullscreen: isVideoActive && (!node.call.callIsFieldRoom || expanded)
     property bool expanded: false
 
     readonly property int toolSize: narrow ? 56 : 52
@@ -34,14 +29,14 @@ Item {
 
     onVisibleCallChanged: {
         if (!visibleCall) expanded = false
-        else if (isVideoActive && !node.callIsFieldRoom) expanded = true
+        else if (isVideoActive && !node.call.callIsFieldRoom) expanded = true
     }
     onIsVideoActiveChanged: {
-        if (isVideoActive && !node.callIsFieldRoom) expanded = true
+        if (isVideoActive && !node.call.callIsFieldRoom) expanded = true
         if (!isVideoActive) expanded = false
     }
 
-    // Telegram-like: icon stays ~40% of circle; AbstractButton must NOT stretch the Image.
+
     component CallTool: AbstractButton {
         id: btn
         property string iconName: "settings"
@@ -60,7 +55,7 @@ Item {
             border.width: btn.solid ? 0 : 1
         }
         contentItem: Item {
-            // Fill button box so layout is stable; icon is centered and small.
+
             implicitWidth: btn.size
             implicitHeight: btn.size
             NyxIcon {
@@ -77,7 +72,7 @@ Item {
         anchors.fill: parent
         color: root.preferFullscreen ? "#e0080a0c" : "#99000000"
         visible: root.visibleCall
-        // Leave bottom chrome free for taps (Android / SurfaceView edge cases).
+
         MouseArea {
             anchors.left: parent.left
             anchors.right: parent.right
@@ -88,7 +83,7 @@ Item {
         }
     }
 
-    // —— Fullscreen ——
+
     Item {
         id: stage
         anchors.fill: parent
@@ -100,21 +95,21 @@ Item {
         Image {
             id: remoteFs
             anchors.fill: parent
-            visible: node.callRemoteFrameUrl.toString().length > 0
+            visible: node.call.callRemoteFrameUrl.toString().length > 0
             fillMode: Image.PreserveAspectCrop
-            source: node.callRemoteFrameUrl
+            source: node.call.callRemoteFrameUrl
             cache: false
             asynchronous: false
         }
 
-        // Name stub when there is no remote video yet / peer camera off (black → still Image).
+
         Rectangle {
             anchors.fill: parent
             visible: !remoteFs.visible
             color: "#0a0c10"
             Label {
                 anchors.centerIn: parent
-                text: node.callTitle
+                text: node.call.callTitle
                 color: "#8b9bab"
                 font.pixelSize: Math.round(18 * theme.fontScale)
             }
@@ -137,15 +132,15 @@ Item {
             z: 3
             Image {
                 anchors.fill: parent
-                visible: node.callCameraOn && node.callLocalFrameUrl.toString().length > 0
+                visible: node.call.callCameraOn && node.call.callLocalFrameUrl.toString().length > 0
                 fillMode: Image.PreserveAspectCrop
-                source: node.callLocalFrameUrl
+                source: node.call.callLocalFrameUrl
                 cache: false
                 asynchronous: false
             }
             Label {
                 anchors.centerIn: parent
-                visible: !node.callCameraOn || node.callLocalFrameUrl.toString().length === 0
+                visible: !node.call.callCameraOn || node.call.callLocalFrameUrl.toString().length === 0
                 text: qsTr("Вы")
                 color: "#8b9bab"
                 font.pixelSize: 14
@@ -167,13 +162,13 @@ Item {
                 spacing: 2
                 Label {
                     Layout.fillWidth: true
-                    text: node.callIsFieldRoom ? qsTr("В комнате") : qsTr("На линии")
+                    text: node.call.callIsFieldRoom ? qsTr("В комнате") : qsTr("На линии")
                     color: "#8b9bab"
                     font.pixelSize: 12
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: node.callTitle
+                    text: node.call.callTitle
                     color: "#ffffff"
                     font.pixelSize: Math.round(16 * theme.fontScale)
                     font.weight: Font.DemiBold
@@ -182,7 +177,7 @@ Item {
             }
 
             CallTool {
-                visible: node.callIsFieldRoom || !root.narrow
+                visible: node.call.callIsFieldRoom || !root.narrow
                 iconName: "collapse"
                 onClicked: root.expanded = false
             }
@@ -197,14 +192,14 @@ Item {
             height: visible ? 40 : 0
             contentWidth: peerRow.width
             clip: true
-            visible: node.callIsFieldRoom
-                     && (node.callVideoPeers.length > 1 || node.callRosterPeers.length > 1)
+            visible: node.call.callIsFieldRoom
+                     && (node.call.callVideoPeers.length > 1 || node.call.callRosterPeers.length > 1)
             z: 4
             Row {
                 id: peerRow
                 spacing: 8
                 Repeater {
-                    model: node.callVideoPeers.length > 0 ? node.callVideoPeers : node.callRosterPeers
+                    model: node.call.callVideoPeers.length > 0 ? node.call.callVideoPeers : node.call.callRosterPeers
                     delegate: Rectangle {
                         required property var modelData
                         height: 36
@@ -221,7 +216,7 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             enabled: modelData.userId && modelData.userId.length > 0
-                            onClicked: node.setCallFocusedPeer(modelData.userId)
+                            onClicked: node.call.setCallFocusedPeer(modelData.userId)
                         }
                     }
                 }
@@ -237,37 +232,37 @@ Item {
             spacing: 14
             z: 5
 
-            // Telegram-style: one row of circular icon buttons (hangup is red circle).
+
             Row {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: root.narrow ? 14 : 16
 
                 CallTool {
-                    visible: node.callState === "active"
-                    iconName: node.callMicMuted ? "mic-off" : "mic"
-                    bg: node.callMicMuted ? root.toolBgOff : root.toolBg
-                    onClicked: node.toggleCallMicMuted()
+                    visible: node.call.callState === "active"
+                    iconName: node.call.callMicMuted ? "mic-off" : "mic"
+                    bg: node.call.callMicMuted ? root.toolBgOff : root.toolBg
+                    onClicked: node.call.toggleCallMicMuted()
                 }
                 CallTool {
                     visible: root.isVideoActive
-                    iconName: node.callCameraOn ? "video" : "video-off"
-                    bg: node.callCameraOn ? root.toolBgOn : root.toolBg
-                    onClicked: node.toggleCallCamera()
+                    iconName: node.call.callCameraOn ? "video" : "video-off"
+                    bg: node.call.callCameraOn ? root.toolBgOn : root.toolBg
+                    onClicked: node.call.toggleCallCamera()
                 }
                 CallTool {
-                    visible: root.isVideoActive && node.callCameraOn && node.callCanSwitchCamera
+                    visible: root.isVideoActive && node.call.callCameraOn && node.call.callCanSwitchCamera
                     iconName: "camera-switch"
-                    onClicked: node.switchCallCamera()
+                    onClicked: node.call.switchCallCamera()
                 }
                 CallTool {
-                    visible: Qt.platform.os === "android" && node.callState === "active"
-                    iconName: node.callSpeakerphone ? "speaker" : "speaker-off"
-                    bg: node.callSpeakerphone ? root.toolBgOn : root.toolBg
-                    onClicked: node.toggleCallSpeakerphone()
+                    visible: Qt.platform.os === "android" && node.call.callState === "active"
+                    iconName: node.call.callSpeakerphone ? "speaker" : "speaker-off"
+                    bg: node.call.callSpeakerphone ? root.toolBgOn : root.toolBg
+                    onClicked: node.call.toggleCallSpeakerphone()
                 }
                 CallTool {
-                    visible: node.callIsFieldRoom
-                             && (node.callVideoPeers.length > 0 || node.callRosterPeers.length > 0)
+                    visible: node.call.callIsFieldRoom
+                             && (node.call.callVideoPeers.length > 0 || node.call.callRosterPeers.length > 0)
                     iconName: "people"
                     onClicked: root.expanded = true
                 }
@@ -276,13 +271,13 @@ Item {
                     bg: root.hangupBg
                     solid: true
                     size: root.toolSize + 4
-                    onClicked: node.hangupCall()
+                    onClicked: node.call.hangupCall()
                 }
             }
         }
     }
 
-    // —— Compact card ——
+
     Rectangle {
         anchors.centerIn: parent
         width: root.narrow ? Math.min(parent.width - 24, parent.width) : Math.min(400, parent.width - 48)
@@ -306,14 +301,14 @@ Item {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
                 text: {
-                    switch (node.callState) {
+                    switch (node.call.callState) {
                     case "outgoing":
                     case "ringing": return qsTr("Вызов…")
                     case "incoming":
-                        return node.callIsFieldRoom || node.activeChatKind === 1
+                        return node.call.callIsFieldRoom || node.activeChatKind === 1
                                ? qsTr("Комната в поле") : qsTr("Входящий звонок")
                     case "active":
-                        return node.callIsFieldRoom ? qsTr("В комнате") : qsTr("На линии")
+                        return node.call.callIsFieldRoom ? qsTr("В комнате") : qsTr("На линии")
                     default: return qsTr("Звонок")
                     }
                 }
@@ -325,7 +320,7 @@ Item {
             Label {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
-                text: node.callTitle
+                text: node.call.callTitle
                 color: theme.textSecondary
                 font.pixelSize: Math.round(14 * theme.fontScale)
                 elide: Text.ElideRight
@@ -342,14 +337,14 @@ Item {
                     clip: true
                     Image {
                         anchors.fill: parent
-                        visible: node.callRemoteFrameUrl.toString().length > 0
+                        visible: node.call.callRemoteFrameUrl.toString().length > 0
                         fillMode: Image.PreserveAspectCrop
-                        source: node.callRemoteFrameUrl
+                        source: node.call.callRemoteFrameUrl
                         cache: false
                     }
                     Label {
                         anchors.centerIn: parent
-                        visible: node.callRemoteFrameUrl.toString().length === 0
+                        visible: node.call.callRemoteFrameUrl.toString().length === 0
                         text: qsTr("Ожидание видео…")
                         color: theme.textMuted
                         font.pixelSize: 12
@@ -366,14 +361,14 @@ Item {
                         clip: true
                         Image {
                             anchors.fill: parent
-                            visible: node.callCameraOn && node.callLocalFrameUrl.toString().length > 0
+                            visible: node.call.callCameraOn && node.call.callLocalFrameUrl.toString().length > 0
                             fillMode: Image.PreserveAspectCrop
-                            source: node.callLocalFrameUrl
+                            source: node.call.callLocalFrameUrl
                             cache: false
                         }
                         Label {
                             anchors.centerIn: parent
-                            visible: !node.callCameraOn || node.callLocalFrameUrl.toString().length === 0
+                            visible: !node.call.callCameraOn || node.call.callLocalFrameUrl.toString().length === 0
                             text: qsTr("Вы")
                             color: theme.textMuted
                             font.pixelSize: 11
@@ -385,9 +380,9 @@ Item {
             Flow {
                 Layout.fillWidth: true
                 spacing: 8
-                visible: node.callIsFieldRoom && node.callVideoPeers.length > 1
+                visible: node.call.callIsFieldRoom && node.call.callVideoPeers.length > 1
                 Repeater {
-                    model: node.callVideoPeers
+                    model: node.call.callVideoPeers
                     delegate: Rectangle {
                         required property var modelData
                         height: 32
@@ -403,7 +398,7 @@ Item {
                         }
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: node.setCallFocusedPeer(modelData.userId)
+                            onClicked: node.call.setCallFocusedPeer(modelData.userId)
                         }
                     }
                 }
@@ -412,17 +407,17 @@ Item {
             Label {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
-                text: node.callVideo ? qsTr("Видео") : qsTr("Аудио")
+                text: node.call.callVideo ? qsTr("Видео") : qsTr("Аудио")
                 color: theme.textMuted
                 font.pixelSize: 12
-                visible: node.callState !== "active" || !node.callVideo
+                visible: node.call.callState !== "active" || !node.call.callVideo
             }
 
-            // Incoming — Telegram: green Answer + red Decline with captions
+
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: incomingRow.implicitHeight
-                visible: node.callState === "incoming"
+                visible: node.call.callState === "incoming"
                 Row {
                     id: incomingRow
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -438,12 +433,12 @@ Item {
                             solid: true
                             size: root.toolSize + 10
                             iconPx: root.toolIcon + 2
-                            onClicked: node.acceptCall()
+                            onClicked: node.call.acceptCall()
                         }
                         Label {
                             id: answerLab
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: node.callIsFieldRoom || node.activeChatKind === 1
+                            text: node.call.callIsFieldRoom || node.activeChatKind === 1
                                   ? qsTr("Войти") : qsTr("Ответить")
                             color: theme.textPrimary
                             font.pixelSize: 13
@@ -460,12 +455,12 @@ Item {
                             solid: true
                             size: root.toolSize + 10
                             iconPx: root.toolIcon + 2
-                            onClicked: node.rejectCall()
+                            onClicked: node.call.rejectCall()
                         }
                         Label {
                             id: declineLab
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: node.callIsFieldRoom || node.activeChatKind === 1
+                            text: node.call.callIsFieldRoom || node.activeChatKind === 1
                                   ? qsTr("Позже") : qsTr("Сбросить")
                             color: theme.textPrimary
                             font.pixelSize: 13
@@ -474,12 +469,12 @@ Item {
                 }
             }
 
-            // Active / ringing tools — circular row including hangup
+
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: activeTools.implicitHeight
-                visible: node.callState === "outgoing" || node.callState === "ringing"
-                         || node.callState === "active"
+                visible: node.call.callState === "outgoing" || node.call.callState === "ringing"
+                         || node.call.callState === "active"
                 Row {
                     id: activeTools
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -492,38 +487,38 @@ Item {
                     onClicked: root.expanded = true
                 }
                 CallTool {
-                    visible: node.callState === "active"
-                    iconName: node.callMicMuted ? "mic-off" : "mic"
+                    visible: node.call.callState === "active"
+                    iconName: node.call.callMicMuted ? "mic-off" : "mic"
                     size: 44
-                    bg: node.callMicMuted ? root.toolBgOff : root.toolBg
-                    onClicked: node.toggleCallMicMuted()
+                    bg: node.call.callMicMuted ? root.toolBgOff : root.toolBg
+                    onClicked: node.call.toggleCallMicMuted()
                 }
                 CallTool {
                     visible: root.isVideoActive
-                    iconName: node.callCameraOn ? "video" : "video-off"
+                    iconName: node.call.callCameraOn ? "video" : "video-off"
                     size: 44
-                    bg: node.callCameraOn ? root.toolBgOn : root.toolBg
-                    onClicked: node.toggleCallCamera()
+                    bg: node.call.callCameraOn ? root.toolBgOn : root.toolBg
+                    onClicked: node.call.toggleCallCamera()
                 }
                 CallTool {
-                    visible: root.isVideoActive && node.callCameraOn && node.callCanSwitchCamera
+                    visible: root.isVideoActive && node.call.callCameraOn && node.call.callCanSwitchCamera
                     iconName: "camera-switch"
                     size: 44
-                    onClicked: node.switchCallCamera()
+                    onClicked: node.call.switchCallCamera()
                 }
                 CallTool {
-                    visible: Qt.platform.os === "android" && node.callState === "active"
-                    iconName: node.callSpeakerphone ? "speaker" : "speaker-off"
+                    visible: Qt.platform.os === "android" && node.call.callState === "active"
+                    iconName: node.call.callSpeakerphone ? "speaker" : "speaker-off"
                     size: 44
-                    bg: node.callSpeakerphone ? root.toolBgOn : root.toolBg
-                    onClicked: node.toggleCallSpeakerphone()
+                    bg: node.call.callSpeakerphone ? root.toolBgOn : root.toolBg
+                    onClicked: node.call.toggleCallSpeakerphone()
                 }
                 CallTool {
                     iconName: "phone"
                     bg: root.hangupBg
                     solid: true
                     size: 48
-                    onClicked: node.hangupCall()
+                    onClicked: node.call.hangupCall()
                 }
                 }
             }

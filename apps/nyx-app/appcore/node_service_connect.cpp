@@ -18,10 +18,10 @@
 namespace nyx_app {
 
 void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
-  set_mode(NodeMode::Listening);
+  notify_mode_changed();
   const auto profile = load_profile();
 
-  nyx::InviteToken token{};
+  nyx::InviteToken token {};
   if (!nyx::load_or_create_dm_inbox_token(token)) {
     emit_status("не удалось создать DM inbox token");
     finish_session(session, SessionState::Offline);
@@ -35,7 +35,8 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
       std::lock_guard lock(cb_mutex_);
       token_cb = on_invite_token_;
     }
-    if (token_cb) token_cb(token_hex);
+    if (token_cb)
+      token_cb(token_hex);
   }
 
   while (session->running.load()) {
@@ -72,11 +73,9 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
     session->mdns = std::make_unique<nyx::MdnsLan>();
     const std::string lan_ip = nyx::guess_lan_ipv4();
     if (network_config_.mode != nyx::DiscoveryMode::Internet) {
-      session->mdns->start_advertising(pool.socket(), profile, pool.socket().local_port(),
-                                       lan_ip);
+      session->mdns->start_advertising(pool.socket(), profile, pool.socket().local_port(), lan_ip);
       emit_status(std::string("DM inbox + LAN ") + lan_ip + ':' +
-                  std::to_string(pool.socket().local_port()) +
-                  (rv_ok ? "" : " (без rendezvous)"));
+                  std::to_string(pool.socket().local_port()) + (rv_ok ? "" : " (без rendezvous)"));
     } else {
       emit_status("DM inbox слушает (token готов)");
     }
@@ -87,8 +86,7 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
       continue;
     }
 
-    const auto refresh_interval =
-        std::chrono::seconds(network_config_.register_refresh_sec);
+    const auto refresh_interval = std::chrono::seconds(network_config_.register_refresh_sec);
     auto last_register = std::chrono::steady_clock::now();
 
     std::string peer_host;
@@ -113,8 +111,10 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
         last_register = now;
       }
       auto packet = pool.socket().recv_from(peer_host, peer_port, 500);
-      if (!packet) continue;
-      if (nyx::is_punch_datagram(*packet)) continue;
+      if (!packet)
+        continue;
+      if (nyx::is_punch_datagram(*packet))
+        continue;
       if (nyx::is_handshake_datagram(*packet)) {
         first_packet = std::move(*packet);
         accepted = true;
@@ -129,22 +129,23 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
       }
       break;
     }
-    if (!accepted) continue;
+    if (!accepted)
+      continue;
 
-    auto conn = nyx::Connection::accept_responder(std::move(pool.socket()), peer_host,
-                                                  peer_port, &first_packet);
+    auto conn = nyx::Connection::accept_responder(
+        std::move(pool.socket()), peer_host, peer_port, &first_packet);
     if (!conn) {
       emit_status("inbox handshake timeout");
       continue;
     }
 
-    // Отдельная DM-сессия; inbox перезапустит listen в следующей итерации.
     std::shared_ptr<NetSession> dm;
     {
       std::lock_guard lock(sessions_mutex_);
       const std::string pending = "dm:incoming:" + peer_host + ":" + std::to_string(peer_port);
       dm = create_session(pending, SessionKind::Direct);
-      if (active_session_id_.empty()) active_session_id_ = pending;
+      if (active_session_id_.empty())
+        active_session_id_ = pending;
     }
     auto connection = std::make_unique<nyx::Connection>(std::move(*conn));
     dm->worker = std::thread([this, dm, profile, connection = std::move(connection)]() mutable {
@@ -158,12 +159,12 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
 }
 
 void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_advertise) {
-  set_mode(NodeMode::Listening);
+  notify_mode_changed();
   const auto profile = load_profile();
-  emit_status("профиль: " + profile.nickname + " (id: " +
-              nyx::short_user_id(profile.user_id()) + ")");
+  emit_status("профиль: " + profile.nickname + " (id: " + nyx::short_user_id(profile.user_id()) +
+              ")");
 
-  nyx::InviteToken token{};
+  nyx::InviteToken token {};
   nyx::random_bytes(token.data(), token.size());
 
   std::string rendezvous_host;
@@ -202,8 +203,9 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     std::lock_guard lock(cb_mutex_);
     token_cb = on_invite_token_;
   }
-  if (token_cb) token_cb(token_hex);
-  emit_status("invite token: " + token_hex);
+  if (token_cb)
+    token_cb(token_hex);
+  emit_status("invite token готов (" + token_hex.substr(0, 8) + "…)");
   session->state.store(SessionState::Live);
   emit_sessions_changed();
 
@@ -221,11 +223,9 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     return;
   }
 
-  emit_status("ожидание подключения (UDP :" +
-              std::to_string(pool.socket().local_port()) + ")...");
+  emit_status("ожидание подключения (UDP :" + std::to_string(pool.socket().local_port()) + ")...");
 
-  const auto refresh_interval =
-      std::chrono::seconds(network_config_.register_refresh_sec);
+  const auto refresh_interval = std::chrono::seconds(network_config_.register_refresh_sec);
   auto last_register = std::chrono::steady_clock::now();
 
   std::string peer_host;
@@ -235,12 +235,15 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     const auto now = std::chrono::steady_clock::now();
     if (network_config_.mode != nyx::DiscoveryMode::LanOnly &&
         now - last_register >= refresh_interval) {
-      if (pool.register_token(token)) rv_ok = true;
+      if (pool.register_token(token))
+        rv_ok = true;
       last_register = now;
     }
     auto packet = pool.socket().recv_from(peer_host, peer_port, 500);
-    if (!packet) continue;
-    if (nyx::is_punch_datagram(*packet)) continue;
+    if (!packet)
+      continue;
+    if (nyx::is_punch_datagram(*packet))
+      continue;
     if (nyx::is_handshake_datagram(*packet)) {
       first_packet = std::move(*packet);
       break;
@@ -256,22 +259,24 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     return;
   }
 
-  auto conn = nyx::Connection::accept_responder(std::move(pool.socket()), peer_host, peer_port,
-                                                &first_packet);
+  auto conn = nyx::Connection::accept_responder(
+      std::move(pool.socket()), peer_host, peer_port, &first_packet);
   if (!conn) {
     emit_status("не удалось установить защищённый канал (таймаут)");
     finish_session(session, SessionState::Offline);
     return;
   }
 
-  // Превращаем listen-сессию в Direct на том же id, затем переименуем после Hello.
   session->kind = SessionKind::Direct;
-  run_direct_chat(session, std::make_unique<nyx::Connection>(std::move(*conn)), profile, true,
+  run_direct_chat(session,
+                  std::make_unique<nyx::Connection>(std::move(*conn)),
+                  profile,
+                  true,
                   ConnectionVia::Incoming);
 }
 
 void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::string token_hex) {
-  set_mode(NodeMode::ChatDirect);
+  notify_mode_changed();
   const auto profile = load_profile();
   emit_status("профиль: " + profile.nickname);
 
@@ -281,7 +286,7 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
     finish_session(session, SessionState::Offline);
     return;
   }
-  nyx::InviteToken token{};
+  nyx::InviteToken token {};
   std::memcpy(token.data(), token_bytes.data(), 32);
 
   nyx::UdpSocket socket;
@@ -306,9 +311,8 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
   if (!hint) {
     const auto primary = network_config_.primary_rendezvous();
     if (primary.host == "127.0.0.1" || primary.host == "localhost") {
-      emit_status(
-          "инвайт не через LAN: нужен общий rendezvous (не 127.0.0.1). "
-          "В одной Wi‑Fi сети используйте «Рядом в сети» → Связаться");
+      emit_status("инвайт не через LAN: нужен общий rendezvous (не 127.0.0.1). "
+                  "В одной Wi‑Fi сети используйте «Рядом в сети» → Связаться");
     } else {
       emit_status("собеседник не найден — оба online и один и тот же rendezvous?");
     }
@@ -316,8 +320,7 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
     return;
   }
 
-  emit_status("подключение к " + hint->host_string() + ':' + std::to_string(hint->port) +
-              "...");
+  emit_status("подключение к " + hint->host_string() + ':' + std::to_string(hint->port) + "...");
 
   auto result = connect_via_rendezvous_hint(pool.socket(), *hint);
   if (!result.connection) {
@@ -326,18 +329,18 @@ void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::st
     return;
   }
 
-  run_direct_chat(session, std::make_unique<nyx::Connection>(std::move(*result.connection)),
-                  profile, false, ConnectionVia::Rendezvous);
+  run_direct_chat(session,
+                  std::make_unique<nyx::Connection>(std::move(*result.connection)),
+                  profile,
+                  false,
+                  ConnectionVia::Rendezvous);
 }
 
-void NodeService::run_connect_peer(std::shared_ptr<NetSession> session, std::string host,
+void NodeService::run_connect_peer(std::shared_ptr<NetSession> session,
+                                   std::string host,
                                    uint16_t port) {
   const auto profile = load_profile();
   emit_status("подключение к " + host + ':' + std::to_string(port) + "...");
-
-  // Do not persist dm:pending + lan://host:port here — inbox ports are ephemeral and
-  // auto-reconnect would keep dialing a dead port. remember_intent_for_session() after
-  // Hello stores dm:<peer> with token (or a fresh lan:// only as last resort).
 
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
@@ -353,7 +356,10 @@ void NodeService::run_connect_peer(std::shared_ptr<NetSession> session, std::str
     return;
   }
 
-  run_direct_chat(session, std::make_unique<nyx::Connection>(std::move(*conn)), profile, false,
+  run_direct_chat(session,
+                  std::make_unique<nyx::Connection>(std::move(*conn)),
+                  profile,
+                  false,
                   ConnectionVia::LanDirect);
 }
 
@@ -379,7 +385,8 @@ void NodeService::run_browse(int timeout_ms) {
     std::lock_guard lock(cb_mutex_);
     cb = on_lan_peers_;
   }
-  if (cb) cb(out);
+  if (cb)
+    cb(out);
 
   if (out.empty()) {
     emit_status("узлы не найдены (запустите «Слушать» на другой машине)");
@@ -391,7 +398,6 @@ void NodeService::run_browse(int timeout_ms) {
 void NodeService::run_lan_scan(int timeout_ms) {
   const auto peers = browse_lan_peers(timeout_ms);
   if (peers.empty()) {
-    // browse_lan_peers already emitted join errors when setup fails.
   }
 
   LanPeersCallback cb;
@@ -399,7 +405,8 @@ void NodeService::run_lan_scan(int timeout_ms) {
     std::lock_guard lock(cb_mutex_);
     cb = on_lan_peers_;
   }
-  if (cb) cb(peers);
+  if (cb)
+    cb(peers);
 }
 
 std::vector<nyx::LanPeer> NodeService::browse_lan_peers(int timeout_ms) {
@@ -415,45 +422,69 @@ std::vector<nyx::LanPeer> NodeService::browse_lan_peers(int timeout_ms) {
 
 bool NodeService::try_connect_via_lan(const std::string& user_id_hex) {
   const std::string uid = user_id_hex;
-  if (uid.size() < 8) return false;
+  if (uid.size() < 8)
+    return false;
   const std::string dm_key = make_dm_session_id(uid);
-  if (is_session_up(dm_key)) return true;
+  if (is_session_up(dm_key))
+    return true;
   const std::string short_id = uid.substr(0, 8);
   const auto peers = browse_lan_peers(800);
   std::vector<const nyx::LanPeer*> matches;
   for (const auto& p : peers) {
-    if (p.user_id_short != short_id) continue;
-    // Skip field-hub beacons for DM dial.
-    if (p.instance.size() >= 6 &&
-        p.instance.compare(p.instance.size() - 6, 6, "-field") == 0) {
+    if (p.user_id_short != short_id)
+      continue;
+
+    if (p.instance.size() >= 6 && p.instance.compare(p.instance.size() - 6, 6, "-field") == 0) {
       continue;
     }
     matches.push_back(&p);
   }
-  if (matches.empty()) return false;
+  if (matches.empty())
+    return false;
   for (const auto* p : matches) {
-    if (p->host.empty() || p->port == 0) continue;
-    emit_status("LAN: найден " + p->instance + " " + p->host + ':' +
-                std::to_string(p->port));
-    if (start_connect_peer(p->host, p->port)) return true;
+    if (p->host.empty() || p->port == 0)
+      continue;
+    emit_status("LAN: найден " + p->instance + " " + p->host + ':' + std::to_string(p->port));
+    if (start_connect_peer(p->host, p->port))
+      return true;
   }
   return false;
 }
 
-void NodeService::dial_dm_async(std::string peer_hex, std::string token_hex,
-                                std::string lan_host, uint16_t lan_port, bool quiet) {
-  std::thread([this, peer_hex = std::move(peer_hex), token_hex = std::move(token_hex),
-               lan_host = std::move(lan_host), lan_port, quiet]() {
+void NodeService::dial_dm_async(std::string peer_hex,
+                                std::string token_hex,
+                                std::string lan_host,
+                                uint16_t lan_port,
+                                bool quiet) {
+  if (dm_dial_busy_.exchange(true))
+    return;
+  if (dm_dial_thread_.joinable())
+    dm_dial_thread_.join();
+  dm_dial_thread_ = std::thread([this,
+                                 peer_hex = std::move(peer_hex),
+                                 token_hex = std::move(token_hex),
+                                 lan_host = std::move(lan_host),
+                                 lan_port,
+                                 quiet]() {
     if (!peer_hex.empty()) {
-      if (is_session_up(make_dm_session_id(peer_hex))) return;
-      if (try_connect_via_lan(peer_hex)) return;
+      if (is_session_up(make_dm_session_id(peer_hex))) {
+        dm_dial_busy_.store(false);
+        return;
+      }
+      if (try_connect_via_lan(peer_hex)) {
+        dm_dial_busy_.store(false);
+        return;
+      }
     }
     if (token_hex.size() == 64) {
       start_connect_token(token_hex, quiet);
+      dm_dial_busy_.store(false);
       return;
     }
-    if (!lan_host.empty() && lan_port > 0) start_connect_peer(lan_host, lan_port);
-  }).detach();
+    if (!lan_host.empty() && lan_port > 0)
+      start_connect_peer(lan_host, lan_port);
+    dm_dial_busy_.store(false);
+  });
 }
 
 bool NodeService::start_listen(bool lan_advertise) {
@@ -462,7 +493,8 @@ bool NodeService::start_listen(bool lan_advertise) {
   {
     std::lock_guard lock(sessions_mutex_);
     existing = find_session_locked(sid);
-    if (existing) existing->running.store(false);
+    if (existing)
+      existing->running.store(false);
   }
   if (existing && existing->worker.joinable() &&
       existing->worker.get_id() != std::this_thread::get_id()) {
@@ -477,9 +509,9 @@ bool NodeService::start_listen(bool lan_advertise) {
   }
   session->worker =
       std::thread([this, session, lan_advertise]() { run_listen(session, lan_advertise); });
-  set_mode(NodeMode::Listening);
+  notify_mode_changed();
   emit_sessions_changed();
   return true;
 }
 
-}  // namespace nyx_app
+} // namespace nyx_app

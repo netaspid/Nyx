@@ -14,20 +14,26 @@ constexpr std::size_t kMaxNicknameLen = 64;
 constexpr std::size_t kMaxTextLen = 65535;
 constexpr std::size_t kMaxByeReasonLen = 256;
 
-bool read_string(const ByteBuffer& data, std::size_t offset, std::size_t len,
-                 std::size_t max_len, std::string& out) {
-  if (len > max_len || offset + len > data.size()) return false;
+bool read_string(const ByteBuffer& data,
+                 std::size_t offset,
+                 std::size_t len,
+                 std::size_t max_len,
+                 std::string& out) {
+  if (len > max_len || offset + len > data.size())
+    return false;
   out.assign(reinterpret_cast<const char*>(data.data() + offset), len);
   return true;
 }
 
-std::optional<ChatMessage> decode_msg_body(const ByteBuffer& data, std::size_t off,
-                                           bool has_chat_id) {
-  if (data.size() < off + kPublicKeySize + 2 + 2) return std::nullopt;
+std::optional<ChatMessage>
+decode_msg_body(const ByteBuffer& data, std::size_t off, bool has_chat_id) {
+  if (data.size() < off + kPublicKeySize + 2 + 2)
+    return std::nullopt;
 
   ChatMessage msg;
   if (has_chat_id) {
-    if (data.size() < off + kPublicKeySize * 2 + 4) return std::nullopt;
+    if (data.size() < off + kPublicKeySize * 2 + 4)
+      return std::nullopt;
     std::memcpy(msg.chat_id.data(), data.data() + off, kPublicKeySize);
     off += kPublicKeySize;
   }
@@ -41,30 +47,30 @@ std::optional<ChatMessage> decode_msg_body(const ByteBuffer& data, std::size_t o
     return std::nullopt;
   }
   off += author_len;
-  if (off + 2 > data.size()) return std::nullopt;
+  if (off + 2 > data.size())
+    return std::nullopt;
 
   const uint16_t text_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, text_len, kMaxTextLen, msg.text)) return std::nullopt;
+  if (!read_string(data, off, text_len, kMaxTextLen, msg.text))
+    return std::nullopt;
   return msg;
 }
 
-}  // namespace
+} // namespace
 
 uint64_t next_message_id() {
-  static std::atomic<uint64_t> counter{
-      static_cast<uint64_t>(
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::system_clock::now().time_since_epoch())
-              .count())};
+  static std::atomic<uint64_t> counter {
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count())};
   return counter.fetch_add(1, std::memory_order_relaxed);
 }
 
 uint64_t now_ms() {
-  return static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
-          .count());
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::system_clock::now().time_since_epoch())
+                                   .count());
 }
 
 ByteBuffer ChatMessage::encode() const {
@@ -83,28 +89,33 @@ ByteBuffer ChatMessage::encode() const {
 }
 
 std::optional<ChatMessage> ChatMessage::decode(const ByteBuffer& data) {
-  if (data.empty()) return std::nullopt;
+  if (data.empty())
+    return std::nullopt;
 
   const auto kind = static_cast<ChatKind>(data[0]);
   if (kind == ChatKind::MsgV2) {
-    if (data.size() < 1 + 8 + 8) return std::nullopt;
+    if (data.size() < 1 + 8 + 8)
+      return std::nullopt;
     ChatMessage header;
     header.id = read_u64_le(data.data() + 1);
     header.timestamp_ms = read_u64_le(data.data() + 9);
     auto decoded = decode_msg_body(data, 17, true);
-    if (!decoded) return std::nullopt;
+    if (!decoded)
+      return std::nullopt;
     decoded->id = header.id;
     decoded->timestamp_ms = header.timestamp_ms;
     return decoded;
   }
 
   if (kind == ChatKind::Msg) {
-    if (data.size() < 1 + 8 + 8) return std::nullopt;
+    if (data.size() < 1 + 8 + 8)
+      return std::nullopt;
     ChatMessage header;
     header.id = read_u64_le(data.data() + 1);
     header.timestamp_ms = read_u64_le(data.data() + 9);
     auto decoded = decode_msg_body(data, 17, false);
-    if (!decoded) return std::nullopt;
+    if (!decoded)
+      return std::nullopt;
     decoded->id = header.id;
     decoded->timestamp_ms = header.timestamp_ms;
     return decoded;
@@ -127,10 +138,12 @@ std::optional<ByeMessage> ByeMessage::decode(const ByteBuffer& data) {
     return std::nullopt;
   }
   const uint16_t len = read_u16_le(data.data() + 1);
-  // Точная длина: иначе чужой кадр с первым байтом 4 (исторически) мог читаться как Bye.
-  if (data.size() != 3u + len) return std::nullopt;
+
+  if (data.size() != 3u + len)
+    return std::nullopt;
   ByeMessage msg;
-  if (!read_string(data, 3, len, kMaxByeReasonLen, msg.reason)) return std::nullopt;
+  if (!read_string(data, 3, len, kMaxByeReasonLen, msg.reason))
+    return std::nullopt;
   return msg;
 }
 
@@ -150,4 +163,4 @@ std::optional<AckMessage> AckMessage::decode(const ByteBuffer& data) {
   return msg;
 }
 
-}  // namespace nyx
+} // namespace nyx

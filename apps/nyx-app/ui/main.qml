@@ -72,7 +72,7 @@ ApplicationWindow {
     }
 
     function handleBack() {
-        // Active call: Back = hangup (also the escape hatch when camera steals taps).
+
         if (app.documentViewer && app.documentViewer.open) {
             app.documentViewer.close()
             return true
@@ -192,13 +192,6 @@ ApplicationWindow {
 
     SettingsDialog {
         id: settingsDialog
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        theme: appTheme
-        node: app
-    }
-
-    GroupsDialog {
         parent: Overlay.overlay
         anchors.centerIn: parent
         theme: appTheme

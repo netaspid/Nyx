@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Цветное облачко тега (как в Jira). */
 Rectangle {
     id: root
     required property var theme

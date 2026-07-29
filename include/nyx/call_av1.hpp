@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file call_av1.hpp
- *  AV1 encode/decode для видеозвонков (libaom).
- */
-
 #include "nyx/types.hpp"
 
 #include <chrono>
@@ -18,7 +14,6 @@ constexpr int kCallVideoHeight = 360;
 constexpr int kCallVideoFps = 12;
 constexpr int kCallVideoTargetKbps = 900;
 
-/** Фрагмент видеокадра в CallMediaType::Video payload. */
 struct CallVideoFragHeader {
   uint16_t frame_id = 0;
   uint8_t frag_index = 0;
@@ -32,23 +27,21 @@ struct CallVideoFragHeader {
   static std::optional<CallVideoFragHeader> read(const uint8_t* data, std::size_t len);
 };
 
-/** Нарезает AV1 OBU-буфер на фрагменты ≤ max_payload (с заголовком). */
-std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id, bool keyframe,
+std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id,
+                                           bool keyframe,
                                            const ByteBuffer& encoded,
                                            std::size_t max_payload);
 
-/** Сборка фрагментов одного frame_id. */
 class CallVideoReassembler {
- public:
+public:
   struct Assembled {
     ByteBuffer data;
     bool keyframe = false;
   };
 
-  /** @return полный кадр когда все фрагменты собраны. */
   std::optional<Assembled> push(const ByteBuffer& frag_payload);
 
- private:
+private:
   uint16_t cur_id_ = 0;
   uint8_t expected_ = 0;
   bool keyframe_ = false;
@@ -57,23 +50,23 @@ class CallVideoReassembler {
   ByteBuffer parity_;
   std::size_t total_size_ = 0;
   bool active_ = false;
-  std::chrono::steady_clock::time_point started_{};
+  std::chrono::steady_clock::time_point started_ {};
 };
 
 class Av1Encoder {
- public:
+public:
   Av1Encoder();
   ~Av1Encoder();
   Av1Encoder(const Av1Encoder&) = delete;
   Av1Encoder& operator=(const Av1Encoder&) = delete;
 
   bool ok() const { return ok_; }
-  /** I420 (width*height*3/2) → AV1 OBU bytes. */
-  std::optional<ByteBuffer> encode_i420(const uint8_t* i420, int width, int height,
-                                        bool force_keyframe = false);
 
- private:
-  void* codec_ = nullptr;  // aom_codec_ctx_t*
+  std::optional<ByteBuffer>
+  encode_i420(const uint8_t* i420, int width, int height, bool force_keyframe = false);
+
+private:
+  void* codec_ = nullptr;
   bool ok_ = false;
   int width_ = 0;
   int height_ = 0;
@@ -81,7 +74,7 @@ class Av1Encoder {
 };
 
 class Av1Decoder {
- public:
+public:
   Av1Decoder();
   ~Av1Decoder();
   Av1Decoder(const Av1Decoder&) = delete;
@@ -96,9 +89,9 @@ class Av1Decoder {
   };
   std::optional<Frame> decode(const uint8_t* data, std::size_t len);
 
- private:
+private:
   void* codec_ = nullptr;
   bool ok_ = false;
 };
 
-}  // namespace nyx
+} // namespace nyx

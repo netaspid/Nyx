@@ -12,21 +12,21 @@
 #include "nyx/rendezvous_pool.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <thread>
 
 namespace nyx_app {
 
 void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string group_id_hex) {
-  set_mode(NodeMode::GroupHub);
+  notify_mode_changed();
   while (!group_id_hex.empty() && std::isspace(static_cast<unsigned char>(group_id_hex.front()))) {
     group_id_hex.erase(group_id_hex.begin());
   }
   while (!group_id_hex.empty() && std::isspace(static_cast<unsigned char>(group_id_hex.back()))) {
     group_id_hex.pop_back();
   }
-  nyx::GroupId group_id{};
+  nyx::GroupId group_id {};
   if (!nyx::GroupStore::group_id_from_hex(group_id_hex, group_id)) {
     emit_status("неверный group_id");
     finish_session(session, SessionState::Offline);
@@ -79,13 +79,12 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
     emit_status("эфир в режиме LAN-only");
   }
 
-  emit_status("эфир «" + group->name + "», invite: " +
-              nyx::GroupStore::invite_hex(group->invite_token));
+  emit_status("эфир «" + group->name +
+              "», invite: " + nyx::GroupStore::invite_hex(group->invite_token));
   session->ref_id_hex = nyx::GroupStore::group_id_hex(group->id);
   session->share_scope = group_id;
   remember_intent_for_session(session, nyx::GroupStore::invite_hex(group->invite_token));
 
-  // GroupHub до chat_ready: иначе Live без send_message → «Не удалось отправить».
   session->group_hub = std::make_unique<nyx::GroupHub>(rv.socket(), profile, *group);
   session->group_hub->attach_files(file_index_, group_id, &file_access_);
   session->group_hub->set_on_message([this, session](const nyx::ChatMessage& msg, bool outgoing) {
@@ -102,63 +101,66 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
           std::lock_guard lock(session->download_mutex);
           const std::string hex = nyx::hash_hex(hash);
           for (auto& item : session->download_queue) {
-            if (item.hash_hex != hex) continue;
+            if (item.hash_hex != hex)
+              continue;
             item.state = "active";
-            item.progress =
-                total == 0 ? 0 : static_cast<int>((done * 100) / total);
+            item.progress = total == 0 ? 0 : static_cast<int>((done * 100) / total);
             break;
           }
         }
         save_download_queue(session);
         emit_transfer_queue_changed();
       });
-  session->group_hub->set_on_file_complete(
-      [this, session](const nyx::FileHash& hash, bool success, const std::string&,
-                      const std::string& error) {
-        const std::string hex = nyx::hash_hex(hash);
-        {
-          std::lock_guard lock(session->download_mutex);
-          auto it = std::find_if(
-              session->download_queue.begin(), session->download_queue.end(),
-              [&](const FileDownloadRequest& item) {
-                return item.hash_hex == hex;
-              });
-          if (it != session->download_queue.end()) {
-            if (success) {
-              session->download_queue.erase(it);
-            } else {
-              it->state = "failed";
-              it->error = error.empty() ? "нет источников" : error;
-            }
-          }
+  session->group_hub->set_on_file_complete([this, session](const nyx::FileHash& hash,
+                                                           bool success,
+                                                           const std::string&,
+                                                           const std::string& error) {
+    const std::string hex = nyx::hash_hex(hash);
+    {
+      std::lock_guard lock(session->download_mutex);
+      auto it = std::find_if(session->download_queue.begin(),
+                             session->download_queue.end(),
+                             [&](const FileDownloadRequest& item) { return item.hash_hex == hex; });
+      if (it != session->download_queue.end()) {
+        if (success) {
+          session->download_queue.erase(it);
+        } else {
+          it->state = "failed";
+          it->error = error.empty() ? "нет источников" : error;
         }
-        save_download_queue(session);
-        emit_transfer_queue_changed();
-      });
+      }
+    }
+    save_download_queue(session);
+    emit_transfer_queue_changed();
+  });
   load_download_queue(session);
   wire_call_handlers(session);
   sync_live_group_from_session(session);
 
-  // Advertise hub on LAN so members can join when rendezvous UDP is blocked (VPN).
   if (network_config_.mode != nyx::DiscoveryMode::Internet) {
     nyx::Profile hub_profile = profile;
     hub_profile.nickname = profile.nickname + "-field";
     session->mdns = std::make_unique<nyx::MdnsLan>();
     const std::string lan_ip = nyx::guess_lan_ipv4();
-    session->mdns->start_advertising(session->group_hub->socket(), hub_profile,
-                                     session->group_hub->socket().local_port(), lan_ip);
+    session->mdns->start_advertising(session->group_hub->socket(),
+                                     hub_profile,
+                                     session->group_hub->socket().local_port(),
+                                     lan_ip);
     emit_status(std::string("эфир LAN ") + lan_ip + ':' +
                 std::to_string(session->group_hub->socket().local_port()) +
                 (rv_ok ? "" : " (без rendezvous)"));
   }
 
-  emit_chat_ready(session, group->name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
+  emit_chat_ready(session,
+                  group->name,
+                  ConnectionVia::Group,
+                  {},
+                  nyx::ConversationKind::Group,
                   session->ref_id_hex);
 
   const nyx::InviteToken hub_invite = group->invite_token;
   const auto rv_servers = network_config_.rendezvous_servers;
-  const auto refresh_interval =
-      std::chrono::seconds(network_config_.register_refresh_sec);
+  const auto refresh_interval = std::chrono::seconds(network_config_.register_refresh_sec);
   auto last_register = std::chrono::steady_clock::now();
 
   while (session->running.load()) {
@@ -175,7 +177,7 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
   }
 
   session->group_hub->notify_shutdown("эфир закрыт");
-  // Дать UDP Bye уйти до unregister.
+
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   nyx::unregister_token_on(session->group_hub->socket(), rv_servers, hub_invite);
   clear_live_group_snapshot(group_id);
@@ -184,8 +186,8 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
 }
 
 void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::string invite_hex) {
-  set_mode(NodeMode::GroupMember);
-  nyx::InviteToken token{};
+  notify_mode_changed();
+  nyx::InviteToken token {};
   if (!nyx::GroupStore::invite_from_hex(invite_hex, token)) {
     emit_status("неверный invite");
     finish_session(session, SessionState::Offline);
@@ -198,11 +200,12 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   std::string group_name = group ? group->name : "поле";
 
   auto bind_group_session_key = [&]() {
-    if (!group || !session) return;
-    const std::string final_id =
-        make_group_session_id(nyx::GroupStore::group_id_hex(group->id));
+    if (!group || !session)
+      return;
+    const std::string final_id = make_group_session_id(nyx::GroupStore::group_id_hex(group->id));
     std::lock_guard lock(sessions_mutex_);
-    if (session->id == final_id) return;
+    if (session->id == final_id)
+      return;
     sessions_.erase(session->id);
     session->id = final_id;
     session->ref_id_hex = nyx::GroupStore::group_id_hex(group->id);
@@ -234,11 +237,13 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
 
   auto connect_with_lookup = [&](nyx::RendezvousPool& pool) -> bool {
     auto hint = pool.lookup(token);
-    if (!hint) return false;
-    emit_status("подключение к эфиру " + hint->host_string() + ':' +
-                std::to_string(hint->port) + "...");
+    if (!hint)
+      return false;
+    emit_status("подключение к эфиру " + hint->host_string() + ':' + std::to_string(hint->port) +
+                "...");
     auto result = connect_via_rendezvous_hint(pool.socket(), *hint);
-    if (!result.connection) return false;
+    if (!result.connection)
+      return false;
     session->connection = std::make_unique<nyx::Connection>(std::move(*result.connection));
     return true;
   };
@@ -246,49 +251,52 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   auto connect_lan_direct = [&](const std::string& host, uint16_t port) -> bool {
     emit_status("LAN: подключение к эфиру " + host + ':' + std::to_string(port) + "...");
     nyx::UdpSocket dial;
-    if (!dial.bind("0.0.0.0", 0)) return false;
+    if (!dial.bind("0.0.0.0", 0))
+      return false;
     auto conn = nyx::Connection::connect_initiator(std::move(dial), host, port);
-    if (!conn) return false;
+    if (!conn)
+      return false;
     session->connection = std::make_unique<nyx::Connection>(std::move(*conn));
     return true;
   };
 
-  const std::string owner_short =
-      group ? nyx::short_user_id(group->owner_id) : std::string{};
+  const std::string owner_short = group ? nyx::short_user_id(group->owner_id) : std::string {};
 
   auto try_lan_hubs = [&](int browse_ms) -> bool {
     emit_status("эфир через LAN…");
     const auto peers = browse_lan_peers(browse_ms);
     std::vector<nyx::LanPeer> hubs;
     for (const auto& p : peers) {
-      if (p.instance.size() < 6 ||
-          p.instance.compare(p.instance.size() - 6, 6, "-field") != 0) {
+      if (p.instance.size() < 6 || p.instance.compare(p.instance.size() - 6, 6, "-field") != 0) {
         continue;
       }
-      // Prefer the owner of this field when roster is known.
-      if (!owner_short.empty() && p.user_id_short != owner_short) continue;
+
+      if (!owner_short.empty() && p.user_id_short != owner_short)
+        continue;
       hubs.push_back(p);
     }
-    // If owner filter emptied the list (old beacon / mismatch), still try any *-field.
+
     if (hubs.empty()) {
       for (const auto& p : peers) {
-        if (p.instance.size() >= 6 &&
-            p.instance.compare(p.instance.size() - 6, 6, "-field") == 0) {
+        if (p.instance.size() >= 6 && p.instance.compare(p.instance.size() - 6, 6, "-field") == 0) {
           hubs.push_back(p);
         }
       }
     }
     for (const auto& p : hubs) {
-      if (!session->running.load()) break;
-      if (p.host.empty() || p.port == 0) continue;
-      if (connect_lan_direct(p.host, p.port)) return true;
+      if (!session->running.load())
+        break;
+      if (p.host.empty() || p.port == 0)
+        continue;
+      if (connect_lan_direct(p.host, p.port))
+        return true;
       session->connection.reset();
     }
     return false;
   };
 
   bool connected = false;
-  // Same Wi‑Fi first: rendezvous UDP often dead behind VPN, and LAN is faster to fail/succeed.
+
   if (network_config_.mode != nyx::DiscoveryMode::Internet) {
     connected = try_lan_hubs(3200);
   }
@@ -299,7 +307,8 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
         emit_status("повтор lookup (" + std::to_string(attempt) + "/2)…");
         std::this_thread::sleep_for(std::chrono::milliseconds(400 * attempt));
         nyx::UdpSocket retry_socket;
-        if (!retry_socket.bind("0.0.0.0", 0)) continue;
+        if (!retry_socket.bind("0.0.0.0", 0))
+          continue;
         nyx::RendezvousPool retry_pool(std::move(retry_socket));
         retry_pool.set_servers(network_config_.rendezvous_servers);
         if (connect_with_lookup(retry_pool)) {
@@ -327,8 +336,9 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   const auto profile = load_profile();
 
   nyx::HelloMessage peer_hello;
-  if (!nyx::exchange_hello(*session->connection, profile, peer_hello, 10,
-                           [session]() { return session->running.load(); })) {
+  if (!nyx::exchange_hello(*session->connection, profile, peer_hello, 10, [session]() {
+        return session->running.load();
+      })) {
     emit_status("не удалось поздороваться с владельцем эфира");
     bind_group_session_key();
     finish_session(session, SessionState::Offline);
@@ -337,12 +347,13 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   nyx::remember_contact(peer_hello);
   sync_avatars_after_hello(session, peer_hello);
 
-  nyx::GroupId gid{};
-  if (group) gid = group->id;
+  nyx::GroupId gid {};
+  if (group)
+    gid = group->id;
   session->share_scope = gid;
 
-  session->group_member = std::make_unique<nyx::GroupMemberService>(
-      *session->connection, profile, gid, group_name);
+  session->group_member =
+      std::make_unique<nyx::GroupMemberService>(*session->connection, profile, gid, group_name);
   session->group_member->set_on_message(
       [this, session](const nyx::ChatMessage& msg, bool outgoing) {
         emit_message(session, msg, outgoing, outgoing ? "pending" : "");
@@ -359,7 +370,8 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
       std::lock_guard lock(cb_mutex_);
       cb = on_group_meta_changed_;
     }
-    if (cb) cb();
+    if (cb)
+      cb();
   });
   wire_call_handlers(session);
 
@@ -415,7 +427,11 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   remember_intent_for_session(session, invite_hex);
 
   emit_status("в поле «" + group_name + "»");
-  emit_chat_ready(session, group_name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
+  emit_chat_ready(session,
+                  group_name,
+                  ConnectionVia::Group,
+                  {},
+                  nyx::ConversationKind::Group,
                   session->ref_id_hex);
 
   session->files = std::make_unique<nyx::FileTransferService>(
@@ -430,8 +446,10 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   while (session->running.load() && session->group_member->joined()) {
     drain_file_download_queue(session);
     session->group_member->tick();
-    if (!session->group_member->joined()) break;
-    if (session->files) session->files->pump();
+    if (!session->group_member->joined())
+      break;
+    if (session->files)
+      session->files->pump();
     nyx::ByteBuffer payload;
     uint32_t stream_id = 0;
     while (session->connection->recv_stream(stream_id, payload)) {
@@ -440,7 +458,7 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
         sync_live_group_from_session(session);
       } else if (stream_id == nyx::kBulkStream) {
         if (handle_avatar_bulk(session, payload)) {
-          // avatar
+
         } else if (!try_apply_file_access_policy(payload) && session->files) {
           session->files->handle_bulk(payload);
         }
@@ -456,4 +474,4 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   emit_status(user_stopped ? "выход из поля" : "поле недоступно (владелец офлайн)");
 }
 
-}  // namespace nyx_app
+} // namespace nyx_app

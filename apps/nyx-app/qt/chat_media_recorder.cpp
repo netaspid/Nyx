@@ -15,7 +15,7 @@
 class ChatMediaRecorderWorker : public QObject {
   Q_OBJECT
 
- public slots:
+public slots:
   void start(const QString& outputPath) {
     dispose();
     audio_ = new QAudioInput(this);
@@ -31,12 +31,13 @@ class ChatMediaRecorderWorker : public QObject {
     recorder_->setQuality(QMediaRecorder::HighQuality);
     recorder_->setOutputLocation(QUrl::fromLocalFile(outputPath));
 
-    connect(recorder_, &QMediaRecorder::recorderStateChanged, this,
+    connect(recorder_,
+            &QMediaRecorder::recorderStateChanged,
+            this,
             [this](QMediaRecorder::RecorderState state) {
               if (state == QMediaRecorder::RecordingState) {
                 emit started();
-              } else if (state == QMediaRecorder::StoppedState &&
-                         stop_requested_) {
+              } else if (state == QMediaRecorder::StoppedState && stop_requested_) {
                 const QString actual = recorder_->actualLocation().isLocalFile()
                                            ? recorder_->actualLocation().toLocalFile()
                                            : output_path_;
@@ -44,10 +45,11 @@ class ChatMediaRecorderWorker : public QObject {
                 emit stopped(actual);
               }
             });
-    connect(recorder_, &QMediaRecorder::errorOccurred, this,
+    connect(recorder_,
+            &QMediaRecorder::errorOccurred,
+            this,
             [this](QMediaRecorder::Error, const QString& message) {
-              emit failed(message.isEmpty() ? QStringLiteral("Audio recorder failed")
-                                            : message);
+              emit failed(message.isEmpty() ? QStringLiteral("Audio recorder failed") : message);
             });
 
     output_path_ = outputPath;
@@ -64,12 +66,12 @@ class ChatMediaRecorderWorker : public QObject {
     recorder_->stop();
   }
 
- signals:
+signals:
   void started();
   void stopped(const QString& actualPath);
   void failed(const QString& message);
 
- private:
+private:
   void dispose() {
     if (recorder_ && recorder_->recorderState() != QMediaRecorder::StoppedState)
       recorder_->stop();
@@ -92,23 +94,40 @@ ChatMediaRecorder::ChatMediaRecorder(QObject* parent) : QObject(parent) {
   worker_ = new ChatMediaRecorderWorker();
   worker_->moveToThread(&worker_thread_);
   connect(&worker_thread_, &QThread::finished, worker_, &QObject::deleteLater);
-  connect(this, &ChatMediaRecorder::startWorker, worker_,
-          &ChatMediaRecorderWorker::start, Qt::QueuedConnection);
-  connect(this, &ChatMediaRecorder::stopWorker, worker_,
-          &ChatMediaRecorderWorker::stop, Qt::QueuedConnection);
-  connect(worker_, &ChatMediaRecorderWorker::started, this,
-          &ChatMediaRecorder::onWorkerStarted, Qt::QueuedConnection);
-  connect(worker_, &ChatMediaRecorderWorker::stopped, this,
-          &ChatMediaRecorder::onWorkerStopped, Qt::QueuedConnection);
-  connect(worker_, &ChatMediaRecorderWorker::failed, this,
-          &ChatMediaRecorder::onWorkerFailed, Qt::QueuedConnection);
+  connect(this,
+          &ChatMediaRecorder::startWorker,
+          worker_,
+          &ChatMediaRecorderWorker::start,
+          Qt::QueuedConnection);
+  connect(this,
+          &ChatMediaRecorder::stopWorker,
+          worker_,
+          &ChatMediaRecorderWorker::stop,
+          Qt::QueuedConnection);
+  connect(worker_,
+          &ChatMediaRecorderWorker::started,
+          this,
+          &ChatMediaRecorder::onWorkerStarted,
+          Qt::QueuedConnection);
+  connect(worker_,
+          &ChatMediaRecorderWorker::stopped,
+          this,
+          &ChatMediaRecorder::onWorkerStopped,
+          Qt::QueuedConnection);
+  connect(worker_,
+          &ChatMediaRecorderWorker::failed,
+          this,
+          &ChatMediaRecorder::onWorkerFailed,
+          Qt::QueuedConnection);
 
   elapsed_timer_.setInterval(100);
   connect(&elapsed_timer_, &QTimer::timeout, this, [this]() {
-    if (started_at_ms_ <= 0) return;
+    if (started_at_ms_ <= 0)
+      return;
     elapsed_ms_ = QDateTime::currentMSecsSinceEpoch() - started_at_ms_;
     emit elapsedChanged();
-    if (elapsed_ms_ >= 5 * 60 * 1000) stopVoice(true);
+    if (elapsed_ms_ >= 5 * 60 * 1000)
+      stopVoice(true);
   });
 
   stop_timeout_.setSingleShot(true);
@@ -129,18 +148,19 @@ ChatMediaRecorder::~ChatMediaRecorder() {
 }
 
 void ChatMediaRecorder::startVoice(const QString& outputPath) {
-  if (recording() || outputPath.trimmed().isEmpty()) return;
+  if (recording() || outputPath.trimmed().isEmpty())
+    return;
   output_path_ = outputPath;
   send_on_stop_ = false;
   elapsed_ms_ = 0;
   error_.clear();
   setState(QStringLiteral("starting"));
-  nyx_android::request_call_permissions(false, &ChatMediaRecorder::permissionResult,
-                                        this);
+  nyx_android::request_call_permissions(false, &ChatMediaRecorder::permissionResult, this);
 }
 
 void ChatMediaRecorder::stopVoice(bool send) {
-  if (!recording() || state_ == QLatin1String("stopping")) return;
+  if (!recording() || state_ == QLatin1String("stopping"))
+    return;
   send_on_stop_ = send;
   setState(QStringLiteral("stopping"));
   elapsed_timer_.stop();
@@ -158,17 +178,17 @@ void ChatMediaRecorder::cancel() {
 
 void ChatMediaRecorder::permissionResult(bool micOk, bool, void* ctx) {
   auto* self = static_cast<ChatMediaRecorder*>(ctx);
-  if (!self) return;
+  if (!self)
+    return;
   QMetaObject::invokeMethod(
-      self, [self, micOk]() { self->beginAfterPermission(micOk); },
-      Qt::QueuedConnection);
+      self, [self, micOk]() { self->beginAfterPermission(micOk); }, Qt::QueuedConnection);
 }
 
 void ChatMediaRecorder::beginAfterPermission(bool granted) {
-  if (state_ != QLatin1String("starting")) return;
+  if (state_ != QLatin1String("starting"))
+    return;
   if (!granted) {
-    setState(QStringLiteral("failed"),
-             QStringLiteral("Microphone permission was denied"));
+    setState(QStringLiteral("failed"), QStringLiteral("Microphone permission was denied"));
     return;
   }
   QFile::remove(output_path_);
@@ -177,7 +197,8 @@ void ChatMediaRecorder::beginAfterPermission(bool granted) {
 }
 
 void ChatMediaRecorder::onWorkerStarted() {
-  if (state_ != QLatin1String("starting")) return;
+  if (state_ != QLatin1String("starting"))
+    return;
   stop_timeout_.stop();
   started_at_ms_ = QDateTime::currentMSecsSinceEpoch();
   elapsed_ms_ = 0;
@@ -189,15 +210,16 @@ void ChatMediaRecorder::onWorkerStopped(const QString& actualPath) {
   stop_timeout_.stop();
   elapsed_timer_.stop();
   const QString path = actualPath.isEmpty() ? output_path_ : actualPath;
-  const bool valid = QFileInfo(path).isFile() && QFileInfo(path).size() > 0 &&
-                     elapsed_ms_ >= 400;
+  const bool valid = QFileInfo(path).isFile() && QFileInfo(path).size() > 0 && elapsed_ms_ >= 400;
   if (!send_on_stop_ || !valid) {
-    if (QFileInfo::exists(path)) QFile::remove(path);
+    if (QFileInfo::exists(path))
+      QFile::remove(path);
     reset(false);
     return;
   }
   setState(QStringLiteral("ready"));
-  emit ready(path, QStringLiteral("audio/mp4"),
+  emit ready(path,
+             QStringLiteral("audio/mp4"),
              QStringLiteral("voice-message.m4a"),
              QStringLiteral("voice"));
   reset(false);
@@ -206,22 +228,26 @@ void ChatMediaRecorder::onWorkerStopped(const QString& actualPath) {
 void ChatMediaRecorder::onWorkerFailed(const QString& message) {
   stop_timeout_.stop();
   elapsed_timer_.stop();
-  if (!output_path_.isEmpty()) QFile::remove(output_path_);
+  if (!output_path_.isEmpty())
+    QFile::remove(output_path_);
   setState(QStringLiteral("failed"), message);
   QTimer::singleShot(1500, this, [this]() {
-    if (state_ == QLatin1String("failed")) reset(false);
+    if (state_ == QLatin1String("failed"))
+      reset(false);
   });
 }
 
 void ChatMediaRecorder::setState(const QString& state, const QString& error) {
-  if (state_ == state && error_ == error) return;
+  if (state_ == state && error_ == error)
+    return;
   state_ = state;
   error_ = error;
   emit stateChanged();
 }
 
 void ChatMediaRecorder::reset(bool removeFile) {
-  if (removeFile && !output_path_.isEmpty()) QFile::remove(output_path_);
+  if (removeFile && !output_path_.isEmpty())
+    QFile::remove(output_path_);
   stop_timeout_.stop();
   elapsed_timer_.stop();
   output_path_.clear();

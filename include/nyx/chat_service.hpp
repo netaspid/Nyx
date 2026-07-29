@@ -1,10 +1,5 @@
 #pragma once
 
-/** @file chat_service.hpp
- *  AppCore API мессенджера (фаза 3): отправка, история, доставка, события.
- *  Используется CLI и будущим nyx-app (QML через тонкую обёртку).
- */
-
 #include "nyx/app.hpp"
 #include "nyx/chat_id.hpp"
 #include "nyx/connection.hpp"
@@ -19,35 +14,28 @@
 
 namespace nyx {
 
-/** Сессия чата 1:1 поверх установленного Connection. */
 class ChatService {
- public:
+public:
   struct PeerInfo {
-    UserId user_id{};
+    UserId user_id {};
     std::string nickname;
   };
 
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
-  using DeliveryCallback =
-      std::function<void(uint64_t message_id, DeliveryStatus status)>;
+  using DeliveryCallback = std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
   using CallFrameCallback = std::function<void(const ByteBuffer& frame)>;
 
   ChatService(Connection& connection, Profile profile, PeerInfo peer);
 
-  /** Отправляет ChatMessage, ставит в outbox, сохраняет в историю. */
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
 
-  /** Сигналинг звонка на kChatStream. */
   bool send_call_frame(const ByteBuffer& frame);
 
-  /** Обрабатывает payload с kChatStream. */
   void handle_payload(const ByteBuffer& payload);
 
-  /** Keep-alive + повтор исходящих без Ack. */
   void tick();
 
-  /** Корректное отключение. */
   bool send_bye(const std::string& reason);
 
   std::vector<StoredMessage> history(std::size_t count) const;
@@ -67,7 +55,7 @@ class ChatService {
 
   bool connected() const { return connected_; }
 
- private:
+private:
   ChatMessage make_message(const std::string& text) const;
   StoredMessage to_stored(const ChatMessage& msg, bool outgoing) const;
   void deliver_incoming(ChatMessage msg);
@@ -76,7 +64,7 @@ class ChatService {
   Connection& connection_;
   Profile profile_;
   PeerInfo peer_;
-  ChatId chat_id_{};
+  ChatId chat_id_ {};
   MessageStore store_;
   Outbox outbox_;
   bool connected_ = true;
@@ -87,4 +75,4 @@ class ChatService {
   CallFrameCallback on_call_frame_;
 };
 
-}  // namespace nyx
+} // namespace nyx

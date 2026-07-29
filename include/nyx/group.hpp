@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file group.hpp
- *  Поля (группы): метаданные, roster, хранение на диске (фаза 5).
+ *  Fields (groups): metadata, roster, on-disk storage.
  */
 
 #include "nyx/chat_id.hpp"
@@ -22,29 +22,25 @@ enum class GroupRole : uint8_t {
 };
 
 inline bool can_start_field_call(GroupRole role) {
-  return role == GroupRole::Owner || role == GroupRole::Host ||
-         role == GroupRole::Member;
+  return role == GroupRole::Owner || role == GroupRole::Host || role == GroupRole::Member;
 }
 
-/** Участник поля в локальном roster. */
 struct GroupMemberRecord {
-  UserId user_id{};
+  UserId user_id {};
   std::string nickname;
   GroupRole role = GroupRole::Member;
 };
 
-/** Режим поля: сейчас только invite+hub; PublicListed — задел на поиск в rendezvous. */
 enum class GroupVisibility : uint8_t {
-  Circle = 0,       /**< Свой круг: invite, эфир держит владелец. */
-  PublicListed = 1, /**< Будущее: публичное, поиск на RV (пока локальный флаг). */
+  Circle = 0,
+  PublicListed = 1,
 };
 
-/** Описание поля на диске. */
 struct GroupRecord {
-  GroupId id{};
+  GroupId id {};
   std::string name;
-  UserId owner_id{};
-  InviteToken invite_token{};
+  UserId owner_id {};
+  InviteToken invite_token {};
   std::vector<GroupMemberRecord> members;
   uint64_t created_ms = 0;
   std::string description;
@@ -53,21 +49,20 @@ struct GroupRecord {
   GroupVisibility visibility = GroupVisibility::Circle;
 };
 
-/** Локальное хранилище полей: data_dir()/groups.json. */
 class GroupStore {
- public:
+public:
   GroupStore();
 
   bool load();
   bool save() const;
 
-  /** Создаёт поле с owner в roster. */
-  GroupRecord create(const std::string& name, const UserId& owner_id,
-                     const std::string& owner_nickname);
+  GroupRecord
+  create(const std::string& name, const UserId& owner_id, const std::string& owner_nickname);
 
-  /** Обновляет мету существующего поля (описание, теги, …). */
-  bool update_meta(const GroupId& id, const std::string& description,
-                   const std::string& direction, const std::string& tags,
+  bool update_meta(const GroupId& id,
+                   const std::string& description,
+                   const std::string& direction,
+                   const std::string& tags,
                    GroupVisibility visibility);
 
   std::optional<GroupRecord> find(const GroupId& id) const;
@@ -86,15 +81,13 @@ class GroupStore {
   static std::string invite_hex(const InviteToken& token);
   static bool invite_from_hex(const std::string& hex, InviteToken& out);
 
-  /** Добавляет в target участников из live (без удаления уже сохранённых). */
   static void merge_member_roster(std::vector<GroupMemberRecord>& target,
                                   const std::vector<GroupMemberRecord>& live);
 
-  /** Гарантирует создателя в members по owner_id. */
   static void ensure_roster(GroupRecord& group, const std::string& owner_nickname_fallback = {});
 
- private:
+private:
   std::vector<GroupRecord> groups_;
 };
 
-}  // namespace nyx
+} // namespace nyx

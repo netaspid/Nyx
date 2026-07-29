@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Компактный выбор эмодзи для композера. */
 Popup {
     id: root
     required property var theme

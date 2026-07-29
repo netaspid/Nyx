@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Тост снизу справа (Overlay): единый стиль с приложением. */
 Item {
     id: root
     required property var theme
@@ -13,7 +12,7 @@ Item {
     readonly property bool hasMessage: message.length > 0
     readonly property int toastMaxWidth: 400
 
-    // Якорь родителя (Overlay) задаёт позицию; здесь только размер карточки.
+
     width: Math.min(toastMaxWidth, Math.max(260, (parent ? parent.width : 400) - 40))
     height: hasMessage ? card.implicitHeight : 0
     visible: hasMessage

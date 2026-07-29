@@ -1,7 +1,7 @@
 #include "chat_list_model.hpp"
 
-#include "nyx/conversation.hpp"
 #include "nyx/account_store.hpp"
+#include "nyx/conversation.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/message_store.hpp"
 #include "nyx/messaging.hpp"
@@ -12,51 +12,56 @@
 namespace {
 
 QString formatListTime(quint64 ms) {
-  if (ms == 0) return {};
+  if (ms == 0)
+    return {};
   const QDateTime dt = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(ms));
   const QDate today = QDate::currentDate();
-  if (dt.date() == today) return dt.toString(QStringLiteral("HH:mm"));
-  if (dt.date().daysTo(today) == 1) return QStringLiteral("вчера");
+  if (dt.date() == today)
+    return dt.toString(QStringLiteral("HH:mm"));
+  if (dt.date().daysTo(today) == 1)
+    return QStringLiteral("вчера");
   return dt.toString(QStringLiteral("dd.MM"));
 }
 
-}  // namespace
+} // namespace
 
 ChatListModel::ChatListModel(QObject* parent) : QAbstractListModel(parent) {}
 
 int ChatListModel::rowCount(const QModelIndex& parent) const {
-  if (parent.isValid()) return 0;
+  if (parent.isValid())
+    return 0;
   return rows_.size();
 }
 
 QVariant ChatListModel::data(const QModelIndex& index, int role) const {
-  if (!index.isValid() || index.row() < 0 || index.row() >= rows_.size()) return {};
+  if (!index.isValid() || index.row() < 0 || index.row() >= rows_.size())
+    return {};
   const Row& row = rows_.at(index.row());
   switch (role) {
-    case KeyRole:
-      return row.key;
-    case TitleRole:
-      return row.title;
-    case PreviewRole:
-      return row.preview;
-    case TimestampRole:
-      return row.timestamp;
-    case KindRole:
-      return row.kind;
-    case RefIdRole:
-      return row.refId;
-    case UnreadRole:
-      return row.unread;
-    case LastSeenRole:
-      return row.lastSeen;
-    case TimeLabelRole:
-      return row.timeLabel;
-    case SessionStateRole:
-      return row.sessionState;
-    case SelectedRole:
-      return row.key == selected_key_;
-    default:
-      return {};
+  case KeyRole:
+    return row.key;
+  case TitleRole:
+    return row.title;
+  case PreviewRole:
+    return row.preview;
+  case TimestampRole:
+    return row.timestamp;
+  case KindRole:
+    return row.kind;
+  case RefIdRole:
+    return row.refId;
+  case UnreadRole:
+    return row.unread;
+  case LastSeenRole:
+    return row.lastSeen;
+  case TimeLabelRole:
+    return row.timeLabel;
+  case SessionStateRole:
+    return row.sessionState;
+  case SelectedRole:
+    return row.key == selected_key_;
+  default:
+    return {};
   }
 }
 
@@ -99,9 +104,8 @@ void ChatListModel::refreshFromDisk(const QString& selfIdHex) {
     row.preview = QString::fromStdString(s.preview);
     row.timestamp = s.timestamp_ms;
     row.kind = static_cast<int>(s.kind);
-    row.refId = s.kind == nyx::ConversationKind::Group
-                    ? QString::fromStdString(s.group_id_hex)
-                    : QString::fromStdString(s.peer_id_hex);
+    row.refId = s.kind == nyx::ConversationKind::Group ? QString::fromStdString(s.group_id_hex)
+                                                       : QString::fromStdString(s.peer_id_hex);
     row.unread = unread_.value(row.key, 0);
     row.lastSeen = s.kind == nyx::ConversationKind::Group
                        ? QStringLiteral("поле")
@@ -115,7 +119,8 @@ void ChatListModel::refreshFromDisk(const QString& selfIdHex) {
 
 int ChatListModel::indexForKey(const QString& key) const {
   for (int i = 0; i < rows_.size(); ++i) {
-    if (rows_.at(i).key == key) return i;
+    if (rows_.at(i).key == key)
+      return i;
   }
   return -1;
 }
@@ -140,24 +145,28 @@ void ChatListModel::clearUnread(const QString& key) {
 void ChatListModel::setSessionState(const QString& key, const QString& state) {
   if (session_states_.value(key) == state) {
     const int idx = indexForKey(key);
-    if (idx >= 0 && rows_[idx].sessionState == state) return;
+    if (idx >= 0 && rows_[idx].sessionState == state)
+      return;
   }
   session_states_[key] = state;
   const int idx = indexForKey(key);
   if (idx >= 0) {
     rows_[idx].sessionState = state;
-    // Шире, чем одна роль: иначе часть делегатов Qt 6 не перерисовывает подпись статуса.
-    emit dataChanged(index(idx), index(idx),
-                     {SessionStateRole, PreviewRole, TitleRole, SelectedRole});
+
+    emit dataChanged(
+        index(idx), index(idx), {SessionStateRole, PreviewRole, TitleRole, SelectedRole});
   }
 }
 
 void ChatListModel::setSelectedKey(const QString& key) {
-  if (selected_key_ == key) return;
+  if (selected_key_ == key)
+    return;
   const QString prev = selected_key_;
   selected_key_ = key;
   const int prevIdx = indexForKey(prev);
   const int nextIdx = indexForKey(key);
-  if (prevIdx >= 0) emit dataChanged(index(prevIdx), index(prevIdx), {SelectedRole});
-  if (nextIdx >= 0) emit dataChanged(index(nextIdx), index(nextIdx), {SelectedRole});
+  if (prevIdx >= 0)
+    emit dataChanged(index(prevIdx), index(prevIdx), {SelectedRole});
+  if (nextIdx >= 0)
+    emit dataChanged(index(nextIdx), index(nextIdx), {SelectedRole});
 }

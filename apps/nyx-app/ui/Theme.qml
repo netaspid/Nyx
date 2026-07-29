@@ -1,6 +1,5 @@
 import QtQuick
 
-/** Design tokens — Telegram dark / light. */
 QtObject {
     id: root
 
@@ -24,7 +23,7 @@ QtObject {
     readonly property color bubbleOut: darkMode ? "#2b5278" : "#effdde"
     readonly property color bubbleTextIn: darkMode ? "#ffffff" : "#000000"
     readonly property color bubbleTextOut: darkMode ? "#ffffff" : "#000000"
-    /** /me action bubble */
+
     readonly property color bubbleAction: darkMode ? "#243447" : "#e8f0fa"
     readonly property color bubbleActionText: darkMode ? "#c5d4e8" : "#1a3a5c"
     readonly property color accent: darkMode ? "#5288c1" : "#3390ec"
@@ -38,7 +37,7 @@ QtObject {
     readonly property color inputBg: darkMode ? "#242f3d" : "#ffffff"
     readonly property color border: darkMode ? "#2b3847" : "#dadce0"
     readonly property color online: darkMode ? "#4caf50" : "#4caf50"
-    /** Подсветка неактивного чата/поля в списке. */
+
     readonly property color offlineRow: darkMode ? "#1a222c" : "#eceff1"
     readonly property color offlineBadge: darkMode ? "#6b4e4e" : "#e57373"
     readonly property color toastBg: darkMode ? "#243040" : "#ffffff"

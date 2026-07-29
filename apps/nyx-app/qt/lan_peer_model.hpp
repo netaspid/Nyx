@@ -2,14 +2,13 @@
 
 #include <QAbstractListModel>
 #include <QString>
-#include <QVector>
 #include <QVariant>
+#include <QVector>
 
-/** Результаты LAN browse для QML. */
 class LanPeerModel : public QAbstractListModel {
   Q_OBJECT
 
- public:
+public:
   enum Roles {
     InstanceRole = Qt::UserRole + 1,
     HostRole,
@@ -27,7 +26,7 @@ class LanPeerModel : public QAbstractListModel {
   Q_INVOKABLE void setPeers(const QVariantList& peers);
   Q_INVOKABLE void clear();
 
- private:
+private:
   struct Row {
     QString instance;
     QString host;

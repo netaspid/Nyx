@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Status line under main content. */
 Rectangle {
     id: root
     required property var theme
@@ -38,7 +37,7 @@ Rectangle {
 
         Label {
             Layout.fillWidth: true
-            // Важно: не читать свой text внутри binding — иначе строка раздувается.
+
             text: {
                 const summary = node ? node.sessionSummary : ""
                 const status = root.text

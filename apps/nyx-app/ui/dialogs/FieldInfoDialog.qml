@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import "../controls"
 import "../components"
 
-/** Информация о поле и участники — в стиле приложения, клик → профиль. */
 Dialog {
     id: root
     required property var theme
@@ -56,7 +55,7 @@ Dialog {
     function openMemberProfile(userId) {
         const uid = String(userId || "").trim().toLowerCase()
         if (uid.length !== 64) return
-        // PeerInfo поверх модалки поля
+
         node.openPeerInfo(uid)
     }
 
@@ -80,7 +79,6 @@ Dialog {
         spacing: 0
         width: parent ? parent.width : implicitWidth
 
-        // —— шапка поля ——
         Rectangle {
             Layout.fillWidth: true
             color: theme.bgChatHeader
@@ -161,7 +159,7 @@ Dialog {
             }
         }
 
-        // —— прокручиваемое тело (gutter под скроллбар — без наезда на поля) ——
+
         Flickable {
             id: bodyFlick
             Layout.fillWidth: true
@@ -207,7 +205,7 @@ Dialog {
                         font.pixelSize: 11
                     }
 
-                    // —— Просмотр меты (участник) ——
+
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -274,7 +272,7 @@ Dialog {
                         }
                     }
 
-                    // —— Редактирование меты (создатель) ——
+
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -346,14 +344,13 @@ Dialog {
 
                         delegate: Rectangle {
                             id: memberRow
-                            // QVariantMap из fieldInfoMembers — через modelData
+
                             required property var modelData
 
                             readonly property string userId: String(modelData.userId || "")
                             readonly property string nickname: String(modelData.nickname || "?")
                             readonly property bool memberIsOwner: !!(modelData.isOwner)
                             readonly property bool memberIsHost: !!(modelData.isHost)
-                            readonly property string memberRole: String(modelData.role || "member")
                             readonly property string idShort: String(modelData.idShort || "")
 
                             Layout.fillWidth: true
@@ -463,7 +460,7 @@ Dialog {
                                 }
                             }
 
-                            // поверх строки, кроме кнопки «Искл.»
+
                             MouseArea {
                                 id: memberMa
                                 anchors.fill: parent

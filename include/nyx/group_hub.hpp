@@ -1,16 +1,12 @@
 #pragma once
 
-/** @file group_hub.hpp
- *  Hub поля (star): создатель принимает несколько Connection на одном UDP-сокете.
- */
-
 #include "nyx/call_proto.hpp"
 #include "nyx/connection.hpp"
-#include "nyx/group.hpp"
-#include "nyx/identity.hpp"
 #include "nyx/file_access.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_transfer.hpp"
+#include "nyx/group.hpp"
+#include "nyx/identity.hpp"
 #include "nyx/message_store.hpp"
 #include "nyx/messaging.hpp"
 #include "nyx/outbox.hpp"
@@ -29,44 +25,37 @@ namespace nyx {
 struct UserIdHash {
   std::size_t operator()(const UserId& id) const {
     std::size_t h = 0;
-    for (uint8_t b : id) h = h * 31 + b;
+    for (uint8_t b : id)
+      h = h * 31 + b;
     return h;
   }
 };
 
-/** Сессия участника на hub. */
 struct HubMember {
   Connection connection;
-  UserId user_id{};
+  UserId user_id {};
   std::string nickname;
   bool joined = false;
 };
 
-/** Центральный узел поля: relay MsgV2 всем участникам. */
 class GroupHub {
- public:
+public:
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
-  using DeliveryCallback =
-      std::function<void(uint64_t message_id, DeliveryStatus status)>;
+  using DeliveryCallback = std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
-  using CallFrameCallback =
-      std::function<void(const UserId& from, const ByteBuffer& frame)>;
+  using CallFrameCallback = std::function<void(const UserId& from, const ByteBuffer& frame)>;
 
   GroupHub(UdpSocket socket, Profile owner, GroupRecord group);
 
-  /** Один цикл: recv с сокета, drive участников, accept новых handshake. */
   void poll();
 
-  /** Отправка сообщения от owner в групповой чат. */
   bool send_message(const std::string& text);
 
   bool send_call_frame(const ByteBuffer& frame, const UserId* skip_user = nullptr);
-  void distribute_call_mesh_intros(const CallId& call_id,
-                                   const std::vector<UserId>& participants);
+  void distribute_call_mesh_intros(const CallId& call_id, const std::vector<UserId>& participants);
 
   bool send_realtime_all(const ByteBuffer& data);
-  void drain_realtime(const std::function<void(ByteBuffer)>& on_frame);
-  /** Relays member realtime to others; on_local(from, raw) for local decode. */
+
   void relay_realtime(const std::function<void(const UserId& from, ByteBuffer)>& on_local);
 
   void handle_chat_payload(HubMember& member, const ByteBuffer& payload);
@@ -76,14 +65,11 @@ class GroupHub {
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_call_frame(CallFrameCallback cb) { on_call_frame_ = std::move(cb); }
 
-  /** Индекс, scope и ACL для kBulkStream на соединениях участников. */
-  void attach_files(FileIndex& index, const GroupId& share_scope,
-                    FileAccessStore* access = nullptr);
+  void
+  attach_files(FileIndex& index, const GroupId& share_scope, FileAccessStore* access = nullptr);
 
-  /** Обновляет роль участника (не Owner) и рассылает MemberJoined с новой ролью. */
   bool set_member_role(const UserId& user_id, GroupRole role);
 
-  /** Роль в roster; Owner для создателя. */
   GroupRole role_of(const UserId& user_id) const;
 
   const GroupRecord& group() const { return group_; }
@@ -92,36 +78,32 @@ class GroupHub {
   UdpSocket& socket() { return socket_; }
   MessageStore& store() { return store_; }
 
-  /** Отключает участника и обновляет roster. */
   bool remove_member(const UserId& user_id);
 
-  /** Bye всем участникам перед остановкой hub (мгновенный офлайн у клиентов). */
   void notify_shutdown(const std::string& reason = "эфир закрыт");
 
-  /** Рассылает актуальную ACL всем участникам поля. */
   void broadcast_file_access_policy();
 
-  /** Обновляет мету в group_, пишет на диск и шлёт GroupMeta всем joined. */
-  bool publish_meta(const std::string& description, const std::string& direction,
-                    const std::string& tags, GroupVisibility visibility);
-  /** Шлёт текущую мету одному участнику (после JoinAck). */
+  bool publish_meta(const std::string& description,
+                    const std::string& direction,
+                    const std::string& tags,
+                    GroupVisibility visibility);
+
   void send_meta_to(HubMember& member);
   void broadcast_meta();
 
-  /** Каталог share-корней поля с учётом ACL (без рекурсивного дампа файлов). */
   std::vector<FileEntry> catalog_for(const UserId& requester) const;
-  /** Один уровень внутри share-корня (подпапки-маркеры + файлы). */
-  std::vector<FileEntry> catalog_level_for(const UserId& requester, const std::string& root_path,
-                                          const std::string& parent_rel) const;
 
-  /** Копирует файл из локального индекса hub в dest_path; проверяет hash. */
-  bool download_local_file(const FileHash& hash, const std::string& dest_path,
+  std::vector<FileEntry> catalog_level_for(const UserId& requester,
+                                           const std::string& root_path,
+                                           const std::string& parent_rel) const;
+
+  bool download_local_file(const FileHash& hash,
+                           const std::string& dest_path,
                            std::string* saved_path = nullptr) const;
 
-  /** Asks a live member provider for a file (hub owner download via member link). */
   bool request_file_from_provider(const FileHash& hash, const std::string& dest_path);
 
-  /** True while a provider download for this hash is in flight. */
   bool provider_transfer_busy(const FileHash& hash) const;
 
   void set_on_file_complete(FileTransferService::CompletionCallback cb) {
@@ -131,15 +113,14 @@ class GroupHub {
     on_file_progress_ = std::move(cb);
   }
 
- private:
+private:
   void send_file_access_policy(HubMember& member);
   HubMember* find_member(const std::string& host, uint16_t port);
   bool try_accept(const std::string& host, uint16_t port, const ByteBuffer& first_packet);
   void complete_join(HubMember& member);
   void send_history_to(HubMember& member);
-  void relay_message(const ChatMessage& msg, const UserId* exclude_author);
   void broadcast_to_members(const ByteBuffer& payload, HubMember* skip);
-  /** Удаляет участников с мёртвым keep-alive (roster в group_ не трогает). */
+
   void drop_stale_members();
   StoredMessage to_stored(const ChatMessage& msg, bool outgoing) const;
   ChatMessage make_owner_message(const std::string& text) const;
@@ -150,13 +131,15 @@ class GroupHub {
   std::vector<FileEntry> merged_field_entries_for(const UserId& requester) const;
   HubMember* find_hash_provider(const FileHash& hash);
   void rebuild_hash_providers();
-  void relay_file_request(HubMember& provider, HubMember& requester,
-                          const FileHash& hash, const ByteBuffer& request);
+  void relay_file_request(HubMember& provider,
+                          HubMember& requester,
+                          const FileHash& hash,
+                          const ByteBuffer& request);
 
   UdpSocket socket_;
   Profile owner_;
   GroupRecord group_;
-  ChatId chat_id_{};
+  ChatId chat_id_ {};
   MessageStore store_;
   std::vector<HubMember> members_;
 
@@ -166,12 +149,12 @@ class GroupHub {
   CallFrameCallback on_call_frame_;
   FileTransferService::CompletionCallback on_file_complete_;
   FileTransferService::ProgressCallback on_file_progress_;
-  /** Исходящие owner-сообщения, ждущие Ack хотя бы от одного участника. */
+
   std::unordered_set<uint64_t> pending_member_acks_;
 
   FileIndex* file_index_ = nullptr;
   FileAccessStore* file_access_ = nullptr;
-  GroupId file_scope_{};
+  GroupId file_scope_ {};
   std::unordered_map<HubMember*, std::unique_ptr<FileTransferService>> file_services_;
   std::unordered_map<UserId, std::vector<FileEntry>, UserIdHash> member_catalog_;
   std::unordered_map<UserId, std::vector<std::string>, UserIdHash> member_roots_;
@@ -181,9 +164,9 @@ class GroupHub {
   struct FileRelay {
     HubMember* requester = nullptr;
     HubMember* provider = nullptr;
-    FileHash hash{};
+    FileHash hash {};
   };
   std::optional<FileRelay> active_relay_;
 };
 
-}  // namespace nyx
+} // namespace nyx

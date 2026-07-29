@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 
-/** Бренд Nyx: созвездие + подпись «Nyx» (единый lockup, чистый QML). */
 Item {
     id: root
 

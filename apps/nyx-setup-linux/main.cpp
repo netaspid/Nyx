@@ -10,17 +10,19 @@ namespace {
 
 void print_progress(int pct, const std::string& status) {
   std::cerr << '\r' << pct << "% " << status << std::flush;
-  if (pct >= 100) std::cerr << '\n';
+  if (pct >= 100)
+    std::cerr << '\n';
 }
 
 bool ask_yes_no(const char* prompt) {
   std::cout << prompt << " [y/N] ";
   std::string line;
-  if (!std::getline(std::cin, line)) return false;
+  if (!std::getline(std::cin, line))
+    return false;
   return !line.empty() && (line[0] == 'y' || line[0] == 'Y');
 }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char** argv) {
   std::vector<std::uint8_t> payload;
@@ -42,7 +44,8 @@ int main(int argc, char** argv) {
 
   std::cout << "Nyx installer\n";
   std::cout << "Install directory: " << install_dir << '\n';
-  if (!ask_yes_no("Continue?")) return 0;
+  if (!ask_yes_no("Continue?"))
+    return 0;
 
   std::string err;
   std::cerr << "Stopping Nyx...\n";
@@ -68,11 +71,11 @@ int main(int argc, char** argv) {
 
   std::cerr << "Checking document viewer dependencies...\n";
   std::string deps_err;
-  const bool skip_deps =
-      (std::getenv("NYX_SKIP_DOC_DEPS") != nullptr);
+  const bool skip_deps = (std::getenv("NYX_SKIP_DOC_DEPS") != nullptr);
   if (!skip_deps) {
-    nyx_setup::ensure_document_dependencies(install_dir, &deps_err, /*interactive=*/true);
-    if (!deps_err.empty()) std::cerr << "Note: " << deps_err << '\n';
+    nyx_setup::ensure_document_dependencies(install_dir, &deps_err, true);
+    if (!deps_err.empty())
+      std::cerr << "Note: " << deps_err << '\n';
   }
 
   std::cout << "Nyx installed to " << install_dir << '\n';

@@ -15,8 +15,9 @@ HintConnectResult connect_via_rendezvous_hint(nyx::UdpSocket socket,
   }
 
   auto conn = nyx::Connection::connect_initiator(std::move(socket), out.host, out.port);
-  if (conn) out.connection = std::move(*conn);
+  if (conn)
+    out.connection = std::move(*conn);
   return out;
 }
 
-}  // namespace nyx_app
+} // namespace nyx_app

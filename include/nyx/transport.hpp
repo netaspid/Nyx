@@ -1,13 +1,9 @@
 #pragma once
 
-/** @file transport.hpp
- *  Надёжная доставка поверх UDP: selective repeat ARQ, фрагментация.
- */
-
 #include "nyx/types.hpp"
 
-#include <cstdint>
 #include <chrono>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <vector>
@@ -15,34 +11,29 @@
 namespace nyx {
 
 class ReliableSession {
- public:
+public:
   explicit ReliableSession(std::size_t window = 256, std::size_t mtu = kDefaultMtu);
 
-  /** Разбивает data на кадры Data для stream_id. */
   std::vector<ByteBuffer> send(uint32_t stream_id, const ByteBuffer& data);
 
-  /** Принимает сырой UDP-буфер (кадр Nyx). */
   void recv_wire(const ByteBuffer& wire);
 
-  /** Забирает следующее полностью собранное сообщение из очереди. */
   std::optional<ByteBuffer> poll_recv();
 
-  /** Кадры Ack для отправки peer (SACK по out-of-order). */
   std::vector<ByteBuffer> make_ack_frames(uint32_t stream_id) const;
 
-  /** Досылает фрагменты из очереди, когда в окне ARQ есть место. */
   std::vector<ByteBuffer> drain_outbound();
 
- private:
+private:
   struct SendItem {
     uint32_t stream_id = 0;
     ByteBuffer payload;
     uint32_t retransmits = 0;
-    std::chrono::steady_clock::time_point sent_at{};
+    std::chrono::steady_clock::time_point sent_at {};
   };
 
-  std::optional<ByteBuffer> encode_data(uint32_t stream_id, uint32_t seq,
-                                        const ByteBuffer& payload) const;
+  std::optional<ByteBuffer>
+  encode_data(uint32_t stream_id, uint32_t seq, const ByteBuffer& payload) const;
   void on_ack(uint32_t ack, const std::vector<uint32_t>& sack);
   std::vector<ByteBuffer> on_data(uint32_t seq, const ByteBuffer& payload);
 
@@ -83,4 +74,4 @@ class ReliableSession {
   std::map<uint32_t, ByteBuffer> recv_hold_;
 };
 
-}  // namespace nyx
+} // namespace nyx

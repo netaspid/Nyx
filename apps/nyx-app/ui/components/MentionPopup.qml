@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Автодополнение @упоминаний над полем ввода. */
 Popup {
     id: root
     required property var theme

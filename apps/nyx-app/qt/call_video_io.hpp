@@ -1,11 +1,9 @@
 #pragma once
 
-/** Video call: capture → AV1 + parity-protected realtime fragments. */
-
-#include <QObject>
-#include <QImage>
 #include <QByteArray>
+#include <QImage>
 #include <QMutex>
+#include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -27,11 +25,11 @@ namespace nyx {
 class CallVideoReassembler;
 class Av1Encoder;
 class Av1Decoder;
-}
+} // namespace nyx
 
 class CallVideoIo : public QObject {
   Q_OBJECT
- public:
+public:
   using SendFn = std::function<bool(const QByteArray& frag)>;
 
   explicit CallVideoIo(QObject* parent = nullptr);
@@ -57,7 +55,8 @@ class CallVideoIo : public QObject {
   bool cameraEnabled() const { return camera_enabled_.load(std::memory_order_acquire); }
   void setTransmitEnabled(bool on) {
     const bool previous = transmit_enabled_.exchange(on, std::memory_order_acq_rel);
-    if (on && !previous) force_keyframe_.store(true, std::memory_order_release);
+    if (on && !previous)
+      force_keyframe_.store(true, std::memory_order_release);
   }
 
   QString preferredCameraId() const;
@@ -65,17 +64,17 @@ class CallVideoIo : public QObject {
   QString activeCameraId() const;
   static QVariantList listCameraDevices();
 
- signals:
+signals:
   void remoteFrameChanged(const QString& peerId);
   void localFrameChanged();
   void videoPeersChanged();
   void cameraChanged();
   void cameraOpenFailed();
 
- public slots:
+public slots:
   void onRemoteVideo(const QString& peerId, const QByteArray& frag_payload);
 
- private slots:
+private slots:
   void onEncodeTick();
   void ingestCapturedFrame(QImage cropped);
 #if defined(Q_OS_ANDROID)
@@ -84,7 +83,7 @@ class CallVideoIo : public QObject {
   void onNativeCameraStarted(bool front, const QString& cameraId);
 #endif
 
- private:
+private:
   struct PeerDecoder {
     std::unique_ptr<nyx::CallVideoReassembler> reasm;
     std::unique_ptr<nyx::Av1Decoder> decoder;
@@ -119,14 +118,14 @@ class CallVideoIo : public QObject {
   QString camera_id_;
   QString preferred_camera_id_;
   int camera_index_ = 0;
-  std::atomic<bool> front_camera_{true};
-  std::atomic<bool> running_{false};
-  std::atomic<bool> capturing_{false};
-  std::atomic<bool> camera_enabled_{true};
-  std::atomic<bool> transmit_enabled_{true};
-  std::atomic<bool> force_keyframe_{true};
-  std::atomic<bool> ingest_busy_{false};
-  std::atomic<qint64> last_ingest_ms_{0};
+  std::atomic<bool> front_camera_ {true};
+  std::atomic<bool> running_ {false};
+  std::atomic<bool> capturing_ {false};
+  std::atomic<bool> camera_enabled_ {true};
+  std::atomic<bool> transmit_enabled_ {true};
+  std::atomic<bool> force_keyframe_ {true};
+  std::atomic<bool> ingest_busy_ {false};
+  std::atomic<qint64> last_ingest_ms_ {0};
   bool local_dirty_ = false;
   uint16_t frame_id_ = 0;
   bool encode_busy_ = false;

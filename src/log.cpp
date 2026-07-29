@@ -21,14 +21,14 @@ constexpr std::size_t kMaxLogBytes = 5 * 1024 * 1024;
 
 const char* level_name(LogLevel level) {
   switch (level) {
-    case LogLevel::Debug:
-      return "DEBUG";
-    case LogLevel::Info:
-      return "INFO";
-    case LogLevel::Warn:
-      return "WARN";
-    case LogLevel::Error:
-      return "ERROR";
+  case LogLevel::Debug:
+    return "DEBUG";
+  case LogLevel::Info:
+    return "INFO";
+  case LogLevel::Warn:
+    return "WARN";
+  case LogLevel::Error:
+    return "ERROR";
   }
   return "?";
 }
@@ -39,7 +39,7 @@ std::string timestamp_now() {
   const auto t = clock::to_time_t(now);
   const auto ms =
       std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-  std::tm tm_buf{};
+  std::tm tm_buf {};
 #ifdef _WIN32
   localtime_s(&tm_buf, &t);
 #else
@@ -52,20 +52,23 @@ std::string timestamp_now() {
 }
 
 void rotate_if_needed() {
-  if (log_path.empty()) return;
+  if (log_path.empty())
+    return;
   std::error_code ec;
   const auto size = std::filesystem::file_size(log_path, ec);
-  if (ec || size < kMaxLogBytes) return;
+  if (ec || size < kMaxLogBytes)
+    return;
   const std::string backup = log_path + ".1";
   std::filesystem::remove(backup, ec);
   std::filesystem::rename(log_path, backup, ec);
 }
 
-}  // namespace
+} // namespace
 
 void log_init() {
   std::lock_guard lock(log_mutex);
-  if (!log_path.empty()) return;
+  if (!log_path.empty())
+    return;
   ensure_data_dir();
   std::error_code ec;
   std::filesystem::create_directories(default_logs_dir(), ec);
@@ -73,25 +76,29 @@ void log_init() {
   rotate_if_needed();
 }
 
-void log_set_level(LogLevel level) { min_level = level; }
-
-LogLevel log_level() { return min_level; }
+LogLevel log_level() {
+  return min_level;
+}
 
 std::string default_log_path() {
-  if (log_path.empty()) log_init();
+  if (log_path.empty())
+    log_init();
   return log_path;
 }
 
 void log_write(LogLevel level, const std::string& message) {
-  if (level < min_level) return;
-  if (log_path.empty()) log_init();
+  if (level < min_level)
+    return;
+  if (log_path.empty())
+    log_init();
 
   const std::string line = timestamp_now() + " [" + level_name(level) + "] " + message + '\n';
 
   std::lock_guard lock(log_mutex);
   rotate_if_needed();
   std::ofstream out(log_path, std::ios::app);
-  if (out) out << line;
+  if (out)
+    out << line;
 }
 
-}  // namespace nyx
+} // namespace nyx

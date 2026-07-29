@@ -217,6 +217,18 @@ if(NYX_BUILD_GUI)
     qt_add_executable(nyx-app
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
+      apps/nyx-app/qt/files_ui.cpp
+      apps/nyx-app/qt/call_ui.cpp
+      apps/nyx-app/qt/node_controller_files.cpp
+      apps/nyx-app/qt/node_controller_files_access.cpp
+      apps/nyx-app/qt/node_controller_files_transfer.cpp
+      apps/nyx-app/qt/node_controller_files_index.cpp
+      apps/nyx-app/qt/node_controller_call.cpp
+      apps/nyx-app/qt/node_controller_wire.cpp
+      apps/nyx-app/qt/node_controller_account.cpp
+      apps/nyx-app/qt/node_controller_chat.cpp
+      apps/nyx-app/qt/node_controller_field.cpp
+      apps/nyx-app/qt/node_controller_media.cpp
       apps/nyx-app/qt/document_viewer.cpp
       apps/nyx-app/qt/win_chrome.cpp
       apps/nyx-app/qt/android_platform.cpp
@@ -228,7 +240,6 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp
-      apps/nyx-app/qt/file_list_model.cpp
       apps/nyx-app/resources.qrc
     )
     if(WIN32)
@@ -353,7 +364,8 @@ if(NYX_BUILD_GUI)
       set(NYX_SETUP_STUB "${NYX_INSTALLER_DIR}/stub.exe")
       set(NYX_PACK_INSTALLER_EXE "${NYX_INSTALLER_DIR}/pack.exe")
 
-      add_executable(nyx-setup-stub apps/nyx-setup/main.cpp apps/nyx-setup/setup_util.cpp)
+      add_executable(nyx-setup-stub apps/nyx-setup/main.cpp apps/nyx-setup/setup_util.cpp
+                     apps/nyx-setup/payload.cpp)
       target_include_directories(nyx-setup-stub PRIVATE apps/nyx-setup)
       target_link_libraries(nyx-setup-stub PRIVATE shell32 ole32 comctl32 shlwapi advapi32)
       target_compile_options(nyx-setup-stub PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)

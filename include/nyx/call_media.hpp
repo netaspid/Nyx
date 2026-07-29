@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file call_media.hpp
- *  Кадры медиа на kRealtimeStream (без ARQ).
- */
-
 #include "nyx/identity.hpp"
 #include "nyx/types.hpp"
 
@@ -22,7 +18,7 @@ enum class CallMediaType : uint8_t {
 struct CallMediaFrame {
   CallMediaType type = CallMediaType::Opus;
   uint32_t seq = 0;
-  UserId origin{};
+  UserId origin {};
   uint8_t hop_count = 0;
   uint8_t audio_level = 0;
   ByteBuffer payload;
@@ -31,7 +27,6 @@ struct CallMediaFrame {
   static std::optional<CallMediaFrame> decode(const ByteBuffer& data);
 };
 
-/** Safe payload ceiling below common Internet/VPN MTUs. */
 constexpr std::size_t kMaxCallMediaPayload = 1000;
 
-}  // namespace nyx
+} // namespace nyx

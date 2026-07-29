@@ -12,12 +12,6 @@ import android.view.ViewGroup;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * Qt Camera2 adds a second SurfaceView on top of the QML/GL surface and steals
- * touches. Qt's surface is created first — never touch it. Only neutralize
- * SurfaceViews that appear after {@link #markBaseline}.
- * Never block a Qt thread waiting on the main looper (deadlock / ANR risk).
- */
 public final class NyxCameraSurfaces {
     private static final String TAG = "NyxCameraSurfaces";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -25,7 +19,7 @@ public final class NyxCameraSurfaces {
 
     private NyxCameraSurfaces() {}
 
-    /** Call before QCamera.start() — remember existing (Qt) SurfaceViews. */
+
     public static void markBaseline(Context ctx) {
         final Activity act = activityOf(ctx);
         if (act == null) return;
@@ -40,7 +34,7 @@ public final class NyxCameraSurfaces {
         else MAIN.post(r);
     }
 
-    /** Call after QCamera.start() — demote only new (camera) SurfaceViews. */
+
     public static void suppressOverlays(Context ctx) {
         final Activity act = activityOf(ctx);
         if (act == null) return;

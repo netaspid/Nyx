@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import "../js/MarkdownFormat.js" as Md
 
-/** Компактное «как увидят» для композера: блоки + Telegram-спойлеры. */
 Item {
     id: root
     required property var theme

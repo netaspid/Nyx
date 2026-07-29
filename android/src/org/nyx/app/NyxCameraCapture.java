@@ -25,16 +25,11 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 
-/**
- * Camera2 capture for Nyx calls — NO SurfaceView in the Activity hierarchy.
- * Qt Multimedia preview SurfaceView was stealing touches / ANRing the UI thread.
- * All HAL work runs on a dedicated HandlerThread.
- */
 public final class NyxCameraCapture {
     private static final String TAG = "NyxCameraCapture";
     private static final int TARGET_W = 960;
     private static final int TARGET_H = 540;
-    private static final long MIN_FRAME_INTERVAL_MS = 80; // ~12 fps capture; encode adapts
+    private static final long MIN_FRAME_INTERVAL_MS = 80;
 
     private static final Object LOCK = new Object();
     private static HandlerThread sThread;
@@ -406,7 +401,7 @@ public final class NyxCameraCapture {
             else if (rotation == Surface.ROTATION_180) degrees = 180;
             else if (rotation == Surface.ROTATION_270) degrees = 270;
         } catch (Throwable ignored) {}
-        // MediaRecorder orientation hint — not JPEG EXIF (no front-camera mirror flip).
+
         if (sFront) {
             return (sSensorOrientation + degrees) % 360;
         }
@@ -428,7 +423,7 @@ public final class NyxCameraCapture {
             if (nv21 == null) return;
             YuvImage yuv = new YuvImage(nv21, ImageFormat.NV21, w, h, null);
             ByteArrayOutputStream bos = new ByteArrayOutputStream(w * h / 4);
-            // High-quality camera bridge; network compression is AV1 in C++.
+
             if (!yuv.compressToJpeg(new Rect(0, 0, w, h), 90, bos)) return;
             byte[] jpeg = bos.toByteArray();
             nativeOnJpeg(jpeg, w, h, sFront);
@@ -475,7 +470,7 @@ public final class NyxCameraCapture {
             }
         }
 
-        // NV21 = YYYY + VUVU…
+
         final int uvHeight = height / 2;
         final int uvWidth = width / 2;
         for (int row = 0; row < uvHeight; ++row) {
@@ -516,7 +511,7 @@ public final class NyxCameraCapture {
         for (Size s : sizes) {
             final long area = (long) s.getWidth() * s.getHeight();
             final long target = (long) TARGET_W * TARGET_H;
-            // Prefer near target, never huge (CPU JPEG cost).
+
             if (area > target * 4) continue;
             long score = Math.abs(area - target);
             if (score < bestScore) {

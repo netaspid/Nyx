@@ -1,7 +1,5 @@
 #pragma once
 
-/** Image provider for call video frames (avoids JPEG temp-file bridge). */
-
 #include <QHash>
 #include <QImage>
 #include <QMutex>
@@ -9,7 +7,7 @@
 #include <QString>
 
 class CallFrameProvider : public QQuickImageProvider {
- public:
+public:
   CallFrameProvider();
 
   QImage requestImage(const QString& id, QSize* size, const QSize& requestedSize) override;
@@ -25,7 +23,7 @@ class CallFrameProvider : public QQuickImageProvider {
   void setPrimaryRemoteKey(const QString& key);
   QStringList remotePeerKeys() const;
 
- private:
+private:
   mutable QMutex mutex_;
   QImage local_;
   QHash<QString, QImage> remotes_;

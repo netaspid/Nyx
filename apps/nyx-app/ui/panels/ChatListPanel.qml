@@ -10,7 +10,7 @@ Rectangle {
     required property var theme
     required property var node
     required property var avatarColorFn
-    /** When true, icon nav moves to MobileNavBar (narrow / Android). */
+
     property bool useBottomNav: false
 
     signal settingsRequested()
@@ -228,7 +228,6 @@ Rectangle {
 
         QtObject { id: listFilter; property string text: "" }
 
-        // —— Чаты ——
         ListView {
             id: chatListView
             Layout.fillWidth: true
@@ -270,7 +269,6 @@ Rectangle {
             }
         }
 
-        // —— Друзья ——
         ListView {
             id: friendsView
             Layout.fillWidth: true
@@ -402,7 +400,6 @@ Rectangle {
             }
         }
 
-        // —— Поля ——
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true

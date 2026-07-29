@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file group_proto.hpp
- *  Кадры группового протокола на kChatStream (фаза 5).
- */
-
 #include "nyx/group.hpp"
 #include "nyx/types.hpp"
 
@@ -16,15 +12,12 @@ enum class GroupKind : uint8_t {
   Join = 1,
   JoinAck = 2,
   MemberJoined = 3,
-  /**
-   * Мете поля от hub к участникам.
-   * Не 4: байт 4 = ChatKind::Bye — иначе Meta читается как Bye и рвёт сессию.
-   */
+
   Meta = 0x40,
 };
 
 struct GroupJoinMessage {
-  GroupId group_id{};
+  GroupId group_id {};
 
   ByteBuffer encode() const;
   static std::optional<GroupJoinMessage> decode(const ByteBuffer& data);
@@ -33,7 +26,7 @@ struct GroupJoinMessage {
 struct GroupJoinAckMessage {
   bool accepted = false;
   std::string reason;
-  GroupId group_id{};
+  GroupId group_id {};
   std::string group_name;
   std::vector<GroupMemberRecord> members;
 
@@ -58,7 +51,6 @@ struct GroupMetaMessage {
   static std::optional<GroupMetaMessage> decode(const ByteBuffer& data);
 };
 
-/** Распознаёт GroupKind по первому байту (не ChatKind). */
 bool is_group_frame(const ByteBuffer& data);
 
-}  // namespace nyx
+} // namespace nyx

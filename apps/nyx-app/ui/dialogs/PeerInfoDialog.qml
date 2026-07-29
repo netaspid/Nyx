@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import "../controls"
 import "../components"
 
-/** Профиль собеседника — Dialog на Overlay. */
 Dialog {
     id: root
     required property var theme

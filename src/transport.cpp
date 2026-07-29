@@ -18,13 +18,14 @@ ByteBuffer encode_ack(uint32_t ack, const std::vector<uint32_t>& sack) {
   ByteBuffer out;
   write_u32_le(out, ack);
   write_u16_le(out, static_cast<uint16_t>(sack.size()));
-  for (uint32_t s : sack) write_u32_le(out, s);
+  for (uint32_t s : sack)
+    write_u32_le(out, s);
   return out;
 }
 
-void parse_ack(const ByteBuffer& payload, uint32_t& ack,
-               std::vector<uint32_t>& sack) {
-  if (payload.size() < 6) return;
+void parse_ack(const ByteBuffer& payload, uint32_t& ack, std::vector<uint32_t>& sack) {
+  if (payload.size() < 6)
+    return;
   ack = read_u32_le(payload.data());
   uint16_t n = read_u16_le(payload.data() + 4);
   std::size_t off = 6;
@@ -34,20 +35,20 @@ void parse_ack(const ByteBuffer& payload, uint32_t& ack,
   }
 }
 
-}  // namespace
+} // namespace
 
 ReliableSession::ReliableSession(std::size_t window, std::size_t mtu)
     : mtu_(mtu), window_(window) {}
 
-std::vector<ByteBuffer> ReliableSession::fragment(uint32_t msg_id,
-                                                   const ByteBuffer& data) {
+std::vector<ByteBuffer> ReliableSession::fragment(uint32_t msg_id, const ByteBuffer& data) {
   constexpr std::size_t kFragHdr = 8;
-  if (mtu_ <= kFragHdr) return {};
+  if (mtu_ <= kFragHdr)
+    return {};
   const std::size_t chunk = mtu_ - kFragHdr;
-  const std::size_t need =
-      std::max<std::size_t>(1, (data.size() + chunk - 1) / chunk);
-  // total в заголовке — uint16_t; переполнение ломает сборку (UB/порча кучи).
-  if (need > 65535) return {};
+  const std::size_t need = std::max<std::size_t>(1, (data.size() + chunk - 1) / chunk);
+
+  if (need > 65535)
+    return {};
   const uint16_t total = static_cast<uint16_t>(need);
   std::vector<ByteBuffer> out;
   for (std::size_t idx = 0, off = 0; off < data.size() || (idx == 0 && data.empty());
@@ -59,27 +60,30 @@ std::vector<ByteBuffer> ReliableSession::fragment(uint32_t msg_id,
     write_u16_le(frag, total);
     frag.insert(frag.end(), data.begin() + off, data.begin() + off + n);
     out.push_back(std::move(frag));
-    if (off + n >= data.size()) break;
+    if (off + n >= data.size())
+      break;
   }
   return out;
 }
 
-std::optional<ReliableSession::AssembledMessage> ReliableSession::assemble(
-    const ByteBuffer& chunk) {
-  if (chunk.size() < 8) return AssembledMessage{0, chunk};
+std::optional<ReliableSession::AssembledMessage>
+ReliableSession::assemble(const ByteBuffer& chunk) {
+  if (chunk.size() < 8)
+    return AssembledMessage {0, chunk};
   const uint32_t msg_id = read_u32_le(chunk.data());
   const uint16_t idx = read_u16_le(chunk.data() + 4);
   const uint16_t total = read_u16_le(chunk.data() + 6);
-  if (total == 0) return std::nullopt;
+  if (total == 0)
+    return std::nullopt;
   if (total <= 1) {
-    return AssembledMessage{msg_id, ByteBuffer(chunk.begin() + 8, chunk.end())};
+    return AssembledMessage {msg_id, ByteBuffer(chunk.begin() + 8, chunk.end())};
   }
   auto& p = partials_[msg_id];
   if (p.total == 0) {
     p.total = total;
     p.parts.assign(total, std::nullopt);
   } else if (p.total != total) {
-    // Конфликт заголовков — сброс.
+
     partials_.erase(msg_id);
     return std::nullopt;
   }
@@ -87,7 +91,8 @@ std::optional<ReliableSession::AssembledMessage> ReliableSession::assemble(
     p.parts[idx] = ByteBuffer(chunk.begin() + 8, chunk.end());
     ++p.got;
   }
-  if (p.got < p.total) return std::nullopt;
+  if (p.got < p.total)
+    return std::nullopt;
   ByteBuffer out;
   for (const auto& part : p.parts) {
     if (!part) {
@@ -97,11 +102,12 @@ std::optional<ReliableSession::AssembledMessage> ReliableSession::assemble(
     out.insert(out.end(), part->begin(), part->end());
   }
   partials_.erase(msg_id);
-  return AssembledMessage{msg_id, std::move(out)};
+  return AssembledMessage {msg_id, std::move(out)};
 }
 
 void ReliableSession::enqueue_recv(uint32_t msg_id, ByteBuffer data) {
-  if (msg_id < recv_msg_next_) return;
+  if (msg_id < recv_msg_next_)
+    return;
   recv_hold_[msg_id] = std::move(data);
   while (recv_hold_.count(recv_msg_next_)) {
     recv_queue_.push_back(std::move(recv_hold_[recv_msg_next_]));
@@ -109,8 +115,8 @@ void ReliableSession::enqueue_recv(uint32_t msg_id, ByteBuffer data) {
   }
 }
 
-std::optional<ByteBuffer> ReliableSession::encode_data(
-    uint32_t stream_id, uint32_t seq, const ByteBuffer& payload) const {
+std::optional<ByteBuffer>
+ReliableSession::encode_data(uint32_t stream_id, uint32_t seq, const ByteBuffer& payload) const {
   return Frame::make(PacketType::Data, stream_id, seq, payload).encode();
 }
 
@@ -123,8 +129,7 @@ std::vector<ByteBuffer> ReliableSession::flush_pending() {
     while (ps.next < ps.frags.size() && inflight_.size() < window_ && batch < kMaxBatch) {
       const uint32_t seq = next_seq_++;
       inflight_[seq] =
-          SendItem{ps.stream_id, ps.frags[ps.next], 0,
-                   std::chrono::steady_clock::now()};
+          SendItem {ps.stream_id, ps.frags[ps.next], 0, std::chrono::steady_clock::now()};
       if (auto wire = encode_data(ps.stream_id, seq, ps.frags[ps.next])) {
         frames.push_back(std::move(*wire));
       }
@@ -146,8 +151,10 @@ std::vector<ByteBuffer> ReliableSession::drain_outbound() {
   constexpr auto kRetransmitAfter = std::chrono::milliseconds(120);
   constexpr std::size_t kMaxRetransmitBatch = 32;
   for (auto& [seq, item] : inflight_) {
-    if (frames.size() >= kMaxRetransmitBatch) break;
-    if (now - item.sent_at < kRetransmitAfter) continue;
+    if (frames.size() >= kMaxRetransmitBatch)
+      break;
+    if (now - item.sent_at < kRetransmitAfter)
+      continue;
     if (auto wire = encode_data(item.stream_id, seq, item.payload)) {
       frames.push_back(std::move(*wire));
       item.sent_at = now;
@@ -155,13 +162,13 @@ std::vector<ByteBuffer> ReliableSession::drain_outbound() {
     }
   }
   auto pending = flush_pending();
-  frames.insert(frames.end(), std::make_move_iterator(pending.begin()),
+  frames.insert(frames.end(),
+                std::make_move_iterator(pending.begin()),
                 std::make_move_iterator(pending.end()));
   return frames;
 }
 
-std::vector<ByteBuffer> ReliableSession::send(uint32_t stream_id,
-                                               const ByteBuffer& data) {
+std::vector<ByteBuffer> ReliableSession::send(uint32_t stream_id, const ByteBuffer& data) {
   PendingSend ps;
   ps.stream_id = stream_id;
   ps.frags = fragment(next_msg_id_++, data);
@@ -176,16 +183,17 @@ void ReliableSession::on_ack(uint32_t ack, const std::vector<uint32_t>& sack) {
       remove.push_back(seq);
     }
   }
-  for (uint32_t seq : remove) inflight_.erase(seq);
+  for (uint32_t seq : remove)
+    inflight_.erase(seq);
   while (seq_less(send_base_, next_seq_) && !inflight_.count(send_base_)) {
     ++send_base_;
   }
 }
 
-std::vector<ByteBuffer> ReliableSession::on_data(uint32_t seq,
-                                                  const ByteBuffer& payload) {
+std::vector<ByteBuffer> ReliableSession::on_data(uint32_t seq, const ByteBuffer& payload) {
   std::vector<ByteBuffer> delivered;
-  if (seq_less(seq, recv_base_)) return delivered;
+  if (seq_less(seq, recv_base_))
+    return delivered;
   recv_buf_[seq] = payload;
   while (recv_buf_.count(recv_base_)) {
     delivered.push_back(recv_buf_[recv_base_]);
@@ -197,7 +205,8 @@ std::vector<ByteBuffer> ReliableSession::on_data(uint32_t seq,
 
 void ReliableSession::recv_wire(const ByteBuffer& wire) {
   auto frame = Frame::decode(wire.data(), wire.size());
-  if (!frame) return;
+  if (!frame)
+    return;
 
   if (frame->header.packet_type == PacketType::Data) {
     auto chunks = on_data(frame->header.seq_num, frame->payload);
@@ -208,7 +217,8 @@ void ReliableSession::recv_wire(const ByteBuffer& wire) {
     }
     std::vector<uint32_t> sack;
     for (const auto& [seq, _] : recv_buf_) {
-      if (seq_less(recv_base_, seq)) sack.push_back(seq);
+      if (seq_less(recv_base_, seq))
+        sack.push_back(seq);
     }
     on_ack(recv_base_ == 0 ? 0 : recv_base_ - 1, sack);
   } else if (frame->header.packet_type == PacketType::Ack) {
@@ -220,7 +230,8 @@ void ReliableSession::recv_wire(const ByteBuffer& wire) {
 }
 
 std::optional<ByteBuffer> ReliableSession::poll_recv() {
-  if (recv_queue_.empty()) return std::nullopt;
+  if (recv_queue_.empty())
+    return std::nullopt;
   ByteBuffer out = std::move(recv_queue_.front());
   recv_queue_.erase(recv_queue_.begin());
   return out;
@@ -229,11 +240,12 @@ std::optional<ByteBuffer> ReliableSession::poll_recv() {
 std::vector<ByteBuffer> ReliableSession::make_ack_frames(uint32_t stream_id) const {
   std::vector<uint32_t> sack;
   for (const auto& [seq, _] : recv_buf_) {
-    if (seq_less(recv_base_, seq)) sack.push_back(seq);
+    if (seq_less(recv_base_, seq))
+      sack.push_back(seq);
   }
   auto payload = encode_ack(recv_base_ == 0 ? 0 : recv_base_ - 1, sack);
   auto wire = Frame::make(PacketType::Ack, stream_id, 0, payload).encode();
   return {std::move(wire)};
 }
 
-}  // namespace nyx
+} // namespace nyx

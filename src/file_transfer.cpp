@@ -1,12 +1,8 @@
 #include "nyx/file_transfer.hpp"
 
-
-
 #include "nyx/paths.hpp"
 
 #include "nyx/util.hpp"
-
-
 
 #include <algorithm>
 
@@ -14,13 +10,10 @@
 
 #include <fstream>
 
-
-
 namespace nyx {
 
-
-
-FileTransferService::FileTransferService(Connection& connection, FileIndex& index,
+FileTransferService::FileTransferService(Connection& connection,
+                                         FileIndex& index,
 
                                          std::string download_dir)
 
@@ -35,30 +28,21 @@ FileTransferService::FileTransferService(Connection& connection, FileIndex& inde
   std::error_code ec;
 
   std::filesystem::create_directories(download_dir_, ec);
-
 }
-
-
 
 bool FileTransferService::busy() const {
 
   std::lock_guard<std::mutex> lock(mutex_);
 
   return outgoing_.has_value() || incoming_.has_value() || awaiting_offer_.has_value();
-
 }
-
-
 
 std::vector<FileEntry> FileTransferService::remote_list_snapshot() const {
 
   std::lock_guard<std::mutex> lock(mutex_);
 
   return remote_list_;
-
 }
-
-
 
 void FileTransferService::emit_event(const std::string& text) {
 
@@ -69,14 +53,11 @@ void FileTransferService::emit_event(const std::string& text) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     cb = on_event_;
-
   }
 
-  if (cb) cb(text);
-
+  if (cb)
+    cb(text);
 }
-
-
 
 void FileTransferService::emit_progress(const FileHash& hash, uint64_t done, uint64_t total) {
 
@@ -87,14 +68,11 @@ void FileTransferService::emit_progress(const FileHash& hash, uint64_t done, uin
     std::lock_guard<std::mutex> lock(mutex_);
 
     cb = on_progress_;
-
   }
 
-  if (cb) cb(hash, done, total);
-
+  if (cb)
+    cb(hash, done, total);
 }
-
-
 
 void FileTransferService::flush_deferred() {
 
@@ -105,29 +83,21 @@ void FileTransferService::flush_deferred() {
     std::lock_guard<std::mutex> lock(mutex_);
 
     pending.swap(deferred_callbacks_);
-
   }
 
   for (auto& fn : pending) {
 
-    if (fn) fn();
-
+    if (fn)
+      fn();
   }
-
 }
-
-
 
 bool FileTransferService::send_bulk(const ByteBuffer& payload) {
 
   return connection_.send_payload(kBulkStream, payload);
-
 }
 
-
-
-void FileTransferService::start_outgoing(const FileEntry& entry,
-                                         uint64_t offset) {
+void FileTransferService::start_outgoing(const FileEntry& entry, uint64_t offset) {
 
   BlobReader reader(entry.absolute_path());
 
@@ -146,15 +116,9 @@ void FileTransferService::start_outgoing(const FileEntry& entry,
         [this, path = entry.absolute_path()] { emit_event("не удалось открыть файл: " + path); });
 
     return;
-
   }
 
-
-
-  outgoing_ =
-      OutgoingState{entry, std::move(reader), std::min(offset, entry.size)};
-
-
+  outgoing_ = OutgoingState {entry, std::move(reader), std::min(offset, entry.size)};
 
   FileOffer offer;
 
@@ -169,32 +133,23 @@ void FileTransferService::start_outgoing(const FileEntry& entry,
   send_bulk(offer.encode());
 
   deferred_callbacks_.push_back([this, offer] {
-
     emit_event("отправка «" + offer.name + "» (" + std::to_string(offer.size) + " байт)");
-
   });
 
   send_next_chunk();
-
 }
-
-
 
 void FileTransferService::send_next_chunk() {
 
-  if (!outgoing_) return;
-
-
+  if (!outgoing_)
+    return;
 
   if (outgoing_->offset >= outgoing_->entry.size) {
 
     finish_outgoing();
 
     return;
-
   }
-
-
 
   ByteBuffer data;
 
@@ -230,10 +185,7 @@ void FileTransferService::send_next_chunk() {
     }
 
     return;
-
   }
-
-
 
   FileChunk chunk;
 
@@ -246,10 +198,7 @@ void FileTransferService::send_next_chunk() {
   if (!send_bulk(chunk.encode())) {
 
     return;
-
   }
-
-
 
   outgoing_->offset += got;
 
@@ -261,21 +210,16 @@ void FileTransferService::send_next_chunk() {
 
   deferred_callbacks_.push_back([this, hash, done, total] { emit_progress(hash, done, total); });
 
-
-
   if (outgoing_->offset >= outgoing_->entry.size) {
 
     finish_outgoing();
-
   }
-
 }
-
-
 
 void FileTransferService::finish_outgoing() {
 
-  if (!outgoing_) return;
+  if (!outgoing_)
+    return;
 
   FileComplete complete;
 
@@ -297,10 +241,7 @@ void FileTransferService::finish_outgoing() {
     pending_outgoing_.pop_front();
     start_outgoing(next);
   }
-
 }
-
-
 
 void FileTransferService::reset_incoming() {
 
@@ -309,12 +250,8 @@ void FileTransferService::reset_incoming() {
     incoming_->writer.close();
 
     incoming_.reset();
-
   }
-
 }
-
-
 
 void FileTransferService::handle_offer(const FileOffer& offer) {
 
@@ -327,10 +264,7 @@ void FileTransferService::handle_offer(const FileOffer& offer) {
         [this] { emit_event("уже идёт приём другого файла"); });
 
     return;
-
   }
-
-
 
   const std::string safe_name = offer.name.empty() ? hash_hex(offer.hash) : offer.name;
 
@@ -344,10 +278,10 @@ void FileTransferService::handle_offer(const FileOffer& offer) {
     dest_path = download_dir_ + "/" + safe_name;
   }
   const auto resume_it = pending_resume_offsets_.find(hash_key);
-  uint64_t resume_offset =
-      resume_it == pending_resume_offsets_.end() ? 0 : resume_it->second;
+  uint64_t resume_offset = resume_it == pending_resume_offsets_.end() ? 0 : resume_it->second;
   pending_resume_offsets_.erase(hash_key);
-  if (resume_offset > offer.size) resume_offset = 0;
+  if (resume_offset > offer.size)
+    resume_offset = 0;
   const std::string part_path = dest_path + ".part";
 
   {
@@ -368,37 +302,27 @@ void FileTransferService::handle_offer(const FileOffer& offer) {
         [this, dest_path] { emit_event("не удалось создать файл: " + dest_path); });
     if (on_complete_) {
       deferred_callbacks_.push_back([this, hash = offer.hash, dest_path] {
-        on_complete_(hash, false, dest_path,
-                     "не удалось создать partial-файл");
+        on_complete_(hash, false, dest_path, "не удалось создать partial-файл");
       });
     }
 
     return;
-
   }
 
-
-
-  incoming_ = IncomingState{offer, std::move(writer), resume_offset,
-                            dest_path, part_path};
+  incoming_ = IncomingState {offer, std::move(writer), resume_offset, dest_path, part_path};
 
   deferred_callbacks_.push_back([this, offer] {
-
     emit_event("приём «" + offer.name + "» (" + std::to_string(offer.size) + " байт)");
-
   });
-
 }
-
-
 
 void FileTransferService::handle_chunk(const FileChunk& chunk) {
 
-  if (!incoming_) return;
+  if (!incoming_)
+    return;
 
-  if (chunk.hash != incoming_->offer.hash) return;
-
-
+  if (chunk.hash != incoming_->offer.hash)
+    return;
 
   if (!incoming_->writer.write_at(chunk.offset, chunk.data)) {
 
@@ -407,15 +331,13 @@ void FileTransferService::handle_chunk(const FileChunk& chunk) {
       const auto failed_hash = incoming_->offer.hash;
       const auto failed_path = incoming_->dest_path;
       deferred_callbacks_.push_back([this, failed_hash, failed_path] {
-        on_complete_(failed_hash, false, failed_path,
-                     "ошибка записи чанка");
+        on_complete_(failed_hash, false, failed_path, "ошибка записи чанка");
       });
     }
 
     reset_incoming();
 
     return;
-
   }
 
   incoming_->received = std::max(incoming_->received, chunk.offset + chunk.data.size());
@@ -435,29 +357,24 @@ void FileTransferService::handle_chunk(const FileChunk& chunk) {
   const uint64_t total = incoming_->offer.size;
 
   deferred_callbacks_.push_back([this, hash, done, total] { emit_progress(hash, done, total); });
-
 }
-
-
 
 void FileTransferService::handle_complete(const FileComplete& complete) {
 
-  if (!incoming_) return;
+  if (!incoming_)
+    return;
 
-  if (complete.hash != incoming_->offer.hash) return;
-
-
+  if (complete.hash != incoming_->offer.hash)
+    return;
 
   incoming_->writer.close();
-
-
 
   const std::string dest_path = incoming_->dest_path;
   const std::string part_path = incoming_->part_path;
 
   const uint64_t size = complete.size;
 
-  FileHash verify{};
+  FileHash verify {};
 
   if (!hash_file(part_path, verify) || verify != complete.hash) {
 
@@ -473,25 +390,21 @@ void FileTransferService::handle_complete(const FileComplete& complete) {
     reset_incoming();
 
     return;
-
   }
 
   std::error_code move_ec;
   std::filesystem::remove(path_from_utf8(dest_path), move_ec);
   move_ec.clear();
-  std::filesystem::rename(path_from_utf8(part_path),
-                          path_from_utf8(dest_path), move_ec);
+  std::filesystem::rename(path_from_utf8(part_path), path_from_utf8(dest_path), move_ec);
   {
     std::error_code meta_ec;
     std::filesystem::remove(path_from_utf8(part_path + ".meta"), meta_ec);
   }
   if (move_ec) {
-    deferred_callbacks_.push_back(
-        [this] { emit_event("не удалось завершить partial-файл"); });
+    deferred_callbacks_.push_back([this] { emit_event("не удалось завершить partial-файл"); });
     if (on_complete_) {
       deferred_callbacks_.push_back([this, hash = complete.hash, dest_path] {
-        on_complete_(hash, false, dest_path,
-                     "не удалось завершить partial-файл");
+        on_complete_(hash, false, dest_path, "не удалось завершить partial-файл");
       });
     }
     reset_incoming();
@@ -500,43 +413,37 @@ void FileTransferService::handle_complete(const FileComplete& complete) {
 
   std::string relative_dir;
   {
-    const auto root =
-        path_from_utf8(FileIndex::library_root_path(share_scope_));
+    const auto root = path_from_utf8(FileIndex::library_root_path(share_scope_));
     const auto dest = path_from_utf8(dest_path);
     std::error_code rel_ec;
     const auto rel = std::filesystem::relative(dest.parent_path(), root, rel_ec);
     if (!rel_ec && !rel.empty() && !rel.is_absolute() &&
-        std::find(rel.begin(), rel.end(), std::filesystem::path("..")) ==
-            rel.end()) {
+        std::find(rel.begin(), rel.end(), std::filesystem::path("..")) == rel.end()) {
       relative_dir = path_to_utf8(rel);
     }
   }
-  const auto cached =
-      index_.adopt_file(dest_path, complete.hash, incoming_->offer.name,
-                        incoming_->offer.mime, share_scope_, nullptr,
-                        relative_dir);
+  const auto cached = index_.adopt_file(dest_path,
+                                        complete.hash,
+                                        incoming_->offer.name,
+                                        incoming_->offer.mime,
+                                        share_scope_,
+                                        nullptr,
+                                        relative_dir);
   if (!cached) {
     deferred_callbacks_.push_back(
         [this] { emit_event("файл получен, но не добавлен в локальный cache"); });
   }
 
-
   deferred_callbacks_.push_back([this, dest_path, size] {
-
     emit_event("файл сохранён: " + dest_path + " (" + std::to_string(size) + " байт)");
-
   });
   if (on_complete_) {
-    deferred_callbacks_.push_back([this, hash = complete.hash, dest_path] {
-      on_complete_(hash, true, dest_path, {});
-    });
+    deferred_callbacks_.push_back(
+        [this, hash = complete.hash, dest_path] { on_complete_(hash, true, dest_path, {}); });
   }
 
   incoming_.reset();
-
 }
-
-
 
 void FileTransferService::handle_deny(const FileDeny& deny) {
 
@@ -551,14 +458,10 @@ void FileTransferService::handle_deny(const FileDeny& deny) {
 
       [this, reason = deny.reason] { emit_event("отказ: " + reason); });
   if (on_complete_) {
-    deferred_callbacks_.push_back([this, hash = deny.hash, reason = deny.reason] {
-      on_complete_(hash, false, {}, reason);
-    });
+    deferred_callbacks_.push_back(
+        [this, hash = deny.hash, reason = deny.reason] { on_complete_(hash, false, {}, reason); });
   }
-
 }
-
-
 
 void FileTransferService::handle_request(const FileRequest& req) {
 
@@ -574,14 +477,10 @@ void FileTransferService::handle_request(const FileRequest& req) {
 
     send_bulk(deny.encode());
 
-    deferred_callbacks_.push_back([this, hash = req.hash] {
-
-      emit_event("запрос файла " + hash_hex(hash) + " — не найден");
-
-    });
+    deferred_callbacks_.push_back(
+        [this, hash = req.hash] { emit_event("запрос файла " + hash_hex(hash) + " — не найден"); });
 
     return;
-
   }
 
   if (outgoing_) {
@@ -595,14 +494,10 @@ void FileTransferService::handle_request(const FileRequest& req) {
     send_bulk(deny.encode());
 
     return;
-
   }
 
   start_outgoing(*entry);
-
 }
-
-
 
 void FileTransferService::respond_list() {
   respond_list({}, {});
@@ -613,7 +508,8 @@ void FileTransferService::respond_list(const std::string& root_path,
   std::vector<FileEntry> entries;
   if (root_path.empty()) {
     for (const auto& e : index_.listing_for_session(share_scope_)) {
-      if (e.is_directory()) entries.push_back(e);
+      if (e.is_directory())
+        entries.push_back(e);
     }
   } else {
     entries = index_.listing_level_for_root(share_scope_, root_path, parent_rel);
@@ -621,21 +517,16 @@ void FileTransferService::respond_list(const std::string& root_path,
   send_bulk(encode_list_response(entries));
 }
 
-
-
 void FileTransferService::handle_bulk(const ByteBuffer& payload) {
 
-  if (payload.empty()) return;
+  if (payload.empty())
+    return;
 
   const auto kind = static_cast<FileKind>(payload[0]);
-
-
 
   {
 
     std::lock_guard<std::mutex> lock(mutex_);
-
-
 
     if (kind == FileKind::ListReq) {
       if (auto path = decode_list_request(payload)) {
@@ -651,30 +542,29 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
         if (snapshot_level_list_) {
           const std::string root_norm = normalize_utf8_path(pending_list_root_);
           const std::string parent = pending_list_parent_;
-          const std::string prefix =
-              parent.empty() ? std::string{} : parent + "/";
+          const std::string prefix = parent.empty() ? std::string {} : parent + "/";
           remote_list_.erase(
-              std::remove_if(
-                  remote_list_.begin(), remote_list_.end(),
-                  [&](const FileEntry& existing) {
-                    if (normalize_utf8_path(existing.root_path) != root_norm) {
-                      return false;
-                    }
-                    if (parent.empty()) {
-                      // Keep root directory marker; replace all children.
-                      if (existing.is_directory()) {
-                        const std::string root_leaf = path_to_utf8(
-                            path_from_utf8(root_norm).filename());
-                        if (existing.relative_path == root_leaf ||
-                            existing.relative_path.rfind("участник:", 0) == 0) {
-                          return false;
-                        }
-                      }
-                      return true;
-                    }
-                    return existing.relative_path == parent ||
-                           existing.relative_path.rfind(prefix, 0) == 0;
-                  }),
+              std::remove_if(remote_list_.begin(),
+                             remote_list_.end(),
+                             [&](const FileEntry& existing) {
+                               if (normalize_utf8_path(existing.root_path) != root_norm) {
+                                 return false;
+                               }
+                               if (parent.empty()) {
+
+                                 if (existing.is_directory()) {
+                                   const std::string root_leaf =
+                                       path_to_utf8(path_from_utf8(root_norm).filename());
+                                   if (existing.relative_path == root_leaf ||
+                                       existing.relative_path.rfind("участник:", 0) == 0) {
+                                     return false;
+                                   }
+                                 }
+                                 return true;
+                               }
+                               return existing.relative_path == parent ||
+                                      existing.relative_path.rfind(prefix, 0) == 0;
+                             }),
               remote_list_.end());
           for (auto& e : *list) {
             remote_list_.push_back(std::move(e));
@@ -687,7 +577,8 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
         }
         const std::size_t count = remote_list_.size();
         deferred_callbacks_.push_back([this, count] {
-          if (on_remote_list_) on_remote_list_(remote_list_);
+          if (on_remote_list_)
+            on_remote_list_(remote_list_);
           emit_event("получен список файлов: " + std::to_string(count) + " шт.");
         });
       }
@@ -704,8 +595,7 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
       if (!entry || outgoing_) {
         FileDeny deny;
         deny.hash = range->hash;
-        deny.reason = entry ? "отправитель занят"
-                            : "файл не найден или недоступен";
+        deny.reason = entry ? "отправитель занят" : "файл не найден или недоступен";
         send_bulk(deny.encode());
       } else {
         start_outgoing(*entry, range->offset);
@@ -728,7 +618,6 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
       handle_request(*req);
 
       return;
-
     }
 
     if (auto offer = FileOffer::decode(payload)) {
@@ -736,7 +625,6 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
       handle_offer(*offer);
 
       return;
-
     }
 
     if (auto chunk = FileChunk::decode(payload)) {
@@ -744,7 +632,6 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
       handle_chunk(*chunk);
 
       return;
-
     }
 
     if (auto complete = FileComplete::decode(payload)) {
@@ -752,24 +639,16 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
       handle_complete(*complete);
 
       return;
-
     }
 
     if (auto deny = FileDeny::decode(payload)) {
 
       handle_deny(*deny);
-
     }
-
   }
 
-
-
   flush_deferred();
-
 }
-
-
 
 void FileTransferService::pump() {
 
@@ -780,16 +659,11 @@ void FileTransferService::pump() {
     if (outgoing_ && outgoing_->offset < outgoing_->entry.size) {
 
       send_next_chunk();
-
     }
-
   }
 
   flush_deferred();
-
 }
-
-
 
 bool FileTransferService::request_list() {
   {
@@ -812,19 +686,13 @@ bool FileTransferService::request_list(const std::string& root_path,
   return send_bulk(encode_list_request(root_path, parent_rel));
 }
 
-
-
 bool FileTransferService::request_policy() {
 
   return send_bulk(encode_policy_request());
-
 }
 
-
-
-bool FileTransferService::request_file(const std::string& hash_hex,
-                                       const std::string& dest_path) {
-  FileHash hash{};
+bool FileTransferService::request_file(const std::string& hash_hex, const std::string& dest_path) {
+  FileHash hash {};
   if (!hash_from_hex(hash_hex, hash)) {
     emit_event("неверный hash (нужно 64 hex)");
     return false;
@@ -845,8 +713,7 @@ bool FileTransferService::request_file(const std::string& hash_hex,
         const auto part_path = path_from_utf8(dest_path + ".part");
         const auto meta_path = path_from_utf8(dest_path + ".part.meta");
         if (std::filesystem::is_regular_file(part_path, ec)) {
-          resume_offset =
-              static_cast<uint64_t>(std::filesystem::file_size(part_path, ec));
+          resume_offset = static_cast<uint64_t>(std::filesystem::file_size(part_path, ec));
           if (!ec && resume_offset > 0) {
             use_resume = true;
             std::ifstream meta(meta_path, std::ios::binary);
@@ -857,8 +724,7 @@ bool FileTransferService::request_file(const std::string& hash_hex,
                 if (stored_hash != canonical_hash) {
                   use_resume = false;
                   resume_offset = 0;
-                } else if (stored_offset > 0 &&
-                           stored_offset <= resume_offset) {
+                } else if (stored_offset > 0 && stored_offset <= resume_offset) {
                   resume_offset = stored_offset;
                 }
               }
@@ -867,8 +733,7 @@ bool FileTransferService::request_file(const std::string& hash_hex,
         }
       }
     }
-    pending_resume_offsets_[canonical_hash] =
-        use_resume ? resume_offset : 0;
+    pending_resume_offsets_[canonical_hash] = use_resume ? resume_offset : 0;
   }
   ByteBuffer wire;
   if (use_resume) {
@@ -891,8 +756,6 @@ bool FileTransferService::request_file(const std::string& hash_hex,
   return true;
 }
 
-
-
 bool FileTransferService::send_file(const std::string& path_or_hash_hex) {
 
   bool ok = false;
@@ -902,82 +765,70 @@ bool FileTransferService::send_file(const std::string& path_or_hash_hex) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto queue_or_start = [&](const FileEntry& entry) {
       if (outgoing_) {
-        const auto duplicate = std::any_of(
-            pending_outgoing_.begin(), pending_outgoing_.end(),
-            [&](const FileEntry& pending) {
-              return pending.hash == entry.hash;
-            });
-        if (!duplicate) pending_outgoing_.push_back(entry);
+        const auto duplicate =
+            std::any_of(pending_outgoing_.begin(),
+                        pending_outgoing_.end(),
+                        [&](const FileEntry& pending) { return pending.hash == entry.hash; });
+        if (!duplicate)
+          pending_outgoing_.push_back(entry);
       } else {
         start_outgoing(entry);
       }
       ok = true;
     };
 
-      FileHash hash{};
+    FileHash hash {};
 
-      if (hash_from_hex(path_or_hash_hex, hash)) {
+    if (hash_from_hex(path_or_hash_hex, hash)) {
 
-        if (auto entry = index_.find_for_session(hash, share_scope_)) {
+      if (auto entry = index_.find_for_session(hash, share_scope_)) {
 
-          queue_or_start(*entry);
+        queue_or_start(*entry);
 
-        } else if (auto entry = index_.find_by_hash(hash)) {
+      } else if (auto entry = index_.find_by_hash(hash)) {
 
-          queue_or_start(*entry);
-
-        }
-
+        queue_or_start(*entry);
       }
+    }
 
+    if (!ok) {
 
+      std::error_code ec;
 
-      if (!ok) {
+      const auto fs_path = path_from_utf8(path_or_hash_hex);
 
-        std::error_code ec;
+      if (!std::filesystem::exists(fs_path, ec)) {
 
-        const auto fs_path = path_from_utf8(path_or_hash_hex);
+        deferred_callbacks_.push_back(
+            [this, path = path_or_hash_hex] { emit_event("файл не найден: " + path); });
 
-        if (!std::filesystem::exists(fs_path, ec)) {
+      } else {
 
-          deferred_callbacks_.push_back([this, path = path_or_hash_hex] {
+        FileEntry entry;
 
-            emit_event("файл не найден: " + path);
+        entry.root_path = path_to_utf8(fs_path.parent_path());
 
-          });
+        entry.relative_path = path_to_utf8(fs_path.filename());
+
+        entry.size = static_cast<uint64_t>(std::filesystem::file_size(fs_path, ec));
+
+        entry.mime = FileIndex::guess_mime(path_or_hash_hex);
+
+        if (!hash_file(path_or_hash_hex, entry.hash)) {
+
+          deferred_callbacks_.push_back([this] { emit_event("не удалось вычислить hash"); });
 
         } else {
 
-          FileEntry entry;
-
-          entry.root_path = path_to_utf8(fs_path.parent_path());
-
-          entry.relative_path = path_to_utf8(fs_path.filename());
-
-          entry.size = static_cast<uint64_t>(std::filesystem::file_size(fs_path, ec));
-
-          entry.mime = FileIndex::guess_mime(path_or_hash_hex);
-
-          if (!hash_file(path_or_hash_hex, entry.hash)) {
-
-            deferred_callbacks_.push_back([this] { emit_event("не удалось вычислить hash"); });
-
-          } else {
-
-            queue_or_start(entry);
-
-          }
-
+          queue_or_start(entry);
         }
-
       }
-
+    }
   }
 
   flush_deferred();
 
   return ok;
-
 }
 
 bool FileTransferService::announce_capabilities() {
@@ -997,8 +848,7 @@ FileTransferService::outgoing_queue_snapshot() const {
   std::lock_guard<std::mutex> lock(mutex_);
   std::vector<std::pair<std::string, std::string>> out;
   if (outgoing_) {
-    out.emplace_back(hash_hex(outgoing_->entry.hash),
-                     outgoing_->entry.display_name());
+    out.emplace_back(hash_hex(outgoing_->entry.hash), outgoing_->entry.display_name());
   }
   for (const auto& entry : pending_outgoing_) {
     out.emplace_back(hash_hex(entry.hash), entry.display_name());
@@ -1007,14 +857,18 @@ FileTransferService::outgoing_queue_snapshot() const {
 }
 
 bool FileTransferService::cancel(const std::string& hash_hex_value) {
-  FileHash hash{};
-  if (!hash_from_hex(hash_hex_value, hash)) return false;
+  FileHash hash {};
+  if (!hash_from_hex(hash_hex_value, hash))
+    return false;
   const std::string canonical_hash = hash_hex(hash);
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (outgoing_ && outgoing_->entry.hash == hash) outgoing_.reset();
-    if (incoming_ && incoming_->offer.hash == hash) reset_incoming();
-    if (awaiting_offer_ && *awaiting_offer_ == hash) awaiting_offer_.reset();
+    if (outgoing_ && outgoing_->entry.hash == hash)
+      outgoing_.reset();
+    if (incoming_ && incoming_->offer.hash == hash)
+      reset_incoming();
+    if (awaiting_offer_ && *awaiting_offer_ == hash)
+      awaiting_offer_.reset();
     pending_dest_paths_.erase(canonical_hash);
     pending_resume_offsets_.erase(canonical_hash);
   }
@@ -1023,18 +877,11 @@ bool FileTransferService::cancel(const std::string& hash_hex_value) {
   return send_bulk(cancel.encode());
 }
 
-
-
 bool FileTransferService::push_field_index(const std::vector<FileEntry>& entries,
 
                                            const std::vector<std::string>& root_paths) {
 
-  return send_bulk(
-      encode_index_push(entries, root_paths, ++index_revision_));
-
+  return send_bulk(encode_index_push(entries, root_paths, ++index_revision_));
 }
 
-
-
-}  // namespace nyx
-
+} // namespace nyx

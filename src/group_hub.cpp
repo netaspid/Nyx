@@ -6,13 +6,13 @@
 #include "nyx/call_proto.hpp"
 #include "nyx/file_hash.hpp"
 #include "nyx/file_index.hpp"
+#include "nyx/file_proto.hpp"
 #include "nyx/group.hpp"
 #include "nyx/group_proto.hpp"
 #include "nyx/messaging.hpp"
 #include "nyx/nat.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/proto.hpp"
-#include "nyx/file_proto.hpp"
 #include "nyx/util.hpp"
 
 #include <algorithm>
@@ -23,14 +23,10 @@
 namespace nyx {
 
 GroupHub::GroupHub(UdpSocket socket, Profile owner, GroupRecord group)
-    : socket_(std::move(socket)),
-      owner_(std::move(owner)),
-      group_(std::move(group)),
-      chat_id_(group_chat_id(group_.id)),
-      store_(MessageStore::path_for_group(group_.id)) {}
+    : socket_(std::move(socket)), owner_(std::move(owner)), group_(std::move(group)),
+      chat_id_(group_chat_id(group_.id)), store_(MessageStore::path_for_group(group_.id)) {}
 
-void GroupHub::attach_files(FileIndex& index, const GroupId& share_scope,
-                            FileAccessStore* access) {
+void GroupHub::attach_files(FileIndex& index, const GroupId& share_scope, FileAccessStore* access) {
   file_index_ = &index;
   file_access_ = access;
   file_scope_ = share_scope;
@@ -58,18 +54,22 @@ std::vector<FileEntry> GroupHub::merged_field_entries() const {
   if (file_index_) {
     out = file_index_->listing_for_session(file_scope_);
     for (const auto& e : out) {
-      if (e.is_directory()) seen_paths.insert(e.root_path);
+      if (e.is_directory())
+        seen_paths.insert(e.root_path);
     }
   }
   std::set<std::string> seen_hashes;
-  for (const auto& e : out) seen_hashes.insert(hash_hex(e.hash));
+  for (const auto& e : out)
+    seen_hashes.insert(hash_hex(e.hash));
 
   for (const auto& [uid, entries] : member_catalog_) {
     (void)uid;
     for (const auto& e : entries) {
-      if (e.is_directory()) continue;
+      if (e.is_directory())
+        continue;
       const std::string hx = hash_hex(e.hash);
-      if (seen_hashes.count(hx)) continue;
+      if (seen_hashes.count(hx))
+        continue;
       seen_hashes.insert(hx);
       out.push_back(e);
     }
@@ -78,7 +78,8 @@ std::vector<FileEntry> GroupHub::merged_field_entries() const {
   for (const auto& [uid, roots] : member_roots_) {
     (void)uid;
     for (const auto& path : roots) {
-      if (seen_paths.count(path)) continue;
+      if (seen_paths.count(path))
+        continue;
       seen_paths.insert(path);
       ShareRoot sr;
       sr.path = path;
@@ -87,7 +88,8 @@ std::vector<FileEntry> GroupHub::merged_field_entries() const {
       const auto cat = member_catalog_.find(uid);
       if (cat != member_catalog_.end()) {
         for (const auto& e : cat->second) {
-          if (e.root_path == path) ++count;
+          if (e.root_path == path)
+            ++count;
         }
       }
       out.insert(out.begin(), FileIndex::make_directory_marker(sr, count, "участник: "));
@@ -98,17 +100,20 @@ std::vector<FileEntry> GroupHub::merged_field_entries() const {
 
 std::vector<FileEntry> GroupHub::merged_field_entries_for(const UserId& requester) const {
   const auto out = merged_field_entries();
-  if (!file_access_) return out;
-  if (requester == owner_.public_key) return out;
+  if (!file_access_)
+    return out;
+  if (requester == owner_.public_key)
+    return out;
 
   std::vector<FileEntry> filtered;
   filtered.reserve(out.size());
   for (const auto& e : out) {
-    // Маркер корня: ACL по share-root (relative_path у маркера — только подпись для UI).
-    const std::string rel_for_acl = e.is_directory() ? std::string{} : e.relative_path;
+
+    const std::string rel_for_acl = e.is_directory() ? std::string {} : e.relative_path;
     const uint32_t perms =
         file_access_->permissions_for(file_scope_, requester, e.root_path, rel_for_acl);
-    if (!FileAccessStore::has_permission(perms, FilePermission::List)) continue;
+    if (!FileAccessStore::has_permission(perms, FilePermission::List))
+      continue;
     filtered.push_back(e);
   }
   return filtered;
@@ -117,7 +122,8 @@ std::vector<FileEntry> GroupHub::merged_field_entries_for(const UserId& requeste
 std::vector<FileEntry> GroupHub::catalog_for(const UserId& requester) const {
   std::vector<FileEntry> roots;
   for (const auto& e : merged_field_entries_for(requester)) {
-    if (e.is_directory()) roots.push_back(e);
+    if (e.is_directory())
+      roots.push_back(e);
   }
   return roots;
 }
@@ -128,11 +134,14 @@ std::vector<FileEntry> GroupHub::catalog_level_for(const UserId& requester,
   return FileIndex::listing_level(merged_field_entries_for(requester), root_path, parent_rel);
 }
 
-bool GroupHub::download_local_file(const FileHash& hash, const std::string& dest_path,
+bool GroupHub::download_local_file(const FileHash& hash,
+                                   const std::string& dest_path,
                                    std::string* saved_path) const {
-  if (!file_index_ || dest_path.empty()) return false;
+  if (!file_index_ || dest_path.empty())
+    return false;
   const auto entry = file_index_->find_for_session(hash, file_scope_);
-  if (!entry) return false;
+  if (!entry)
+    return false;
 
   std::error_code ec;
   const auto fs_dest = path_from_utf8(dest_path);
@@ -141,35 +150,44 @@ bool GroupHub::download_local_file(const FileHash& hash, const std::string& dest
     std::filesystem::create_directories(parent, ec);
   }
 
-  std::filesystem::copy_file(path_from_utf8(entry->absolute_path()), fs_dest,
-                             std::filesystem::copy_options::overwrite_existing, ec);
-  if (ec) return false;
+  std::filesystem::copy_file(path_from_utf8(entry->absolute_path()),
+                             fs_dest,
+                             std::filesystem::copy_options::overwrite_existing,
+                             ec);
+  if (ec)
+    return false;
 
-  FileHash verify{};
+  FileHash verify {};
   if (!hash_file(dest_path, verify) || verify != hash) {
     std::filesystem::remove(fs_dest, ec);
     return false;
   }
-  if (saved_path) *saved_path = dest_path;
+  if (saved_path)
+    *saved_path = dest_path;
   return true;
 }
 
-bool GroupHub::request_file_from_provider(const FileHash& hash,
-                                          const std::string& dest_path) {
-  if (dest_path.empty()) return false;
+bool GroupHub::request_file_from_provider(const FileHash& hash, const std::string& dest_path) {
+  if (dest_path.empty())
+    return false;
   HubMember* provider = find_hash_provider(hash);
-  if (!provider || !provider->joined) return false;
-  if (active_relay_) return false;
+  if (!provider || !provider->joined)
+    return false;
+  if (active_relay_)
+    return false;
   auto& files = file_service_for(*provider);
-  if (files.busy()) return false;
+  if (files.busy())
+    return false;
   return files.request_file(hash_hex(hash), dest_path);
 }
 
 bool GroupHub::provider_transfer_busy(const FileHash& hash) const {
   for (const auto& [member, service] : file_services_) {
-    if (!member || !service || !member->joined) continue;
+    if (!member || !service || !member->joined)
+      continue;
     const auto it = hash_providers_.find(hash_hex(hash));
-    if (it == hash_providers_.end() || member->user_id != it->second) continue;
+    if (it == hash_providers_.end() || member->user_id != it->second)
+      continue;
     return service->busy();
   }
   return false;
@@ -177,22 +195,26 @@ bool GroupHub::provider_transfer_busy(const FileHash& hash) const {
 
 HubMember* GroupHub::find_hash_provider(const FileHash& hash) {
   const auto it = hash_providers_.find(hash_hex(hash));
-  if (it == hash_providers_.end()) return nullptr;
+  if (it == hash_providers_.end())
+    return nullptr;
   for (auto& m : members_) {
-    if (m.joined && m.user_id == it->second) return &m;
+    if (m.joined && m.user_id == it->second)
+      return &m;
   }
   return nullptr;
 }
 
-void GroupHub::relay_file_request(HubMember& provider, HubMember& requester,
+void GroupHub::relay_file_request(HubMember& provider,
+                                  HubMember& requester,
                                   const FileHash& hash,
                                   const ByteBuffer& request) {
-  active_relay_ = FileRelay{&requester, &provider, hash};
+  active_relay_ = FileRelay {&requester, &provider, hash};
   provider.connection.send_payload(kBulkStream, request);
 }
 
 void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) {
-  if (payload.empty()) return;
+  if (payload.empty())
+    return;
 
   if (is_avatar_frame(payload)) {
     if (auto req = AvatarRequest::decode(payload)) {
@@ -225,7 +247,7 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
         chunk.index = index++;
         const std::size_t n = std::min(kAvatarChunkSize, data.size() - off);
         chunk.data.assign(data.begin() + static_cast<std::ptrdiff_t>(off),
-                         data.begin() + static_cast<std::ptrdiff_t>(off + n));
+                          data.begin() + static_cast<std::ptrdiff_t>(off + n));
         member.connection.send_payload(kBulkStream, chunk.encode());
       }
       AvatarDone done;
@@ -261,11 +283,11 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
   if (kind == FileKind::IndexPush) {
     if (auto push = decode_index_push(payload)) {
       const uint64_t previous = member_catalog_revisions_[member.user_id];
-      if (push->revision != 0 && push->revision < previous) return;
+      if (push->revision != 0 && push->revision < previous)
+        return;
       member_catalog_[member.user_id] = push->entries;
       member_roots_[member.user_id] = push->root_paths;
-      member_catalog_revisions_[member.user_id] =
-          std::max(previous, push->revision);
+      member_catalog_revisions_[member.user_id] = std::max(previous, push->revision);
       rebuild_hash_providers();
       if (on_event_) {
         on_event_(member.nickname + " опубликовал " + std::to_string(push->entries.size()) +
@@ -281,7 +303,8 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
       if (active_relay_->requester) {
         active_relay_->requester->connection.send_payload(kBulkStream, payload);
       }
-      if (kind == FileKind::Complete || kind == FileKind::Deny) active_relay_.reset();
+      if (kind == FileKind::Complete || kind == FileKind::Deny)
+        active_relay_.reset();
       return;
     }
   }
@@ -289,7 +312,8 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
   if (kind == FileKind::Request) {
     if (auto req = FileRequest::decode(payload)) {
       std::optional<FileEntry> entry;
-      if (file_index_) entry = file_index_->find_by_hash(req->hash);
+      if (file_index_)
+        entry = file_index_->find_by_hash(req->hash);
       if (!entry) {
         for (const auto& [uid, catalog] : member_catalog_) {
           (void)uid;
@@ -299,13 +323,13 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
               break;
             }
           }
-          if (entry) break;
+          if (entry)
+            break;
         }
       }
       if (entry && file_access_ && member.user_id != owner_.public_key) {
-        const uint32_t perms = file_access_->permissions_for(file_scope_, member.user_id,
-                                                             entry->root_path,
-                                                             entry->relative_path);
+        const uint32_t perms = file_access_->permissions_for(
+            file_scope_, member.user_id, entry->root_path, entry->relative_path);
         if (!FileAccessStore::has_permission(perms, FilePermission::Download)) {
           FileDeny deny;
           deny.hash = req->hash;
@@ -329,26 +353,25 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
   if (kind == FileKind::RangeRequest) {
     if (auto req = FileRangeRequest::decode(payload)) {
       std::optional<FileEntry> entry;
-      if (file_index_) entry = file_index_->find_by_hash(req->hash);
+      if (file_index_)
+        entry = file_index_->find_by_hash(req->hash);
       if (!entry) {
         for (const auto& [uid, catalog] : member_catalog_) {
           (void)uid;
-          const auto found = std::find_if(
-              catalog.begin(), catalog.end(),
-              [&](const FileEntry& item) { return item.hash == req->hash; });
+          const auto found =
+              std::find_if(catalog.begin(), catalog.end(), [&](const FileEntry& item) {
+                return item.hash == req->hash;
+              });
           if (found != catalog.end()) {
             entry = *found;
             break;
           }
         }
       }
-      if (entry && file_access_ &&
-          member.user_id != owner_.public_key) {
+      if (entry && file_access_ && member.user_id != owner_.public_key) {
         const uint32_t perms = file_access_->permissions_for(
-            file_scope_, member.user_id, entry->root_path,
-            entry->relative_path);
-        if (!FileAccessStore::has_permission(
-                perms, FilePermission::Download)) {
+            file_scope_, member.user_id, entry->root_path, entry->relative_path);
+        if (!FileAccessStore::has_permission(perms, FilePermission::Download)) {
           FileDeny deny;
           deny.hash = req->hash;
           deny.reason = "нет права скачивания";
@@ -356,8 +379,7 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
           return;
         }
       }
-      if (file_index_ &&
-          file_index_->find_for_session(req->hash, file_scope_)) {
+      if (file_index_ && file_index_->find_for_session(req->hash, file_scope_)) {
         file_service_for(member).handle_bulk(payload);
         return;
       }
@@ -375,15 +397,19 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
 
 FileTransferService& GroupHub::file_service_for(HubMember& member) {
   auto it = file_services_.find(&member);
-  if (it != file_services_.end()) return *it->second;
+  if (it != file_services_.end())
+    return *it->second;
 
-  auto fs = std::make_unique<FileTransferService>(member.connection, *file_index_,
-                                                  default_downloads_dir());
+  auto fs = std::make_unique<FileTransferService>(
+      member.connection, *file_index_, default_downloads_dir());
   fs->set_share_scope(file_scope_);
   fs->announce_capabilities();
-  if (on_event_) fs->set_on_event(on_event_);
-  if (on_file_complete_) fs->set_on_complete(on_file_complete_);
-  if (on_file_progress_) fs->set_on_progress(on_file_progress_);
+  if (on_event_)
+    fs->set_on_event(on_event_);
+  if (on_file_complete_)
+    fs->set_on_complete(on_file_complete_);
+  if (on_file_progress_)
+    fs->set_on_progress(on_file_progress_);
   it = file_services_.emplace(&member, std::move(fs)).first;
   return *it->second;
 }
@@ -397,19 +423,20 @@ HubMember* GroupHub::find_member(const std::string& host, uint16_t port) {
   return nullptr;
 }
 
-bool GroupHub::try_accept(const std::string& host, uint16_t port,
-                          const ByteBuffer& first_packet) {
-  if (find_member(host, port)) return false;
+bool GroupHub::try_accept(const std::string& host, uint16_t port, const ByteBuffer& first_packet) {
+  if (find_member(host, port))
+    return false;
 
   auto conn = Connection::accept_responder(socket_, host, port, &first_packet);
-  if (!conn) return false;
+  if (!conn)
+    return false;
 
-  // push_back может переаллоцировать vector — указатели HubMember* в map становятся висячими.
   file_services_.clear();
   active_relay_.reset();
-  HubMember member{std::move(*conn), {}, "", false};
+  HubMember member {std::move(*conn), {}, "", false};
   members_.push_back(std::move(member));
-  if (on_event_) on_event_("входящее соединение " + host + ':' + std::to_string(port));
+  if (on_event_)
+    on_event_("входящее соединение " + host + ':' + std::to_string(port));
   return true;
 }
 
@@ -438,19 +465,26 @@ ChatMessage GroupHub::make_owner_message(const std::string& text) const {
 
 void GroupHub::broadcast_to_members(const ByteBuffer& payload, HubMember* skip) {
   for (auto& m : members_) {
-    if (!m.joined) continue;
-    if (skip && &m == skip) continue;
-    if (m.connection.state() != ConnectionState::Established) continue;
+    if (!m.joined)
+      continue;
+    if (skip && &m == skip)
+      continue;
+    if (m.connection.state() != ConnectionState::Established)
+      continue;
     m.connection.send_payload(kChatStream, payload);
   }
 }
 
 bool GroupHub::send_call_frame(const ByteBuffer& frame, const UserId* skip_user) {
-  if (!is_call_frame(frame)) return false;
+  if (!is_call_frame(frame))
+    return false;
   for (auto& m : members_) {
-    if (!m.joined) continue;
-    if (skip_user && m.user_id == *skip_user) continue;
-    if (m.connection.state() != ConnectionState::Established) continue;
+    if (!m.joined)
+      continue;
+    if (skip_user && m.user_id == *skip_user)
+      continue;
+    if (m.connection.state() != ConnectionState::Established)
+      continue;
     m.connection.send_payload(kChatStream, frame);
   }
   return true;
@@ -463,33 +497,38 @@ void GroupHub::distribute_call_mesh_intros(const CallId& call_id,
   };
   CallRosterMessage roster;
   roster.call_id = call_id;
-  if (included(owner_.public_key)) roster.participants.push_back(owner_.public_key);
+  if (included(owner_.public_key))
+    roster.participants.push_back(owner_.public_key);
   for (const auto& m : members_) {
-    if (!m.joined || !included(m.user_id)) continue;
+    if (!m.joined || !included(m.user_id))
+      continue;
     roster.participants.push_back(m.user_id);
-    if (roster.participants.size() >= kMaxCallParticipants) break;
+    if (roster.participants.size() >= kMaxCallParticipants)
+      break;
   }
   send_call_frame(roster.encode());
 
-  auto send_intro = [&](HubMember& target, const UserId& uid, const std::string& host,
-                        uint16_t port) {
-    CallPeerIntroMessage intro;
-    intro.call_id = call_id;
-    intro.peer.user_id = uid;
-    intro.peer.host = host;
-    intro.peer.port = port;
-    target.connection.send_payload(kChatStream, intro.encode());
-  };
+  auto send_intro =
+      [&](HubMember& target, const UserId& uid, const std::string& host, uint16_t port) {
+        CallPeerIntroMessage intro;
+        intro.call_id = call_id;
+        intro.peer.user_id = uid;
+        intro.peer.host = host;
+        intro.peer.port = port;
+        target.connection.send_payload(kChatStream, intro.encode());
+      };
 
   const std::string owner_host = guess_lan_ipv4();
   for (auto& target : members_) {
-    if (!target.joined || !included(target.user_id)) continue;
-    // Owner → member (порт уточнит Endpoint от owner).
+    if (!target.joined || !included(target.user_id))
+      continue;
+
     if (included(owner_.public_key)) {
       send_intro(target, owner_.public_key, owner_host, socket_.local_port());
     }
     for (const auto& src : members_) {
-      if (!src.joined || !included(src.user_id) || src.user_id == target.user_id) continue;
+      if (!src.joined || !included(src.user_id) || src.user_id == target.user_id)
+        continue;
       send_intro(target, src.user_id, src.connection.peer_host(), src.connection.peer_port());
     }
   }
@@ -498,48 +537,30 @@ void GroupHub::distribute_call_mesh_intros(const CallId& call_id,
 bool GroupHub::send_realtime_all(const ByteBuffer& data) {
   bool any = false;
   for (auto& m : members_) {
-    if (!m.joined) continue;
-    if (m.connection.send_realtime(data)) any = true;
+    if (!m.joined)
+      continue;
+    if (m.connection.send_realtime(data))
+      any = true;
   }
   return any;
 }
 
-void GroupHub::drain_realtime(const std::function<void(ByteBuffer)>& on_frame) {
-  if (!on_frame) return;
-  for (auto& m : members_) {
-    if (!m.joined) continue;
-    ByteBuffer raw;
-    while (m.connection.recv_realtime(raw)) on_frame(std::move(raw));
-  }
-}
-
 void GroupHub::relay_realtime(const std::function<void(const UserId& from, ByteBuffer)>& on_local) {
   for (auto& m : members_) {
-    if (!m.joined) continue;
+    if (!m.joined)
+      continue;
     ByteBuffer raw;
     while (m.connection.recv_realtime(raw)) {
-      if (on_local) on_local(m.user_id, raw);
+      if (on_local)
+        on_local(m.user_id, raw);
       for (auto& o : members_) {
-        if (!o.joined || o.user_id == m.user_id) continue;
-        if (o.connection.state() != ConnectionState::Established) continue;
+        if (!o.joined || o.user_id == m.user_id)
+          continue;
+        if (o.connection.state() != ConnectionState::Established)
+          continue;
         o.connection.send_realtime(raw);
       }
     }
-  }
-}
-
-void GroupHub::relay_message(const ChatMessage& msg, const UserId* exclude_author) {
-  (void)exclude_author;
-  store_.append(to_stored(msg, msg.author_id == owner_.public_key));
-  if (on_message_) {
-    on_message_(msg, msg.author_id == owner_.public_key);
-  }
-  const ByteBuffer wire = msg.encode();
-  for (auto& m : members_) {
-    if (!m.joined) continue;
-    if (m.user_id == msg.author_id) continue;
-    if (m.connection.state() != ConnectionState::Established) continue;
-    m.connection.send_payload(kChatStream, wire);
   }
 }
 
@@ -577,7 +598,8 @@ void GroupHub::complete_join(HubMember& member) {
       break;
     }
   }
-  if (!found) group_.members.push_back(rec);
+  if (!found)
+    group_.members.push_back(rec);
 
   {
     GroupStore store;
@@ -625,8 +647,10 @@ void GroupHub::broadcast_meta() {
   broadcast_to_members(meta.encode(), nullptr);
 }
 
-bool GroupHub::publish_meta(const std::string& description, const std::string& direction,
-                            const std::string& tags, GroupVisibility visibility) {
+bool GroupHub::publish_meta(const std::string& description,
+                            const std::string& direction,
+                            const std::string& tags,
+                            GroupVisibility visibility) {
   group_.description = description;
   group_.direction = direction;
   group_.tags = tags;
@@ -642,17 +666,22 @@ bool GroupHub::publish_meta(const std::string& description, const std::string& d
 }
 
 GroupRole GroupHub::role_of(const UserId& user_id) const {
-  if (user_id == owner_.public_key) return GroupRole::Owner;
+  if (user_id == owner_.public_key)
+    return GroupRole::Owner;
   for (const auto& m : group_.members) {
-    if (m.user_id == user_id) return m.role;
+    if (m.user_id == user_id)
+      return m.role;
   }
   return GroupRole::Member;
 }
 
 bool GroupHub::set_member_role(const UserId& user_id, GroupRole role) {
-  if (user_id == owner_.public_key) return false;
-  if (role == GroupRole::Owner) return false;
-  if (role != GroupRole::Member && role != GroupRole::Host) return false;
+  if (user_id == owner_.public_key)
+    return false;
+  if (role == GroupRole::Owner)
+    return false;
+  if (role != GroupRole::Member && role != GroupRole::Host)
+    return false;
 
   GroupMemberRecord* rec = nullptr;
   for (auto& m : group_.members) {
@@ -661,7 +690,8 @@ bool GroupHub::set_member_role(const UserId& user_id, GroupRole role) {
       break;
     }
   }
-  if (!rec) return false;
+  if (!rec)
+    return false;
   rec->role = role;
 
   {
@@ -675,26 +705,31 @@ bool GroupHub::set_member_role(const UserId& user_id, GroupRole role) {
   notice.member = *rec;
   broadcast_to_members(notice.encode(), nullptr);
   if (on_event_) {
-    on_event_(rec->nickname + (role == GroupRole::Host ? " — ведущий звонков"
-                                                       : " — обычный участник"));
+    on_event_(rec->nickname +
+              (role == GroupRole::Host ? " — ведущий звонков" : " — обычный участник"));
   }
   return true;
 }
 
 void GroupHub::send_file_access_policy(HubMember& member) {
-  if (!file_access_) return;
+  if (!file_access_)
+    return;
   const GroupFileAccess* policy = file_access_->find_policy(file_scope_);
-  if (!policy) return;
+  if (!policy)
+    return;
   member.connection.send_payload(kBulkStream, encode_policy_push(*policy));
 }
 
 void GroupHub::broadcast_file_access_policy() {
-  if (!file_access_) return;
+  if (!file_access_)
+    return;
   const GroupFileAccess* policy = file_access_->find_policy(file_scope_);
-  if (!policy) return;
+  if (!policy)
+    return;
   const ByteBuffer wire = encode_policy_push(*policy);
   for (auto& m : members_) {
-    if (!m.joined) continue;
+    if (!m.joined)
+      continue;
     m.connection.send_payload(kBulkStream, wire);
   }
 }
@@ -717,8 +752,8 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
 
   if (auto join = GroupJoinMessage::decode(payload)) {
     const bool id_ok = join->group_id == group_.id;
-    const bool id_empty = std::all_of(join->group_id.begin(), join->group_id.end(),
-                                      [](uint8_t b) { return b == 0; });
+    const bool id_empty =
+        std::all_of(join->group_id.begin(), join->group_id.end(), [](uint8_t b) { return b == 0; });
     if (!id_ok && !id_empty) {
       GroupJoinAckMessage deny;
       deny.accepted = false;
@@ -742,9 +777,12 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
     return;
   }
 
-  if (GroupMemberJoinedMessage::decode(payload)) return;
-  if (GroupMetaMessage::decode(payload)) return;
-  if (GroupJoinAckMessage::decode(payload)) return;
+  if (GroupMemberJoinedMessage::decode(payload))
+    return;
+  if (GroupMetaMessage::decode(payload))
+    return;
+  if (GroupJoinAckMessage::decode(payload))
+    return;
 
   if (auto ack = AckMessage::decode(payload)) {
     if (pending_member_acks_.erase(ack->message_id) > 0 && on_delivery_) {
@@ -762,47 +800,61 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
           break;
         }
       }
-      if (member.user_id == owner_.public_key) role = GroupRole::Owner;
+      if (member.user_id == owner_.public_key)
+        role = GroupRole::Owner;
       if (!can_start_field_call(role)) {
         CallRejectMessage rej;
         rej.call_id = inv->call_id;
         rej.reason = CallRejectReason::Unsupported;
         member.connection.send_payload(kChatStream, rej.encode());
-        if (on_event_) on_event_("отклонён старт звонка: нет роли ведущего");
+        if (on_event_)
+          on_event_("отклонён старт звонка: нет роли ведущего");
         return;
       }
     }
-    if (on_call_frame_) on_call_frame_(member.user_id, payload);
+    if (on_call_frame_)
+      on_call_frame_(member.user_id, payload);
     for (auto& m : members_) {
-      if (!m.joined) continue;
-      if (m.user_id == member.user_id) continue;
-      if (m.connection.state() != ConnectionState::Established) continue;
+      if (!m.joined)
+        continue;
+      if (m.user_id == member.user_id)
+        continue;
+      if (m.connection.state() != ConnectionState::Established)
+        continue;
       m.connection.send_payload(kChatStream, payload);
     }
     return;
   }
 
   if (auto msg = ChatMessage::decode(payload)) {
-    if (msg->chat_id != chat_id_) return;
-    if (!member.joined && msg->author_id != owner_.public_key) return;
+    if (msg->chat_id != chat_id_)
+      return;
+    if (!member.joined && msg->author_id != owner_.public_key)
+      return;
 
     const bool from_owner = msg->author_id == owner_.public_key;
-    if (!from_owner && msg->author_id != member.user_id) return;
+    if (!from_owner && msg->author_id != member.user_id)
+      return;
 
     store_.append(to_stored(*msg, from_owner));
-    if (on_message_) on_message_(*msg, from_owner);
+    if (on_message_)
+      on_message_(*msg, from_owner);
 
     const ByteBuffer wire = msg->encode();
     if (from_owner) {
       broadcast_to_members(wire, nullptr);
     } else {
       for (auto& m : members_) {
-        if (!m.joined) continue;
-        if (m.user_id == member.user_id) continue;
-        if (m.connection.state() != ConnectionState::Established) continue;
+        if (!m.joined)
+          continue;
+        if (m.user_id == member.user_id)
+          continue;
+        if (m.connection.state() != ConnectionState::Established)
+          continue;
         m.connection.send_payload(kChatStream, wire);
       }
-      if (on_event_) on_event_("relay «" + msg->text + "» от " + msg->author);
+      if (on_event_)
+        on_event_("relay «" + msg->text + "» от " + msg->author);
     }
 
     AckMessage ack;
@@ -815,17 +867,20 @@ void GroupHub::handle_chat_payload(HubMember& member, const ByteBuffer& payload)
 bool GroupHub::send_message(const std::string& text) {
   ChatMessage msg = make_owner_message(text);
   store_.append(to_stored(msg, true));
-  if (on_message_) on_message_(msg, true);
+  if (on_message_)
+    on_message_(msg, true);
   const ByteBuffer wire = msg.encode();
 
   int live_joined = 0;
   for (const auto& m : members_) {
-    if (m.joined && m.connection.state() == ConnectionState::Established) ++live_joined;
+    if (m.joined && m.connection.state() == ConnectionState::Established)
+      ++live_joined;
   }
   broadcast_to_members(wire, nullptr);
   if (live_joined == 0) {
-    // Никого в эфире — сообщение в локальной истории (уедет с history при join).
-    if (on_delivery_) on_delivery_(msg.id, DeliveryStatus::Delivered);
+
+    if (on_delivery_)
+      on_delivery_(msg.id, DeliveryStatus::Delivered);
   } else {
     pending_member_acks_.insert(msg.id);
   }
@@ -838,7 +893,8 @@ void GroupHub::poll() {
   std::string host;
   uint16_t port = 0;
   while (auto pkt = socket_.recv_from(host, port, 0)) {
-    if (is_punch_datagram(*pkt)) continue;
+    if (is_punch_datagram(*pkt))
+      continue;
 
     if (is_handshake_datagram(*pkt)) {
       if (!find_member(host, port)) {
@@ -893,7 +949,7 @@ void GroupHub::drop_stale_members() {
     removed = true;
   }
   if (removed) {
-    // Указатели HubMember* в map после erase невалидны.
+
     file_services_.clear();
     rebuild_hash_providers();
   }
@@ -904,18 +960,22 @@ void GroupHub::notify_shutdown(const std::string& reason) {
   bye.reason = reason;
   const ByteBuffer wire = bye.encode();
   for (auto& m : members_) {
-    if (!m.joined) continue;
-    if (m.connection.state() != ConnectionState::Established) continue;
+    if (!m.joined)
+      continue;
+    if (m.connection.state() != ConnectionState::Established)
+      continue;
     m.connection.send_payload(kChatStream, wire);
     m.connection.drive_without_recv();
   }
 }
 
 bool GroupHub::remove_member(const UserId& user_id) {
-  if (user_id == owner_.public_key) return false;
+  if (user_id == owner_.public_key)
+    return false;
 
   group_.members.erase(
-      std::remove_if(group_.members.begin(), group_.members.end(),
+      std::remove_if(group_.members.begin(),
+                     group_.members.end(),
                      [&](const GroupMemberRecord& m) { return m.user_id == user_id; }),
       group_.members.end());
 
@@ -944,4 +1004,4 @@ bool GroupHub::remove_member(const UserId& user_id) {
   return true;
 }
 
-}  // namespace nyx
+} // namespace nyx

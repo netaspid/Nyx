@@ -2,10 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/**
- * Теги-облачка: пробел / Enter / запятая создают чип; Backspace на пустом — снять последний.
- * tagsText — строка через запятую (совместимо с хранилищем меты).
- */
 Item {
     id: root
     required property var theme
@@ -170,7 +166,7 @@ Item {
                 }
 
                 onTextChanged: {
-                    // IME / вставка: «a b», «a,b»
+
                     if (/[\s,;]/.test(text))
                         Qt.callLater(function() { root.commitInput() })
                 }

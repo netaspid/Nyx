@@ -1,0 +1,19 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  misc-unused-using-decls,
+  misc-unused-parameters,
+  misc-redundant-expression,
+  readability-braces-around-statements,
+  readability-container-size-empty,
+  readability-duplicate-include,
+  readability-misleading-indentation,
+  performance-unnecessary-copy-initialization,
+  performance-for-range-copy
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*(src|include/nyx|apps|tests)/.*'
+FormatStyle: file
+...

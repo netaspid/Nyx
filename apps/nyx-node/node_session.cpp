@@ -7,8 +7,8 @@
 #include "nyx/identity.hpp"
 #include "nyx/mdns.hpp"
 #include "nyx/nat.hpp"
-#include "nyx/paths.hpp"
 #include "nyx/network_config.hpp"
+#include "nyx/paths.hpp"
 #include "nyx/rendezvous_pool.hpp"
 #include "nyx/util.hpp"
 
@@ -26,22 +26,22 @@ nyx::Profile load_profile_for_session(const NodeConfig& config) {
   return nyx::load_or_create_profile(path, config.nickname);
 }
 
-}  // namespace
+} // namespace
 
 int run_listen(const NodeConfig& config) {
   const auto profile = load_profile_for_session(config);
   CliConsole ui(profile.nickname);
-  ui.print_event("профиль: " + profile.nickname + " (id: " +
-                 nyx::short_user_id(profile.user_id()) + ")");
+  ui.print_event("профиль: " + profile.nickname + " (id: " + nyx::short_user_id(profile.user_id()) +
+                 ")");
 
-  nyx::InviteToken token{};
+  nyx::InviteToken token {};
   nyx::random_bytes(token.data(), token.size());
 
   nyx::UdpSocket socket;
   std::string bind_error;
   if (!socket.bind(config.bind_host, config.bind_port, &bind_error)) {
-    std::cerr << "не удалось привязать UDP-сокет (" << config.bind_host << ':'
-              << config.bind_port << "): " << bind_error << '\n';
+    std::cerr << "не удалось привязать UDP-сокет (" << config.bind_host << ':' << config.bind_port
+              << "): " << bind_error << '\n';
     return 1;
   }
 
@@ -68,8 +68,8 @@ int run_listen(const NodeConfig& config) {
   }
 
   ui.print_event("invite token: " + nyx::to_hex(token.data(), token.size()));
-  ui.print_event("ожидание подключения (UDP :" +
-                 std::to_string(pool.socket().local_port()) + ")...");
+  ui.print_event("ожидание подключения (UDP :" + std::to_string(pool.socket().local_port()) +
+                 ")...");
 
   const auto refresh = std::chrono::seconds(net_cfg.register_refresh_sec);
   auto last_register = std::chrono::steady_clock::now();
@@ -84,8 +84,10 @@ int run_listen(const NodeConfig& config) {
       last_register = now;
     }
     auto packet = pool.socket().recv_from(peer_host, peer_port, 1000);
-    if (!packet) continue;
-    if (nyx::is_punch_datagram(*packet)) continue;
+    if (!packet)
+      continue;
+    if (nyx::is_punch_datagram(*packet))
+      continue;
     if (nyx::is_handshake_datagram(*packet)) {
       first_packet = std::move(*packet);
       break;
@@ -107,15 +109,15 @@ int run_listen(const NodeConfig& config) {
 int run_connect(const std::string& token_hex, const NodeConfig& config) {
   const auto profile = load_profile_for_session(config);
   CliConsole ui(profile.nickname);
-  ui.print_event("профиль: " + profile.nickname + " (id: " +
-                 nyx::short_user_id(profile.user_id()) + ")");
+  ui.print_event("профиль: " + profile.nickname + " (id: " + nyx::short_user_id(profile.user_id()) +
+                 ")");
 
   nyx::ByteBuffer token_bytes;
   if (!nyx::from_hex(token_hex, token_bytes) || token_bytes.size() != 32) {
     std::cerr << "token должен быть 64 hex-символа (32 байта)\n";
     return 1;
   }
-  nyx::InviteToken token{};
+  nyx::InviteToken token {};
   std::memcpy(token.data(), token_bytes.data(), 32);
 
   nyx::UdpSocket socket;
@@ -148,8 +150,7 @@ int run_connect(const std::string& token_hex, const NodeConfig& config) {
 
   auto result = nyx_app::connect_via_rendezvous_hint(pool.socket(), *hint);
   if (!result.connection) {
-    ui.print_event("handshake не завершён с " + peer_host + ':' +
-                   std::to_string(hint->port));
+    ui.print_event("handshake не завершён с " + peer_host + ':' + std::to_string(hint->port));
     return 1;
   }
 
@@ -173,8 +174,8 @@ int run_connect_peer(const NodeConfig& config) {
 
   const auto profile = load_profile_for_session(config);
   CliConsole ui(profile.nickname);
-  ui.print_event("профиль: " + profile.nickname + " (id: " +
-                 nyx::short_user_id(profile.user_id()) + ")");
+  ui.print_event("профиль: " + profile.nickname + " (id: " + nyx::short_user_id(profile.user_id()) +
+                 ")");
   ui.print_event("подключение к " + peer_host + ':' + std::to_string(peer_port) + "...");
 
   nyx::UdpSocket socket;
@@ -184,8 +185,7 @@ int run_connect_peer(const NodeConfig& config) {
     return 1;
   }
 
-  auto connection =
-      nyx::Connection::connect_initiator(std::move(socket), peer_host, peer_port);
+  auto connection = nyx::Connection::connect_initiator(std::move(socket), peer_host, peer_port);
   if (!connection) {
     ui.print_event("handshake не завершён с " + peer_host + ':' + std::to_string(peer_port));
     return 1;
@@ -212,12 +212,12 @@ int run_browse(int timeout_ms) {
   }
 
   for (const auto& peer : peers) {
-    std::cout << "  " << peer.instance << "  id:" << peer.user_id_short << "  "
-              << peer.host << ':' << peer.port << '\n';
+    std::cout << "  " << peer.instance << "  id:" << peer.user_id_short << "  " << peer.host << ':'
+              << peer.port << '\n';
   }
   std::cout << "\nПодключение: nyx-node connect --peer " << peers.front().host << ':'
             << peers.front().port << '\n';
   return 0;
 }
 
-}  // namespace nyx_node
+} // namespace nyx_node

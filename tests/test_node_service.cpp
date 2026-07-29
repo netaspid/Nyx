@@ -1,8 +1,9 @@
 #include "node_service.hpp"
 
-#include "nyx/identity.hpp"
-#include "nyx/group.hpp"
 #include "nyx/file_index.hpp"
+#include "nyx/group.hpp"
+#include "nyx/identity.hpp"
+#include "nyx/json_text.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/session_intent.hpp"
 
@@ -42,7 +43,8 @@ static void test_node_service_create_group() {
   assert(!groups.empty());
   bool found = false;
   for (const auto& g : groups) {
-    if (nyx::GroupStore::group_id_hex(g.id) == got_id) found = true;
+    if (nyx::GroupStore::group_id_hex(g.id) == got_id)
+      found = true;
   }
   assert(found);
   std::cout << "node service create group ok\n";
@@ -62,9 +64,12 @@ static void test_chat_media_import_directory() {
     std::ofstream out(source, std::ios::binary | std::ios::trunc);
     out << "voice-payload";
   }
-  auto entry = svc.import_file_object(
-      source, "voice-message.m4a", "audio/mp4", {}, {},
-      "Медиа/Test Chat (12345678)/Голосовые сообщения");
+  auto entry = svc.import_file_object(source,
+                                      "voice-message.m4a",
+                                      "audio/mp4",
+                                      {},
+                                      {},
+                                      "Медиа/Test Chat (12345678)/Голосовые сообщения");
   assert(entry);
   assert(entry->relative_path.find("Медиа/") == 0);
   assert(entry->mime == "audio/mp4");
@@ -115,17 +120,67 @@ static void test_multi_session_hubs_parallel() {
   assert(svc.start_group_hub(a));
   assert(svc.start_group_hub(b));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  // Без локального rendezvous hub может сразу уйти в Offline, но оба id остаются в реестре.
+
   bool has_a = false;
   bool has_b = false;
   for (const auto& s : svc.list_sessions()) {
-    if (s.id == nyx_app::make_group_session_id(a)) has_a = true;
-    if (s.id == nyx_app::make_group_session_id(b)) has_b = true;
+    if (s.id == nyx_app::make_group_session_id(a))
+      has_a = true;
+    if (s.id == nyx_app::make_group_session_id(b))
+      has_b = true;
   }
   assert(has_a && has_b);
   svc.stop_session(nyx_app::make_group_session_id(a));
   svc.stop();
   std::cout << "multi session hubs parallel ok\n";
+}
+
+static void test_is_listening_idle() {
+  nyx_app::NodeService svc;
+  svc.set_nickname("ListenTest");
+  assert(!svc.is_listening());
+  assert(!svc.busy());
+  std::cout << "is_listening idle ok\n";
+}
+
+static void test_stop_session_returns_quickly() {
+  nyx_app::NodeService svc;
+  svc.set_nickname("StopFast");
+  assert(svc.create_group("StopField"));
+  const auto groups = svc.list_groups();
+  assert(!groups.empty());
+  const std::string gid = nyx::GroupStore::group_id_hex(groups.back().id);
+  assert(svc.start_group_hub(gid));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  const std::string sid = nyx_app::make_group_session_id(gid);
+  const auto t0 = std::chrono::steady_clock::now();
+  assert(svc.stop_session(sid));
+  const auto ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0)
+          .count();
+  assert(ms < 500);
+  svc.stop();
+  std::cout << "stop_session returns quickly ok\n";
+}
+
+static void test_files_ui_state_limited() {
+  nyx_app::NodeService svc;
+  svc.save_files_scope_group_id("deadbeef");
+  svc.save_files_selected_root("/tmp/share");
+  assert(svc.load_files_scope_group_id() == "deadbeef");
+  assert(svc.load_files_selected_root() == "/tmp/share");
+
+  const std::string path = nyx::data_dir() + "/files_ui.json";
+  {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << "{\"scope_group_id\":\"keep\",\"selected_root\":\"/x\"}\n";
+  }
+  std::error_code ec;
+  std::filesystem::resize_file(path, nyx::kMaxJsonStoreBytes + 1, ec);
+  assert(!ec);
+  assert(svc.load_files_scope_group_id().empty());
+  assert(svc.load_files_selected_root().empty());
+  std::cout << "files ui state limited ok\n";
 }
 
 int main() {
@@ -138,7 +193,10 @@ int main() {
   test_node_service_callbacks();
   test_chat_media_import_directory();
   test_session_intent_store();
+  test_is_listening_idle();
   test_multi_session_hubs_parallel();
+  test_stop_session_returns_quickly();
+  test_files_ui_state_limited();
   nyx::set_base_data_root({});
   std::filesystem::remove_all(test_data_root);
   std::cout << "node service tests passed\n";

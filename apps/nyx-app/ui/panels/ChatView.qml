@@ -14,14 +14,13 @@ Item {
     required property var formatMsgTimeFn
 
     property bool composerPreview: false
-    /** Облачко форматирования видно (в потоке layout, не Overlay). */
+
     property bool markdownToolsOpen: false
-    /** Не сбрасывать тулбар/превью при клике по кнопкам композера (Aa, эмодзи…). */
+
     property bool composerToolsSticky: false
     property string composerChatKey: ""
     property string contextMessageText: ""
     readonly property bool narrowHeader: width < 600 || Qt.platform.os === "android"
-
 
     function openChatMeta() {
         if (node.activeChatKind === 1)
@@ -72,7 +71,7 @@ Item {
         root.markdownToolsOpen = false
     }
 
-    /** Дефолтный ввод: без Aa-превью и без облачка форматирования. */
+
     function resetComposerTools() {
         composerResetTimer.stop()
         root.composerToolsSticky = false
@@ -209,21 +208,21 @@ Item {
 
             IconButton {
                 visible: node.peerTitle.length > 0
-                         && (node.canStartCall || node.activeChatKind === 1)
+                         && (node.call.canStartCall || node.activeChatKind === 1)
                 theme: root.theme
                 name: "phone"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть аудиокомнату")
                                                        : qsTr("Аудиозвонок")
-                onClicked: node.startCall(false)
+                onClicked: node.call.startCall(false)
             }
             IconButton {
                 visible: node.peerTitle.length > 0
-                         && (node.canStartCall || node.activeChatKind === 1)
+                         && (node.call.canStartCall || node.activeChatKind === 1)
                 theme: root.theme
                 name: "video"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть видеокомнату")
                                                        : qsTr("Видеозвонок")
-                onClicked: node.startCall(true)
+                onClicked: node.call.startCall(true)
             }
 
             IconButton {
@@ -305,10 +304,10 @@ Item {
         ProgressBar {
             Layout.fillWidth: true
             Layout.preferredHeight: 4
-            visible: node.fileProgressVisible
+            visible: node.files.fileProgressVisible
             from: 0
             to: 100
-            value: node.fileProgressPercent
+            value: node.files.fileProgressPercent
         }
 
         Rectangle {
@@ -332,7 +331,7 @@ Item {
                 anchors.rightMargin: theme.spacing
                 spacing: 6
 
-                // В потоке над полем — не перекрывает превью/текст
+
                 MarkdownToolbar {
                     id: mdToolbar
                     Layout.alignment: Qt.AlignLeft
@@ -356,7 +355,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                // Единая оболочка: в превью — сверху «так увидят», снизу ввод
+
                 Rectangle {
                     id: composerShell
                     Layout.fillWidth: true
@@ -367,7 +366,7 @@ Item {
                         const bubbleH = Math.min(
                             160,
                             Math.max(36, composerPreviewBody.implicitHeight + 16 + 18))
-                        const previewH = 14 + bubbleH // подпись + облачко
+                        const previewH = 14 + bubbleH
                         return Math.min(420, 12 + previewH + 9 + editorH)
                     }
                     radius: 18
@@ -382,7 +381,6 @@ Item {
                         anchors.margins: 6
                         spacing: 0
 
-                        // —— верх: превью по размеру текста ——
                         ColumnLayout {
                             id: previewSection
                             Layout.fillWidth: true
@@ -443,7 +441,6 @@ Item {
                             color: theme.border
                         }
 
-                        // —— низ: редактор ——
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -465,8 +462,8 @@ Item {
                                 name: "image"
                                 btnSize: 36
                                 enabled: node.canSendMessage
-                                         && (node.callState === "idle"
-                                             || node.callState === "ended")
+                                         && (node.call.callState === "idle"
+                                             || node.call.callState === "ended")
                                 ToolTip.text: qsTr("Камера: фото или видео")
                                 onPressed: root.holdComposerToolsBriefly()
                                 onClicked: root.openMediaCapture()
@@ -478,8 +475,8 @@ Item {
                                 name: node.chatMediaRecorder.recording ? "stop" : "mic"
                                 btnSize: 36
                                 enabled: node.canSendMessage
-                                         && (node.callState === "idle"
-                                             || node.callState === "ended")
+                                         && (node.call.callState === "idle"
+                                             || node.call.callState === "ended")
                                          && node.chatMediaRecorder.state !== "starting"
                                          && node.chatMediaRecorder.state !== "stopping"
                                 accent: node.chatMediaRecorder.recording
@@ -654,12 +651,12 @@ Item {
                         onClicked: sendMsg()
                     }
                 }
-                } // RowLayout shell+send
-            } // ColumnLayout composerCol
+                }
+            }
         }
     }
 
-    } // ColumnLayout
+    }
 
     Timer {
         id: mdIdleTimer
@@ -699,7 +696,7 @@ Item {
     Connections {
         target: node
         function onChatChanged() {
-            // chatChanged шумный — сбрасываем только при смене чата
+
             const key = node.activeChatKey
             if (key === root.composerChatKey)
                 return
@@ -1090,7 +1087,7 @@ Item {
     }
 
     function openMediaCapture() {
-        // Lazy: Camera/MediaRecorder crash on Android if created at ChatView load.
+
         captureDestroyTimer.stop()
         mediaCaptureLoader.active = true
         Qt.callLater(function() {

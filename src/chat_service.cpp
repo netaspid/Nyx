@@ -9,9 +9,7 @@
 namespace nyx {
 
 ChatService::ChatService(Connection& connection, Profile profile, PeerInfo peer)
-    : connection_(connection),
-      profile_(std::move(profile)),
-      peer_(std::move(peer)),
+    : connection_(connection), profile_(std::move(profile)), peer_(std::move(peer)),
       chat_id_(dm_chat_id(profile_.public_key, peer_.user_id)),
       store_(MessageStore::path_for_chat(chat_id_)) {}
 
@@ -39,11 +37,13 @@ StoredMessage ChatService::to_stored(const ChatMessage& msg, bool outgoing) cons
 }
 
 bool ChatService::send_message(const std::string& text, uint64_t* out_id) {
-  if (!connected_) return false;
+  if (!connected_)
+    return false;
 
   ChatMessage msg = make_message(text);
   const ByteBuffer wire = msg.encode();
-  if (!connection_.send_payload(kChatStream, wire)) return false;
+  if (!connection_.send_payload(kChatStream, wire))
+    return false;
 
   PendingMessage pending;
   pending.message = msg;
@@ -51,19 +51,23 @@ bool ChatService::send_message(const std::string& text, uint64_t* out_id) {
   outbox_.track(std::move(pending));
   store_.append(to_stored(msg, true));
 
-  if (on_message_) on_message_(msg, true);
-  if (out_id) *out_id = msg.id;
+  if (on_message_)
+    on_message_(msg, true);
+  if (out_id)
+    *out_id = msg.id;
   return true;
 }
 
 bool ChatService::send_call_frame(const ByteBuffer& frame) {
-  if (!connected_ || !is_call_frame(frame)) return false;
+  if (!connected_ || !is_call_frame(frame))
+    return false;
   return connection_.send_payload(kChatStream, frame);
 }
 
 void ChatService::deliver_incoming(ChatMessage msg) {
   store_.append(to_stored(msg, false));
-  if (on_message_) on_message_(msg, false);
+  if (on_message_)
+    on_message_(msg, false);
 
   AckMessage ack;
   ack.message_id = msg.id;
@@ -73,23 +77,26 @@ void ChatService::deliver_incoming(ChatMessage msg) {
 void ChatService::handle_payload(const ByteBuffer& payload) {
   if (auto bye = ByeMessage::decode(payload)) {
     connected_ = false;
-    const std::string reason =
-        bye->reason.empty() ? "собеседник завершил сессию" : bye->reason;
-    if (on_event_) on_event_(peer_.nickname + " отключился: " + reason);
+    const std::string reason = bye->reason.empty() ? "собеседник завершил сессию" : bye->reason;
+    if (on_event_)
+      on_event_(peer_.nickname + " отключился: " + reason);
     return;
   }
 
   if (auto ack = AckMessage::decode(payload)) {
     if (outbox_.on_ack(ack->message_id)) {
-      if (on_delivery_) on_delivery_(ack->message_id, DeliveryStatus::Delivered);
+      if (on_delivery_)
+        on_delivery_(ack->message_id, DeliveryStatus::Delivered);
     }
     return;
   }
 
-  if (decode_hello_message(payload)) return;
+  if (decode_hello_message(payload))
+    return;
 
   if (is_call_frame(payload)) {
-    if (on_call_frame_) on_call_frame_(payload);
+    if (on_call_frame_)
+      on_call_frame_(payload);
     return;
   }
 
@@ -112,22 +119,27 @@ void ChatService::handle_payload(const ByteBuffer& payload) {
 }
 
 void ChatService::retry_pending() {
-  if (!connected_) return;
+  if (!connected_)
+    return;
 
   const auto now = std::chrono::steady_clock::now();
   for (const uint64_t id : outbox_.due_for_retry(now)) {
     const PendingMessage* pending = outbox_.find(id);
-    if (!pending) continue;
+    if (!pending)
+      continue;
 
     if (!connection_.send_payload(kChatStream, pending->wire)) {
       connected_ = false;
-      if (on_event_) on_event_("ошибка повторной отправки");
+      if (on_event_)
+        on_event_("ошибка повторной отправки");
       return;
     }
 
     if (!outbox_.mark_retried(id, now)) {
-      if (on_delivery_) on_delivery_(id, DeliveryStatus::Failed);
-      if (on_event_) on_event_("не удалось доставить сообщение #" + std::to_string(id));
+      if (on_delivery_)
+        on_delivery_(id, DeliveryStatus::Failed);
+      if (on_event_)
+        on_event_("не удалось доставить сообщение #" + std::to_string(id));
     }
   }
 }
@@ -157,9 +169,8 @@ std::vector<StoredMessage> ChatService::history(std::size_t count) const {
   return store_.recent(count);
 }
 
-std::vector<StoredMessage> ChatService::search(const std::string& query,
-                                             std::size_t limit) const {
+std::vector<StoredMessage> ChatService::search(const std::string& query, std::size_t limit) const {
   return store_.search(query, limit);
 }
 
-}  // namespace nyx
+} // namespace nyx

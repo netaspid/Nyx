@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file session_types.hpp
- *  Типы сетевых сессий AppCore (multi-session).
- */
-
 #include <cstdint>
 #include <string>
 
@@ -25,7 +21,6 @@ enum class SessionState : uint8_t {
   Disconnected = 4,
 };
 
-/** Снимок сессии для UI / status bar. */
 struct SessionInfo {
   std::string id;
   SessionKind kind = SessionKind::Idle;
@@ -36,16 +31,16 @@ struct SessionInfo {
 
 inline const char* session_state_name(SessionState s) {
   switch (s) {
-    case SessionState::Connecting:
-      return "connecting";
-    case SessionState::Live:
-      return "live";
-    case SessionState::Offline:
-      return "offline";
-    case SessionState::Disconnected:
-      return "disconnected";
-    default:
-      return "idle";
+  case SessionState::Connecting:
+    return "connecting";
+  case SessionState::Live:
+    return "live";
+  case SessionState::Offline:
+    return "offline";
+  case SessionState::Disconnected:
+    return "disconnected";
+  default:
+    return "idle";
   }
 }
 
@@ -59,4 +54,4 @@ inline std::string make_group_session_id(const std::string& group_hex) {
 
 inline constexpr const char* kDmInboxSessionId = "inbox";
 
-}  // namespace nyx_app
+} // namespace nyx_app

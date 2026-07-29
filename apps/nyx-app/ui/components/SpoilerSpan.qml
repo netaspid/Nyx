@@ -1,6 +1,5 @@
 import QtQuick
 
-/** Спойлер в духе Telegram: точки поверх цвета пузыря, клик — раскрыть. */
 Item {
     id: root
     property string body: ""
@@ -36,7 +35,7 @@ Item {
         visible: root.revealed
     }
 
-    // Скрытое измерение ширины
+
     Text {
         id: measure
         visible: false
@@ -63,7 +62,6 @@ Item {
                 const w = width
                 const h = height
                 if (w < 2 || h < 2) return
-                // Светлые точки как в Telegram
                 const r = root.textColor.r
                 const g = root.textColor.g
                 const b = root.textColor.b

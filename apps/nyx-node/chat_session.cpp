@@ -3,11 +3,11 @@
 #include "cli_console.hpp"
 
 #include "nyx/app.hpp"
-#include "nyx/chat_service.hpp"
-#include "nyx/identity.hpp"
 #include "nyx/chat_id.hpp"
+#include "nyx/chat_service.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_transfer.hpp"
+#include "nyx/identity.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/util.hpp"
 
@@ -35,14 +35,15 @@ std::vector<HistoryLine> to_history_lines(const std::vector<nyx::StoredMessage>&
   return lines;
 }
 
-}  // namespace
+} // namespace
 
-void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
+void run_chat_session(nyx::Connection& connection,
+                      const nyx::Profile& profile,
                       bool incoming_connection) {
   CliConsole ui(profile.nickname);
 
-  const std::string endpoint = connection.peer_host() + ':' +
-                               std::to_string(connection.peer_port());
+  const std::string endpoint =
+      connection.peer_host() + ':' + std::to_string(connection.peer_port());
   if (incoming_connection) {
     ui.print_event("входящее соединение " + endpoint);
   } else {
@@ -57,8 +58,8 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
   }
 
   nyx::remember_contact(peer_hello);
-  ui.print_event(peer_hello.nickname + " в сети (id: " +
-                 nyx::short_user_id(peer_hello.public_key) + ")");
+  ui.print_event(peer_hello.nickname + " в сети (id: " + nyx::short_user_id(peer_hello.public_key) +
+                 ")");
   ui.print_header(peer_hello.nickname, nyx::short_user_id(peer_hello.public_key));
 
   nyx::ChatService::PeerInfo peer;
@@ -83,7 +84,8 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
 
   files.set_on_event([&](const std::string& text) { ui.print_event(text); });
   files.set_on_progress([&](const nyx::FileHash& hash, uint64_t done, uint64_t total) {
-    if (total == 0) return;
+    if (total == 0)
+      return;
     const uint64_t pct = done * 100 / total;
     static uint64_t last_pct = 999;
     static std::string last_hash;
@@ -95,18 +97,18 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
         ui.print_event("файл " + hx + "… " + std::to_string(pct) + "%");
       }
     }
-    if (done == total) last_pct = 999;
+    if (done == total)
+      last_pct = 999;
   });
 
   const auto recent = chat.history(20);
   if (!recent.empty()) {
-    ui.print_event("загружена история (" + std::to_string(recent.size()) +
-                   " сообщений)");
+    ui.print_event("загружена история (" + std::to_string(recent.size()) + " сообщений)");
     ui.print_history(to_history_lines(recent));
   }
 
-  std::atomic<bool> running{true};
-  std::atomic<bool> user_quit{false};
+  std::atomic<bool> running {true};
+  std::atomic<bool> user_quit {false};
 
   std::thread network_thread([&]() {
     while (running.load() && chat.connected()) {
@@ -139,16 +141,15 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
       continue;
     }
     if (line == "/who") {
-      ui.print_event("собеседник: " + peer.nickname + " (id: " +
-                     nyx::to_hex(peer.user_id.data(), peer.user_id.size()) + ")");
+      ui.print_event("собеседник: " + peer.nickname +
+                     " (id: " + nyx::to_hex(peer.user_id.data(), peer.user_id.size()) + ")");
       ui.print_event("chat_id: " + nyx::chat_id_hex(chat.chat_id()));
       ui.print_prompt();
       continue;
     }
     if (line == "/status") {
       ui.print_status(peer.nickname, endpoint, chat.connected());
-      ui.print_event("ожидают доставки: " +
-                     std::to_string(chat.outbox().pending_count()));
+      ui.print_event("ожидают доставки: " + std::to_string(chat.outbox().pending_count()));
       ui.print_prompt();
       continue;
     }
@@ -205,8 +206,8 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
       } else {
         ui.print_event("локальные файлы (" + std::to_string(entries.size()) + "):");
         for (const auto& e : entries) {
-          ui.print_event("  " + nyx::hash_hex(e.hash).substr(0, 8) + "… " +
-                         e.relative_path + " (" + std::to_string(e.size) + " b)");
+          ui.print_event("  " + nyx::hash_hex(e.hash).substr(0, 8) + "… " + e.relative_path + " (" +
+                         std::to_string(e.size) + " b)");
         }
       }
       ui.print_prompt();
@@ -253,7 +254,8 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
     ui.print_event("вы отключились");
   }
 
-  if (network_thread.joinable()) network_thread.join();
+  if (network_thread.joinable())
+    network_thread.join();
 
   if (!chat.connected() && !user_quit.load()) {
     ui.print_event("сессия с " + peer.nickname + " завершена");
@@ -262,4 +264,4 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
   }
 }
 
-}  // namespace nyx_node
+} // namespace nyx_node

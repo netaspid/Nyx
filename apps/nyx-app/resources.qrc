@@ -24,7 +24,6 @@
     <file>ui/panels/FilesPanel.qml</file>
     <file>ui/components/FileListRow.qml</file>
     <file>ui/components/FileAccessAssignPopup.qml</file>
-    <file>ui/components/FieldInfoPopup.qml</file>
     <file>ui/components/InviteCodeRow.qml</file>
     <file>ui/components/TagChip.qml</file>
     <file>ui/components/TagEditor.qml</file>
@@ -35,23 +34,19 @@
     <file>ui/components/MentionPopup.qml</file>
     <file>ui/js/MarkdownFormat.js</file>
     <file>ui/components/EmojiPicker.qml</file>
-    <file>ui/components/PeerInfoPopup.qml</file>
     <file>ui/components/StatusBar.qml</file>
     <file>ui/components/DialogChrome.qml</file>
     <file>ui/components/ToastHost.qml</file>
     <file>ui/controls/NyxComboBox.qml</file>
     <file>ui/controls/NyxMenu.qml</file>
     <file>ui/controls/NyxMenuItem.qml</file>
-    <file>ui/controls/NyxSegmentTabButton.qml</file>
     <file>ui/AccountGate.qml</file>
     <file>ui/dialogs/SettingsDialog.qml</file>
-    <file>ui/dialogs/GroupsDialog.qml</file>
     <file>ui/dialogs/FieldInfoDialog.qml</file>
     <file>ui/dialogs/PeerInfoDialog.qml</file>
     <file>ui/panels/ConnectionDrawer.qml</file>
     <file>ui/panels/CallOverlay.qml</file>
     <file>ui/dialogs/NetworkSettingsSection.qml</file>
-    <file>ui/dialogs/OnboardingDialog.qml</file>
   </qresource>
   <qresource prefix="/icons">
     <file alias="nyx-logo.svg">resources/icons/nyx-logo.svg</file>

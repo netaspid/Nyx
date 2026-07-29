@@ -5,7 +5,6 @@ AbstractButton {
     id: ctrl
 
     property string name: "settings"
-    property string glyph: "" // legacy; ignored
     property color iconColor: theme ? theme.textPrimary : "#ffffff"
     property var theme
     property int btnSize: 36

@@ -21,18 +21,22 @@ namespace nyx_setup {
 namespace {
 
 std::string join_path(const std::string& dir, const char* name) {
-  if (dir.empty()) return name;
-  if (dir.back() == '/') return dir + name;
+  if (dir.empty())
+    return name;
+  if (dir.back() == '/')
+    return dir + name;
   return dir + '/' + name;
 }
 
 std::string home_dir() {
-  if (const char* home = std::getenv("HOME")) return home;
+  if (const char* home = std::getenv("HOME"))
+    return home;
   return ".";
 }
 
 std::string xdg_data_home() {
-  if (const char* xdg = std::getenv("XDG_DATA_HOME")) return xdg;
+  if (const char* xdg = std::getenv("XDG_DATA_HOME"))
+    return xdg;
   return join_path(home_dir(), ".local/share");
 }
 
@@ -45,14 +49,18 @@ bool process_exe_matches_dir(pid_t pid, const std::string& install_dir) {
   const std::string exe_link = "/proc/" + std::to_string(pid) + "/exe";
   std::error_code ec;
   const auto target = std::filesystem::read_symlink(exe_link, ec);
-  if (ec) return true;
+  if (ec)
+    return true;
   const auto canon_install = std::filesystem::weakly_canonical(install_dir, ec);
   const auto canon_target = std::filesystem::weakly_canonical(target, ec);
-  if (ec) return true;
+  if (ec)
+    return true;
   const std::string prefix = canon_install.string();
   const std::string path = canon_target.string();
-  if (path.size() < prefix.size()) return false;
-  if (path.compare(0, prefix.size(), prefix) != 0) return false;
+  if (path.size() < prefix.size())
+    return false;
+  if (path.compare(0, prefix.size(), prefix) != 0)
+    return false;
   return path.size() == prefix.size() || path[prefix.size()] == '/';
 }
 
@@ -61,38 +69,49 @@ bool terminate_by_name_in_dir(const char* exe_name, const std::string& install_d
   const std::filesystem::path proc_dir("/proc");
   std::error_code ec;
   for (const auto& entry : std::filesystem::directory_iterator(proc_dir, ec)) {
-    if (!entry.is_directory()) continue;
+    if (!entry.is_directory())
+      continue;
     const auto name = entry.path().filename().string();
-    if (name.empty() || !std::all_of(name.begin(), name.end(), ::isdigit)) continue;
+    if (name.empty() || !std::all_of(name.begin(), name.end(), ::isdigit))
+      continue;
     const pid_t pid = static_cast<pid_t>(std::stoi(name));
     const auto cmdline_path = entry.path() / "cmdline";
     std::ifstream cmdline_file(cmdline_path, std::ios::binary);
-    if (!cmdline_file) continue;
+    if (!cmdline_file)
+      continue;
     std::string cmd;
     std::getline(cmdline_file, cmd, '\0');
     const auto slash = cmd.find_last_of('/');
     const std::string base = slash == std::string::npos ? cmd : cmd.substr(slash + 1);
-    if (base != exe_name) continue;
-    if (!process_exe_matches_dir(pid, install_dir)) continue;
+    if (base != exe_name)
+      continue;
+    if (!process_exe_matches_dir(pid, install_dir))
+      continue;
     kill(pid, SIGTERM);
     stopped = true;
   }
-  if (stopped) sleep(1);
+  if (stopped)
+    sleep(1);
   return stopped;
 }
 
-}  // namespace
+} // namespace
 
 bool stop_nyx_for_install(const std::string& install_dir, std::string* err) {
   (void)err;
   const char* names[] = {"nyx-app", "nyx-node", "nyx-rendezvous"};
-  for (const char* name : names) terminate_by_name_in_dir(name, install_dir);
+  for (const char* name : names)
+    terminate_by_name_in_dir(name, install_dir);
   return true;
 }
 
-std::string default_install_dir() { return join_path(xdg_data_home(), "Nyx"); }
+std::string default_install_dir() {
+  return join_path(xdg_data_home(), "Nyx");
+}
 
-std::string data_root() { return join_path(home_dir(), ".config/nyx"); }
+std::string data_root() {
+  return join_path(home_dir(), ".config/nyx");
+}
 
 bool create_desktop_entry(const std::string& install_dir) {
   const std::string apps_dir = join_path(xdg_data_home(), "applications");
@@ -115,13 +134,15 @@ bool create_desktop_entry(const std::string& install_dir) {
       << "Categories=Network;InstantMessaging;\n";
 
   std::ofstream file(desktop_path, std::ios::trunc);
-  if (!file) return false;
+  if (!file)
+    return false;
   file << out.str();
   return static_cast<bool>(file);
 }
 
 bool remove_desktop_entry() {
-  const std::string desktop_path = join_path(join_path(xdg_data_home(), "applications"), "nyx.desktop");
+  const std::string desktop_path =
+      join_path(join_path(xdg_data_home(), "applications"), "nyx.desktop");
   std::error_code ec;
   std::filesystem::remove(desktop_path, ec);
   return true;
@@ -132,14 +153,16 @@ bool register_install_manifest(const std::string& install_dir) {
   std::error_code ec;
   std::filesystem::create_directories(manifest_dir, ec);
   std::ofstream out(join_path(manifest_dir, "install-location"), std::ios::trunc);
-  if (!out) return false;
+  if (!out)
+    return false;
   out << install_dir << '\n';
   return static_cast<bool>(out);
 }
 
 bool launch_app(const std::string& exe_path) {
   const pid_t pid = fork();
-  if (pid < 0) return false;
+  if (pid < 0)
+    return false;
   if (pid == 0) {
     setsid();
     execl(exe_path.c_str(), exe_path.c_str(), static_cast<char*>(nullptr));
@@ -160,9 +183,11 @@ bool tool_on_path(const char* name) {
           paths.substr(start, sep == std::string::npos ? std::string::npos : sep - start);
       if (!dir.empty()) {
         const std::string cand = join_path(dir, name);
-        if (path_exists(cand) && access(cand.c_str(), X_OK) == 0) return true;
+        if (path_exists(cand) && access(cand.c_str(), X_OK) == 0)
+          return true;
       }
-      if (sep == std::string::npos) break;
+      if (sep == std::string::npos)
+        break;
       start = sep + 1;
     }
   }
@@ -175,7 +200,8 @@ bool has_pdf_tools() {
 }
 
 bool has_bundled_pdf_tools(const std::string& install_dir) {
-  if (install_dir.empty()) return false;
+  if (install_dir.empty())
+    return false;
   const std::string tools = join_path(install_dir, "tools");
   return (path_exists(join_path(tools, "mutool")) &&
           access(join_path(tools, "mutool").c_str(), X_OK) == 0) ||
@@ -190,10 +216,14 @@ bool has_office_tools() {
 enum class PackageManager { None, Apt, Dnf, Pacman, Zypper };
 
 PackageManager detect_package_manager() {
-  if (path_exists("/usr/bin/apt-get")) return PackageManager::Apt;
-  if (path_exists("/usr/bin/dnf")) return PackageManager::Dnf;
-  if (path_exists("/usr/bin/pacman")) return PackageManager::Pacman;
-  if (path_exists("/usr/bin/zypper")) return PackageManager::Zypper;
+  if (path_exists("/usr/bin/apt-get"))
+    return PackageManager::Apt;
+  if (path_exists("/usr/bin/dnf"))
+    return PackageManager::Dnf;
+  if (path_exists("/usr/bin/pacman"))
+    return PackageManager::Pacman;
+  if (path_exists("/usr/bin/zypper"))
+    return PackageManager::Zypper;
   return PackageManager::None;
 }
 
@@ -202,25 +232,28 @@ int run_command(const std::string& cmd) {
 }
 
 bool run_privileged(const std::string& inner_cmd, std::string* err) {
-  // Prefer graphical elevation when available.
+
   if (path_exists("/usr/bin/pkexec")) {
     const std::string cmd = "pkexec --disable-internal-agent /bin/sh -c '" + inner_cmd + "'";
     const int rc = run_command(cmd);
-    if (rc == 0) return true;
+    if (rc == 0)
+      return true;
   }
   if (path_exists("/usr/bin/sudo")) {
     const std::string cmd = "sudo -n /bin/sh -c '" + inner_cmd + "'";
-    if (run_command(cmd) == 0) return true;
+    if (run_command(cmd) == 0)
+      return true;
     const std::string cmd_ask = "sudo /bin/sh -c '" + inner_cmd + "'";
-    if (run_command(cmd_ask) == 0) return true;
+    if (run_command(cmd_ask) == 0)
+      return true;
   }
   if (geteuid() == 0) {
-    if (run_command(inner_cmd) == 0) return true;
+    if (run_command(inner_cmd) == 0)
+      return true;
   }
   if (err) {
-    *err =
-        "Не удалось установить пакеты (нужны права администратора: pkexec/sudo). "
-        "Установите вручную: mupdf-tools (или poppler-utils) и LibreOffice.";
+    *err = "Не удалось установить пакеты (нужны права администратора: pkexec/sudo). "
+           "Установите вручную: mupdf-tools (или poppler-utils) и LibreOffice.";
   }
   return false;
 }
@@ -228,97 +261,110 @@ bool run_privileged(const std::string& inner_cmd, std::string* err) {
 std::string install_command(PackageManager pm, bool need_pdf, bool need_office) {
   std::string pkgs;
   auto add = [&](const char* p) {
-    if (!pkgs.empty()) pkgs += ' ';
+    if (!pkgs.empty())
+      pkgs += ' ';
     pkgs += p;
   };
   switch (pm) {
-    case PackageManager::Apt:
-      if (need_pdf) {
-        add("mupdf-tools");
-        add("poppler-utils");
-      }
-      if (need_office) add("libreoffice-writer");
-      return "export DEBIAN_FRONTEND=noninteractive; apt-get update -y && apt-get install -y " +
-             pkgs;
-    case PackageManager::Dnf:
-      if (need_pdf) {
-        add("mupdf");
-        add("poppler-utils");
-      }
-      if (need_office) add("libreoffice-writer");
-      return "dnf install -y " + pkgs;
-    case PackageManager::Pacman:
-      if (need_pdf) {
-        add("mupdf-tools");
-        add("poppler");
-      }
-      if (need_office) add("libreoffice-still");
-      return "pacman -Sy --noconfirm " + pkgs;
-    case PackageManager::Zypper:
-      if (need_pdf) {
-        add("mupdf");
-        add("poppler-tools");
-      }
-      if (need_office) add("libreoffice-writer");
-      return "zypper --non-interactive install -y " + pkgs;
-    case PackageManager::None:
-      break;
+  case PackageManager::Apt:
+    if (need_pdf) {
+      add("mupdf-tools");
+      add("poppler-utils");
+    }
+    if (need_office)
+      add("libreoffice-writer");
+    return "export DEBIAN_FRONTEND=noninteractive; apt-get update -y && apt-get install -y " + pkgs;
+  case PackageManager::Dnf:
+    if (need_pdf) {
+      add("mupdf");
+      add("poppler-utils");
+    }
+    if (need_office)
+      add("libreoffice-writer");
+    return "dnf install -y " + pkgs;
+  case PackageManager::Pacman:
+    if (need_pdf) {
+      add("mupdf-tools");
+      add("poppler");
+    }
+    if (need_office)
+      add("libreoffice-still");
+    return "pacman -Sy --noconfirm " + pkgs;
+  case PackageManager::Zypper:
+    if (need_pdf) {
+      add("mupdf");
+      add("poppler-tools");
+    }
+    if (need_office)
+      add("libreoffice-writer");
+    return "zypper --non-interactive install -y " + pkgs;
+  case PackageManager::None:
+    break;
   }
   return {};
 }
 
-}  // namespace
+} // namespace
 
-bool ensure_document_dependencies(const std::string& install_dir, std::string* err,
+bool ensure_document_dependencies(const std::string& install_dir,
+                                  std::string* err,
                                   bool interactive) {
   const bool need_pdf = !has_pdf_tools() && !has_bundled_pdf_tools(install_dir);
   const bool need_office = !has_office_tools();
-  if (!need_pdf && !need_office) return true;
+  if (!need_pdf && !need_office)
+    return true;
 
   const PackageManager pm = detect_package_manager();
   if (pm == PackageManager::None) {
     if (err) {
-      *err =
-          "Не найден пакетный менеджер (apt/dnf/pacman/zypper). "
-          "Установите вручную: mutool/pdftoppm и LibreOffice.";
+      *err = "Не найден пакетный менеджер (apt/dnf/pacman/zypper). "
+             "Установите вручную: mutool/pdftoppm и LibreOffice.";
     }
-    // Soft-fail: Nyx itself still installs; document viewer may be limited.
+
     return true;
   }
 
   if (interactive) {
     std::cout << "\nДля встроенного просмотра документов нужны:\n";
-    if (need_pdf) std::cout << "  - PDF: mupdf-tools / poppler-utils\n";
-    if (need_office) std::cout << "  - Office: LibreOffice\n";
+    if (need_pdf)
+      std::cout << "  - PDF: mupdf-tools / poppler-utils\n";
+    if (need_office)
+      std::cout << "  - Office: LibreOffice\n";
     std::cout << "Установить через системный пакетный менеджер? [Y/n] ";
     std::string line;
-    if (!std::getline(std::cin, line)) line.clear();
+    if (!std::getline(std::cin, line))
+      line.clear();
     if (!line.empty() && (line[0] == 'n' || line[0] == 'N')) {
-      if (err) *err = "Установка зависимостей пропущена пользователем";
+      if (err)
+        *err = "Установка зависимостей пропущена пользователем";
       return true;
     }
   }
 
   const std::string cmd = install_command(pm, need_pdf, need_office);
   if (cmd.empty()) {
-    if (err) *err = "Не удалось сформировать команду установки пакетов";
+    if (err)
+      *err = "Не удалось сформировать команду установки пакетов";
     return true;
   }
 
   std::cerr << "Installing document viewer dependencies...\n";
   std::string elev_err;
   if (!run_privileged(cmd, &elev_err)) {
-    if (err) *err = elev_err;
-    // Soft-fail so Nyx still installs.
+    if (err)
+      *err = elev_err;
+
     return true;
   }
 
   if (need_pdf && !has_pdf_tools()) {
-    if (err) *err = "PDF-утилиты не найдены после установки пакетов";
+    if (err)
+      *err = "PDF-утилиты не найдены после установки пакетов";
   }
   if (need_office && !has_office_tools()) {
     if (err) {
-      if (!err->empty()) *err += "; ";
+      if (!err->empty())
+        *err += "; ";
       *err += "LibreOffice (soffice) не найден после установки";
     }
   }
@@ -328,7 +374,8 @@ bool ensure_document_dependencies(const std::string& install_dir, std::string* e
 bool verify_installation(const std::string& install_dir, std::string* err) {
   const std::string app = join_path(install_dir, "nyx-app");
   if (!path_exists(app)) {
-    if (err) *err = "nyx-app not found after install";
+    if (err)
+      *err = "nyx-app not found after install";
     return false;
   }
 
@@ -352,33 +399,40 @@ bool verify_installation(const std::string& install_dir, std::string* err) {
   for (const char* rel : required) {
     const std::string full = join_path(install_dir, rel);
     if (!path_exists(full)) {
-      if (err) *err = std::string("Missing component: ") + rel;
+      if (err)
+        *err = std::string("Missing component: ") + rel;
       return false;
     }
   }
   return true;
 }
 
-bool repair_installation(const std::vector<std::uint8_t>& blob, const std::string& install_dir,
+bool repair_installation(const std::vector<std::uint8_t>& blob,
+                         const std::string& install_dir,
                          std::string* err) {
   std::vector<PayloadFile> files;
   if (!parse_payload(blob, files)) {
-    if (err) *err = "Invalid installer payload";
+    if (err)
+      *err = "Invalid installer payload";
     return false;
   }
   for (const auto& f : files) {
-    if (f.data.empty()) continue;
+    if (f.data.empty())
+      continue;
     const std::filesystem::path full = std::filesystem::path(install_dir) / f.relative_path;
     bool needs_copy = true;
     std::error_code ec;
     if (std::filesystem::exists(full, ec)) {
       const auto existing = std::filesystem::file_size(full, ec);
-      if (!ec && existing == f.data.size()) needs_copy = false;
+      if (!ec && existing == f.data.size())
+        needs_copy = false;
     }
-    if (!needs_copy) continue;
+    if (!needs_copy)
+      continue;
     std::string narrow_err;
     if (!extract_payload(blob, install_dir, nullptr, &narrow_err)) {
-      if (err) *err = narrow_err;
+      if (err)
+        *err = narrow_err;
       return false;
     }
     break;
@@ -386,4 +440,4 @@ bool repair_installation(const std::vector<std::uint8_t>& blob, const std::strin
   return verify_installation(install_dir, err);
 }
 
-}  // namespace nyx_setup
+} // namespace nyx_setup

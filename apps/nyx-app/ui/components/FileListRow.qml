@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import "../controls"
 import "."
 
-/** Строка файла или папки в браузере. */
 Rectangle {
     id: root
     required property var theme
@@ -20,7 +19,7 @@ Rectangle {
     property string fileFullRelPath: ""
     property string fileOwnerLabel: ""
     property var node
-    /** ПКМ по строке — назначение прав (только в поле). */
+
     signal accessContextMenuRequested()
 
     readonly property bool compact: width < 480 || Qt.platform.os === "android"
@@ -122,16 +121,16 @@ Rectangle {
         cursorShape: Qt.PointingHandCursor
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
-                if (node && node.fileScopeGroupId.length > 0 && node.canManageFileRoles)
+                if (node && node.files.fileScopeGroupId.length > 0 && node.files.canManageFileRoles)
                     root.accessContextMenuRequested()
                 return
             }
             if (fileIsDirectory && node) {
-                node.browseIntoFolder(fileNavPath, fileRootPath)
+                node.files.browseIntoFolder(fileNavPath, fileRootPath)
                 return
             }
             if (node && fileHash.length)
-                node.openFileByHash(fileHash, fileName, fileMime, fileRootPath, fileFullRelPath)
+                node.files.openFileByHash(fileHash, fileName, fileMime, fileRootPath, fileFullRelPath)
         }
     }
 

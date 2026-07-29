@@ -17,7 +17,7 @@ ComboBox {
     palette.window: theme.bgSidebar
     palette.windowText: theme.textPrimary
 
-    /** Строка модели по индексу (ListModel или QVariantList/массив). */
+
     function rowAt(index) {
         if (!model || index < 0)
             return null
@@ -28,7 +28,7 @@ ComboBox {
         return null
     }
 
-    /** Подпись пункта по индексу и textRole. */
+
     function itemTextAt(index) {
         const row = rowAt(index)
         if (!row)
@@ -38,7 +38,7 @@ ComboBox {
         return String(row)
     }
 
-    /** Текст выбранного пункта; displayText не работает с QVariantList из C++. */
+
     readonly property string labelText: {
         if (displayText.length > 0)
             return displayText

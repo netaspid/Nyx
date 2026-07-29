@@ -1,16 +1,12 @@
 #pragma once
 
-/** @file file_transfer.hpp
- *  Передача файлов по kBulkStream (фаза 4).
- */
-
 #include "nyx/blob_store.hpp"
 #include "nyx/connection.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_proto.hpp"
 
-#include <functional>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -19,74 +15,55 @@
 
 namespace nyx {
 
-/** Отправка и приём файлов поверх Connection. */
 class FileTransferService {
- public:
+public:
   using EventCallback = std::function<void(const std::string& text)>;
-  using ProgressCallback =
-      std::function<void(const FileHash& hash, uint64_t done, uint64_t total)>;
+  using ProgressCallback = std::function<void(const FileHash& hash, uint64_t done, uint64_t total)>;
   using CompletionCallback = std::function<void(
-      const FileHash& hash, bool success, const std::string& path,
-      const std::string& error)>;
+      const FileHash& hash, bool success, const std::string& path, const std::string& error)>;
 
-  FileTransferService(Connection& connection, FileIndex& index,
-                      std::string download_dir);
+  FileTransferService(Connection& connection, FileIndex& index, std::string download_dir);
 
-  /** Область share: zero = личка, иначе group_id поля. */
   void set_share_scope(const GroupId& group_id) { share_scope_ = group_id; }
   const GroupId& share_scope() const { return share_scope_; }
 
-  /** Обработка payload с kBulkStream. */
   void handle_bulk(const ByteBuffer& payload);
 
-  /** Отправляет следующий чанк, если идёт исходящая передача. */
   void pump();
 
-  /** Запрос списка: без аргументов — share-корни (snapshot); с путём — уровень (snapshot subtree). */
   bool request_list();
   bool request_list(const std::string& root_path, const std::string& parent_rel);
 
-  /** Запрос актуальной политики ACL у hub. */
   bool request_policy();
 
-  /** Запрос файла по hex-хешу; dest_path — полный путь сохранения (необязательно). */
   bool request_file(const std::string& hash_hex, const std::string& dest_path = {});
 
-  /** Проактивная отправка локального файла (из индекса или по пути). */
   bool send_file(const std::string& path_or_hash_hex);
   bool announce_capabilities();
   bool cancel(const std::string& hash_hex);
   bool peer_supports_resume() const;
-  /** Active + queued outgoing transfers (hash_hex, display name). */
+
   std::vector<std::pair<std::string, std::string>> outgoing_queue_snapshot() const;
 
-  /** Ответ на ListReq (вызывается из handle_bulk автоматически). */
   void respond_list();
   void respond_list(const std::string& root_path, const std::string& parent_rel);
 
-  /** Публикует на peer свой индекс поля (IndexPush). */
   bool push_field_index(const std::vector<FileEntry>& entries,
                         const std::vector<std::string>& root_paths = {});
 
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_progress(ProgressCallback cb) { on_progress_ = std::move(cb); }
-  void set_on_complete(CompletionCallback cb) {
-    on_complete_ = std::move(cb);
-  }
-  /** Вызывается после получения ListResp от peer. */
+  void set_on_complete(CompletionCallback cb) { on_complete_ = std::move(cb); }
+
   void set_on_remote_list(std::function<void(const std::vector<FileEntry>&)> cb) {
     on_remote_list_ = std::move(cb);
   }
 
-  const std::vector<FileEntry>& remote_list() const { return remote_list_; }
-
-  /** Копия remote_list_ (потокобезопасно для UI). */
   std::vector<FileEntry> remote_list_snapshot() const;
 
-  /** Идёт исходящая/входящая передача или ожидание Offer. */
   bool busy() const;
 
- private:
+private:
   bool send_bulk(const ByteBuffer& payload);
   void emit_event(const std::string& text);
   void emit_progress(const FileHash& hash, uint64_t done, uint64_t total);
@@ -104,7 +81,7 @@ class FileTransferService {
   Connection& connection_;
   FileIndex& index_;
   std::string download_dir_;
-  GroupId share_scope_{};
+  GroupId share_scope_ {};
 
   struct OutgoingState {
     FileEntry entry;
@@ -121,12 +98,8 @@ class FileTransferService {
     std::string dest_path;
     std::string part_path;
 
-    IncomingState(FileOffer o, BlobWriter w, uint64_t rec, std::string dest,
-                  std::string part)
-        : offer(std::move(o)),
-          writer(std::move(w)),
-          received(rec),
-          dest_path(std::move(dest)),
+    IncomingState(FileOffer o, BlobWriter w, uint64_t rec, std::string dest, std::string part)
+        : offer(std::move(o)), writer(std::move(w)), received(rec), dest_path(std::move(dest)),
           part_path(std::move(part)) {}
   };
 
@@ -134,9 +107,9 @@ class FileTransferService {
   std::optional<OutgoingState> outgoing_;
   std::deque<FileEntry> pending_outgoing_;
   std::optional<IncomingState> incoming_;
-  /** Запрос отправлен, ждём Offer или Deny. */
+
   std::optional<FileHash> awaiting_offer_;
-  /** hash_hex → полный путь, выбранный до запроса. */
+
   std::unordered_map<std::string, std::string> pending_dest_paths_;
   std::unordered_map<std::string, uint64_t> pending_resume_offsets_;
   std::vector<FileEntry> remote_list_;
@@ -153,4 +126,4 @@ class FileTransferService {
   uint64_t index_revision_ = 0;
 };
 
-}  // namespace nyx
+} // namespace nyx

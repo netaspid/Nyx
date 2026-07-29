@@ -1,6 +1,5 @@
 import QtQuick
 
-/** Круглый аватар: фото или инициал (Telegram-style). */
 Item {
     id: av
     property string label: "?"

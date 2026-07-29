@@ -28,7 +28,7 @@ nyx::Profile load_profile(const NodeConfig& config) {
   return nyx::load_or_create_profile(path, config.nickname);
 }
 
-}  // namespace
+} // namespace
 
 int run_group_create(const std::string& name, const NodeConfig& config) {
   if (name.empty()) {
@@ -48,7 +48,7 @@ int run_group_create(const std::string& name, const NodeConfig& config) {
 }
 
 int run_group_hub(const std::string& group_id_hex, const NodeConfig& config) {
-  nyx::GroupId group_id{};
+  nyx::GroupId group_id {};
   if (!nyx::GroupStore::group_id_from_hex(group_id_hex, group_id)) {
     std::cerr << "неверный group_id (64 hex)\n";
     return 1;
@@ -91,8 +91,7 @@ int run_group_hub(const std::string& group_id_hex, const NodeConfig& config) {
   }
 
   ui.print_event("group invite: " + nyx::GroupStore::invite_hex(group->invite_token));
-  ui.print_event("ожидание участников (UDP :" + std::to_string(rv.socket().local_port()) +
-                 ")...");
+  ui.print_event("ожидание участников (UDP :" + std::to_string(rv.socket().local_port()) + ")...");
 
   nyx::GroupHub hub(rv.socket(), profile, *group);
   hub.set_on_message([&](const nyx::ChatMessage& msg, bool outgoing) {
@@ -103,7 +102,7 @@ int run_group_hub(const std::string& group_id_hex, const NodeConfig& config) {
   ui.print_header(group->name, "поле · hub");
   ui.print_event("команды: /members /help /quit");
 
-  std::atomic<bool> running{true};
+  std::atomic<bool> running {true};
   std::thread net([&] {
     while (running.load()) {
       hub.poll();
@@ -114,7 +113,8 @@ int run_group_hub(const std::string& group_id_hex, const NodeConfig& config) {
   ui.print_prompt();
   std::string line;
   while (running.load() && std::getline(std::cin, line)) {
-    if (line == "/quit" || line == "/exit") break;
+    if (line == "/quit" || line == "/exit")
+      break;
     if (line == "/help") {
       ui.print_help();
       ui.print_event("/members — список участников");
@@ -144,7 +144,8 @@ int run_group_hub(const std::string& group_id_hex, const NodeConfig& config) {
   }
 
   running.store(false);
-  if (net.joinable()) net.join();
+  if (net.joinable())
+    net.join();
   ui.print_event("hub остановлен");
   return 0;
 }
@@ -153,7 +154,7 @@ int run_group_join(const std::string& token_hex, const NodeConfig& config) {
   const auto profile = load_profile(config);
   CliConsole ui(profile.nickname);
 
-  nyx::InviteToken token{};
+  nyx::InviteToken token {};
   if (!nyx::GroupStore::invite_from_hex(token_hex, token)) {
     std::cerr << "invite token: 64 hex символа\n";
     return 1;
@@ -198,7 +199,7 @@ int run_group_join(const std::string& token_hex, const NodeConfig& config) {
   }
   ui.print_event("hub: " + hub_hello.nickname);
 
-  nyx::GroupId zero{};
+  nyx::GroupId zero {};
   nyx::GroupMemberService member(connection, profile, zero, "");
   member.set_on_message([&](const nyx::ChatMessage& msg, bool outgoing) {
     ui.print_message(msg.timestamp_ms, msg.author, msg.text, outgoing);
@@ -213,14 +214,15 @@ int run_group_join(const std::string& token_hex, const NodeConfig& config) {
   ui.print_header(member.view().name, "поле");
   ui.print_event("/members /help /quit");
 
-  std::atomic<bool> running{true};
+  std::atomic<bool> running {true};
   std::thread net([&] {
     while (running.load() && member.joined()) {
       member.tick();
       nyx::ByteBuffer payload;
       uint32_t stream_id = 0;
       while (connection.recv_stream(stream_id, payload)) {
-        if (stream_id == nyx::kChatStream) member.handle_payload(payload);
+        if (stream_id == nyx::kChatStream)
+          member.handle_payload(payload);
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -229,7 +231,8 @@ int run_group_join(const std::string& token_hex, const NodeConfig& config) {
   ui.print_prompt();
   std::string line;
   while (running.load() && member.joined() && std::getline(std::cin, line)) {
-    if (line == "/quit" || line == "/exit") break;
+    if (line == "/quit" || line == "/exit")
+      break;
     if (line == "/help") {
       ui.print_help();
       ui.print_prompt();
@@ -259,8 +262,9 @@ int run_group_join(const std::string& token_hex, const NodeConfig& config) {
   }
 
   running.store(false);
-  if (net.joinable()) net.join();
+  if (net.joinable())
+    net.join();
   return 0;
 }
 
-}  // namespace nyx_node
+} // namespace nyx_node

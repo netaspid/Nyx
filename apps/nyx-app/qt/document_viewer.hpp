@@ -4,18 +4,19 @@
 #include <QString>
 #include <QTemporaryDir>
 
+#include <atomic>
+#include <functional>
 #include <memory>
 
 class QProcess;
 
-/** Desktop in-app document viewer (text / PDF / office→PDF). No WebView. */
 class DocumentViewer : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool open READ isOpen NOTIFY changed)
   Q_PROPERTY(QString path READ path NOTIFY changed)
   Q_PROPERTY(QString mime READ mime NOTIFY changed)
   Q_PROPERTY(QString title READ title NOTIFY changed)
-  /** text | pdf | busy | error */
+
   Q_PROPERTY(QString mode READ mode NOTIFY changed)
   Q_PROPERTY(QString text READ text NOTIFY changed)
   Q_PROPERTY(QString status READ status NOTIFY changed)
@@ -27,7 +28,7 @@ class DocumentViewer : public QObject {
   Q_PROPERTY(bool canPrev READ canPrev NOTIFY changed)
   Q_PROPERTY(bool canNext READ canNext NOTIFY changed)
 
- public:
+public:
   explicit DocumentViewer(QObject* parent = nullptr);
   ~DocumentViewer() override;
 
@@ -46,8 +47,8 @@ class DocumentViewer : public QObject {
   bool canPrev() const { return page_ > 1; }
   bool canNext() const { return page_ < page_count_; }
 
-  Q_INVOKABLE bool openDocument(const QString& path, const QString& mime = {},
-                                const QString& title = {});
+  Q_INVOKABLE bool
+  openDocument(const QString& path, const QString& mime = {}, const QString& title = {});
   Q_INVOKABLE void close();
   Q_INVOKABLE void setPage(int page);
   Q_INVOKABLE void nextPage();
@@ -57,14 +58,13 @@ class DocumentViewer : public QObject {
   Q_INVOKABLE void zoomOut();
   Q_INVOKABLE bool openExternally();
 
-  /** True when desktop in-app viewer should handle this file. */
   static bool canHandle(const QString& path, const QString& mime);
 
- signals:
+signals:
   void changed();
   void toast(const QString& message, bool isError);
 
- private:
+private:
   enum class Kind { Text, Pdf, Office };
 
   void resetState();
@@ -79,6 +79,8 @@ class DocumentViewer : public QObject {
   void queryPageCount();
   void renderCurrentPage();
   void killActiveProcess();
+  void waitForToolWorkers();
+  void runToolAsync(std::function<void()> fn);
 
   static QString findTool(const QStringList& names);
   static bool isTextLike(const QString& path, const QString& mime);
@@ -103,4 +105,5 @@ class DocumentViewer : public QObject {
   std::unique_ptr<QTemporaryDir> temp_dir_;
   QProcess* active_ = nullptr;
   int render_gen_ = 0;
+  std::atomic<int> tool_workers_ {0};
 };

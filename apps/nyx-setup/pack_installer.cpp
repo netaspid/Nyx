@@ -22,13 +22,15 @@ void write_u32(std::ostream& out, std::uint32_t v) {
 }
 
 void write_u64(std::ostream& out, std::uint64_t v) {
-  for (int i = 0; i < 8; ++i) out.put(static_cast<char>((v >> (8 * i)) & 0xFF));
+  for (int i = 0; i < 8; ++i)
+    out.put(static_cast<char>((v >> (8 * i)) & 0xFF));
 }
 
 bool copy_file(const fs::path& from, const fs::path& to) {
   std::ifstream in(from, std::ios::binary);
   std::ofstream out(to, std::ios::binary | std::ios::trunc);
-  if (!in || !out) return false;
+  if (!in || !out)
+    return false;
   out << in.rdbuf();
   return static_cast<bool>(out);
 }
@@ -38,7 +40,7 @@ std::string rel_path(const fs::path& root, const fs::path& file) {
   return rel;
 }
 
-}  // namespace
+} // namespace
 
 int main(int argc, char** argv) {
   std::string stub_path;
@@ -46,9 +48,12 @@ int main(int argc, char** argv) {
   std::string out_path;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--stub" && i + 1 < argc) stub_path = argv[++i];
-    else if (arg == "--srcdir" && i + 1 < argc) src_dir = argv[++i];
-    else if (arg == "--out" && i + 1 < argc) out_path = argv[++i];
+    if (arg == "--stub" && i + 1 < argc)
+      stub_path = argv[++i];
+    else if (arg == "--srcdir" && i + 1 < argc)
+      src_dir = argv[++i];
+    else if (arg == "--out" && i + 1 < argc)
+      out_path = argv[++i];
   }
   if (stub_path.empty() || src_dir.empty() || out_path.empty()) {
     std::cerr << "usage: pack --stub stub.exe --srcdir staging/ --out NyxSetup.exe\n";
@@ -63,7 +68,8 @@ int main(int argc, char** argv) {
 
   std::vector<fs::path> files;
   for (const auto& entry : fs::recursive_directory_iterator(root)) {
-    if (entry.is_regular_file()) files.push_back(entry.path());
+    if (entry.is_regular_file())
+      files.push_back(entry.path());
   }
 
   if (!copy_file(stub_path, out_path)) {

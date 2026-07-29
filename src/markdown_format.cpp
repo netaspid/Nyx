@@ -12,18 +12,29 @@ std::string html_escape(const std::string& s) {
   out.reserve(s.size() + 8);
   for (char c : s) {
     switch (c) {
-      case '&': out += "&amp;"; break;
-      case '<': out += "&lt;"; break;
-      case '>': out += "&gt;"; break;
-      case '"': out += "&quot;"; break;
-      default: out.push_back(c); break;
+    case '&':
+      out += "&amp;";
+      break;
+    case '<':
+      out += "&lt;";
+      break;
+    case '>':
+      out += "&gt;";
+      break;
+    case '"':
+      out += "&quot;";
+      break;
+    default:
+      out.push_back(c);
+      break;
     }
   }
   return out;
 }
 
 static void replace_all(std::string& s, const std::string& from, const std::string& to) {
-  if (from.empty()) return;
+  if (from.empty())
+    return;
   std::size_t pos = 0;
   while ((pos = s.find(from, pos)) != std::string::npos) {
     s.replace(pos, from.size(), to);
@@ -33,15 +44,18 @@ static void replace_all(std::string& s, const std::string& from, const std::stri
 
 static std::string trim_left(const std::string& s) {
   std::size_t i = 0;
-  while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+  while (i < s.size() && (s[i] == ' ' || s[i] == '\t'))
+    ++i;
   return s.substr(i);
 }
 
 static std::string trim_copy(const std::string& s) {
   std::size_t a = 0;
-  while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+  while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a])))
+    ++a;
   std::size_t b = s.size();
-  while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+  while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1])))
+    --b;
   return s.substr(a, b - a);
 }
 
@@ -50,7 +64,8 @@ bool is_action_message(const std::string& text) {
 }
 
 std::string action_message_body(const std::string& text) {
-  if (!is_action_message(text)) return text;
+  if (!is_action_message(text))
+    return text;
   return text.substr(7);
 }
 
@@ -66,9 +81,11 @@ std::string normalize_me_message(const std::string& text) {
 }
 
 static bool is_hex64(const std::string& s) {
-  if (s.size() != 64) return false;
+  if (s.size() != 64)
+    return false;
   for (char c : s) {
-    if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+    if (!std::isxdigit(static_cast<unsigned char>(c)))
+      return false;
   }
   return true;
 }
@@ -76,7 +93,8 @@ static bool is_hex64(const std::string& s) {
 static bool is_media_line(const std::string& line, std::string& caption, std::string& hash) {
   static const std::regex re(R"(^!\[([^\]]*)\]\(nyx-media:([a-fA-F0-9]{64})\)\s*$)");
   std::smatch m;
-  if (!std::regex_match(line, m, re)) return false;
+  if (!std::regex_match(line, m, re))
+    return false;
   caption = m[1].str();
   hash = m[2].str();
   return is_hex64(hash);
@@ -86,7 +104,8 @@ static bool is_file_line(const std::string& line, MdBlock& block) {
   static const std::regex re(
       R"(^\[([^\]]*)\]\(nyx-file:([a-fA-F0-9]{64});size=([0-9]+);mime=([A-Za-z0-9.+/_-]+)(?:;root=([^;)]*);rel=([^)]*))?\)\s*$)");
   std::smatch match;
-  if (!std::regex_match(line, match, re)) return false;
+  if (!std::regex_match(line, match, re))
+    return false;
   block.type = MdBlockType::File;
   block.caption = match[1].str();
   block.hash = match[2].str();
@@ -102,9 +121,11 @@ static bool is_file_line(const std::string& line, MdBlock& block) {
 
 static bool is_table_sep_line(const std::string& line) {
   const std::string t = trim_copy(line);
-  if (t.empty() || t.find('|') == std::string::npos) return false;
+  if (t.empty() || t.find('|') == std::string::npos)
+    return false;
   for (char c : t) {
-    if (c != '|' && c != '-' && c != ':' && c != ' ' && c != '\t') return false;
+    if (c != '|' && c != '-' && c != ':' && c != ' ' && c != '\t')
+      return false;
   }
   return t.find('-') != std::string::npos;
 }
@@ -116,17 +137,17 @@ static bool looks_like_table_row(const std::string& line) {
 
 std::string formula_to_html(const std::string& latex) {
   static const std::map<std::string, std::string> greeks = {
-      {"\\alpha", "α"},   {"\\beta", "β"},   {"\\gamma", "γ"}, {"\\delta", "δ"},
-      {"\\epsilon", "ε"}, {"\\zeta", "ζ"},   {"\\eta", "η"},   {"\\theta", "θ"},
-      {"\\lambda", "λ"},  {"\\mu", "μ"},     {"\\pi", "π"},    {"\\rho", "ρ"},
-      {"\\sigma", "σ"},   {"\\tau", "τ"},    {"\\phi", "φ"},   {"\\omega", "ω"},
-      {"\\Gamma", "Γ"},   {"\\Delta", "Δ"},  {"\\Theta", "Θ"}, {"\\Lambda", "Λ"},
-      {"\\Pi", "Π"},      {"\\Sigma", "Σ"},  {"\\Omega", "Ω"}, {"\\infty", "∞"},
-      {"\\pm", "±"},      {"\\times", "×"},  {"\\cdot", "·"},  {"\\leq", "≤"},
-      {"\\geq", "≥"},     {"\\neq", "≠"},    {"\\approx", "≈"},
+      {"\\alpha", "α"},  {"\\beta", "β"},  {"\\gamma", "γ"}, {"\\delta", "δ"},  {"\\epsilon", "ε"},
+      {"\\zeta", "ζ"},   {"\\eta", "η"},   {"\\theta", "θ"}, {"\\lambda", "λ"}, {"\\mu", "μ"},
+      {"\\pi", "π"},     {"\\rho", "ρ"},   {"\\sigma", "σ"}, {"\\tau", "τ"},    {"\\phi", "φ"},
+      {"\\omega", "ω"},  {"\\Gamma", "Γ"}, {"\\Delta", "Δ"}, {"\\Theta", "Θ"},  {"\\Lambda", "Λ"},
+      {"\\Pi", "Π"},     {"\\Sigma", "Σ"}, {"\\Omega", "Ω"}, {"\\infty", "∞"},  {"\\pm", "±"},
+      {"\\times", "×"},  {"\\cdot", "·"},  {"\\leq", "≤"},   {"\\geq", "≥"},    {"\\neq", "≠"},
+      {"\\approx", "≈"},
   };
   std::string plain = trim_copy(latex);
-  for (const auto& kv : greeks) replace_all(plain, kv.first, kv.second);
+  for (const auto& kv : greeks)
+    replace_all(plain, kv.first, kv.second);
   {
     static const std::regex re(R"(\\frac\{([^{}]+)\}\{([^{}]+)\})");
     plain = std::regex_replace(plain, re, "($1/$2)");
@@ -147,8 +168,8 @@ std::string formula_to_html(const std::string& latex) {
     plain = std::regex_replace(plain, re_sub1, "<sub>$1</sub>");
   }
   replace_all(plain, "\\", "");
-  return "<span style=\"font-family:Consolas,'Segoe UI',monospace;font-style:italic;\">" +
-         plain + "</span>";
+  return "<span style=\"font-family:Consolas,'Segoe UI',monospace;font-style:italic;\">" + plain +
+         "</span>";
 }
 
 std::string table_to_html(const std::string& table_src) {
@@ -158,35 +179,41 @@ std::string table_to_html(const std::string& table_src) {
     const auto nl = table_src.find('\n', start);
     lines.push_back(
         table_src.substr(start, nl == std::string::npos ? std::string::npos : nl - start));
-    if (nl == std::string::npos) break;
+    if (nl == std::string::npos)
+      break;
     start = nl + 1;
   }
-  if (lines.size() < 2) return html_escape(table_src);
+  if (lines.size() < 2)
+    return html_escape(table_src);
 
   auto split_row = [](const std::string& line) {
     std::vector<std::string> cells;
     std::string t = trim_copy(line);
-    if (!t.empty() && t.front() == '|') t.erase(t.begin());
-    if (!t.empty() && t.back() == '|') t.pop_back();
+    if (!t.empty() && t.front() == '|')
+      t.erase(t.begin());
+    if (!t.empty() && t.back() == '|')
+      t.pop_back();
     std::size_t p = 0;
     while (p <= t.size()) {
       const auto bar = t.find('|', p);
-      cells.push_back(trim_copy(t.substr(p, bar == std::string::npos ? std::string::npos : bar - p)));
-      if (bar == std::string::npos) break;
+      cells.push_back(
+          trim_copy(t.substr(p, bar == std::string::npos ? std::string::npos : bar - p)));
+      if (bar == std::string::npos)
+        break;
       p = bar + 1;
     }
     return cells;
   };
 
-  std::string html =
-      "<table style=\"border-collapse:collapse;margin:4px 0;font-size:13px;\">";
+  std::string html = "<table style=\"border-collapse:collapse;margin:4px 0;font-size:13px;\">";
   bool header = true;
   for (std::size_t i = 0; i < lines.size(); ++i) {
     if (is_table_sep_line(lines[i])) {
       header = false;
       continue;
     }
-    if (!looks_like_table_row(lines[i])) continue;
+    if (!looks_like_table_row(lines[i]))
+      continue;
     const auto cells = split_row(lines[i]);
     html += "<tr>";
     for (const auto& c : cells) {
@@ -196,7 +223,8 @@ std::string table_to_html(const std::string& table_src) {
       html += header ? "</th>" : "</td>";
     }
     html += "</tr>";
-    if (header) header = false;
+    if (header)
+      header = false;
   }
   html += "</table>";
   return html;
@@ -218,16 +246,20 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
     while (start <= src.size()) {
       const auto nl = src.find('\n', start);
       lines.push_back(src.substr(start, nl == std::string::npos ? std::string::npos : nl - start));
-      if (nl == std::string::npos) break;
+      if (nl == std::string::npos)
+        break;
       start = nl + 1;
     }
   }
 
   auto flush_para = [&](std::string& acc) {
-    if (acc.empty()) return;
-    // trim trailing newlines only
-    while (!acc.empty() && acc.back() == '\n') acc.pop_back();
-    if (acc.empty()) return;
+    if (acc.empty())
+      return;
+
+    while (!acc.empty() && acc.back() == '\n')
+      acc.pop_back();
+    if (acc.empty())
+      return;
     MdBlock b;
     b.type = MdBlockType::Paragraph;
     b.text = acc;
@@ -243,17 +275,18 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
 
     if (trimmed.rfind("```", 0) == 0) {
       in_fence = !in_fence;
-      if (!para.empty()) para.push_back('\n');
+      if (!para.empty())
+        para.push_back('\n');
       para += line;
       continue;
     }
     if (in_fence) {
-      if (!para.empty()) para.push_back('\n');
+      if (!para.empty())
+        para.push_back('\n');
       para += line;
       continue;
     }
 
-    // Display math $$...$$ on one line or opening $$
     if (trimmed.rfind("$$", 0) == 0) {
       flush_para(para);
       std::string body = trimmed.substr(2);
@@ -285,12 +318,14 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
           const std::string t2 = trim_copy(lines[i]);
           if (t2 == "$$" || (t2.size() >= 2 && t2.substr(t2.size() - 2) == "$$")) {
             if (t2 != "$$") {
-              if (!math.empty()) math.push_back('\n');
+              if (!math.empty())
+                math.push_back('\n');
               math += t2.substr(0, t2.size() - 2);
             }
             break;
           }
-          if (!math.empty()) math.push_back('\n');
+          if (!math.empty())
+            math.push_back('\n');
           math += lines[i];
         }
         MdBlock b;
@@ -319,7 +354,6 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
       continue;
     }
 
-    // Table: row + separator
     if (looks_like_table_row(line) && i + 1 < lines.size() && is_table_sep_line(lines[i + 1])) {
       flush_para(para);
       std::string table = line;
@@ -340,7 +374,8 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
       continue;
     }
 
-    if (!para.empty()) para.push_back('\n');
+    if (!para.empty())
+      para.push_back('\n');
     para += line;
   }
   flush_para(para);
@@ -356,7 +391,6 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
 std::string markdown_to_html(const std::string& src, const std::set<int>& revealed_spoilers) {
   std::string text = src;
 
-  // Protect display/inline math and fences
   std::vector<std::string> fences;
   {
     static const std::regex re(R"(```([A-Za-z0-9_+#.-]*)[ \t]*\n?([\s\S]*?)```)");
@@ -367,13 +401,15 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
       acc.append(it, m[0].first);
       const std::string lang = m[1].str();
       std::string code = m[2].str();
-      if (!code.empty() && code.front() == '\n') code.erase(code.begin());
-      if (!code.empty() && code.back() == '\n') code.pop_back();
+      if (!code.empty() && code.front() == '\n')
+        code.erase(code.begin());
+      if (!code.empty() && code.back() == '\n')
+        code.pop_back();
       const auto idx = fences.size();
       std::string html;
       if (!lang.empty())
-        html += "<div style=\"font-size:11px;opacity:0.7;margin-bottom:2px;\">" + html_escape(lang) +
-                "</div>";
+        html += "<div style=\"font-size:11px;opacity:0.7;margin-bottom:2px;\">" +
+                html_escape(lang) + "</div>";
       html +=
           "<pre style=\"white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px;\">" +
           html_escape(code) + "</pre>";
@@ -412,7 +448,8 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
       acc.append(it, m[0].first);
       const auto idx = inlines.size();
       inlines.push_back(
-          "<code style=\"font-family:Consolas,monospace;background-color:rgba(127,127,127,0.25);\">" +
+          "<code "
+          "style=\"font-family:Consolas,monospace;background-color:rgba(127,127,127,0.25);\">" +
           html_escape(m[1].str()) + "</code>");
       acc += std::string("\x01") + "I" + std::to_string(idx) + "\x01";
       it = m[0].second;
@@ -446,10 +483,8 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
     text = std::move(acc);
   }
 
-  // Mentions and http links (after escape: [text](nyx-user:hex) stays)
   {
-    static const std::regex re(
-        R"(\[([^\]]+)\]\((nyx-user:[a-fA-F0-9]{64}|https?://[^)\s]+)\))");
+    static const std::regex re(R"(\[([^\]]+)\]\((nyx-user:[a-fA-F0-9]{64}|https?://[^)\s]+)\))");
     text = std::regex_replace(text, re, "<a href=\"$2\">$1</a>");
   }
   {
@@ -504,7 +539,6 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
         quote_body = line.substr(4);
     }
 
-    // HR
     if (trim_copy(line) == "---" || trim_copy(line) == "***") {
       if (in_quote) {
         html += "</blockquote>";
@@ -515,7 +549,8 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
     } else if (quote_line) {
       close_lists();
       if (!in_quote) {
-        html += "<blockquote style=\"margin:4px 0;padding-left:8px;border-left:3px solid #5288c1;\">";
+        html +=
+            "<blockquote style=\"margin:4px 0;padding-left:8px;border-left:3px solid #5288c1;\">";
         in_quote = true;
       } else {
         html += "<br/>";
@@ -527,7 +562,6 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
         in_quote = false;
       }
 
-      // Headings ### ## #
       std::smatch hm;
       static const std::regex hre(R"(^(#{1,3})\s+(.+)$)");
       if (std::regex_match(line, hm, hre)) {
@@ -558,16 +592,20 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
         html += "<li>" + hm[2].str() + "</li>";
       } else {
         close_lists();
-        if (line_i > 0 && !html.empty() && html.back() != '>') html += "<br/>";
-        else if (line_i > 0 && !html.empty()) html += "<br/>";
+        if (line_i > 0 && !html.empty() && html.back() != '>')
+          html += "<br/>";
+        else if (line_i > 0 && !html.empty())
+          html += "<br/>";
         html += line;
       }
     }
     ++line_i;
-    if (nl == std::string::npos) break;
+    if (nl == std::string::npos)
+      break;
     start = nl + 1;
   }
-  if (in_quote) html += "</blockquote>";
+  if (in_quote)
+    html += "</blockquote>";
   close_lists();
 
   for (std::size_t i = 0; i < inlines.size(); ++i)
@@ -580,4 +618,4 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
   return html;
 }
 
-}  // namespace nyx
+} // namespace nyx

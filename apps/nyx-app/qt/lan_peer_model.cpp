@@ -5,26 +5,28 @@
 LanPeerModel::LanPeerModel(QObject* parent) : QAbstractListModel(parent) {}
 
 int LanPeerModel::rowCount(const QModelIndex& parent) const {
-  if (parent.isValid()) return 0;
+  if (parent.isValid())
+    return 0;
   return rows_.size();
 }
 
 QVariant LanPeerModel::data(const QModelIndex& index, int role) const {
-  if (!index.isValid() || index.row() < 0 || index.row() >= rows_.size()) return {};
+  if (!index.isValid() || index.row() < 0 || index.row() >= rows_.size())
+    return {};
   const Row& row = rows_.at(index.row());
   switch (role) {
-    case InstanceRole:
-      return row.instance;
-    case HostRole:
-      return row.host;
-    case PortRole:
-      return row.port;
-    case UserIdRole:
-      return row.userId;
-    case AddressRole:
-      return row.address;
-    default:
-      return {};
+  case InstanceRole:
+    return row.instance;
+  case HostRole:
+    return row.host;
+  case PortRole:
+    return row.port;
+  case UserIdRole:
+    return row.userId;
+  case AddressRole:
+    return row.address;
+  default:
+    return {};
   }
 }
 

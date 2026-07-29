@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file mdns.hpp
- *  LAN discovery через multicast beacon Nyx, фаза 6.
- */
-
 #include "nyx/identity.hpp"
 #include "nyx/types.hpp"
 #include "nyx/udp.hpp"
@@ -17,11 +13,9 @@
 
 namespace nyx {
 
-/** Extra IPv4 hosts that should receive unicast discovery beacons (e.g. Live DM peers). */
 void add_discovery_unicast_target(const std::string& ipv4);
 std::vector<std::string> discovery_unicast_targets();
 
-/** Узел, найденный в локальной сети. */
 struct LanPeer {
   std::string instance;
   std::string host;
@@ -29,39 +23,33 @@ struct LanPeer {
   std::string user_id_short;
 };
 
-/** Периодическая публикация и опрос mDNS. */
 class MdnsLan {
- public:
+public:
   MdnsLan() = default;
   ~MdnsLan();
 
   MdnsLan(const MdnsLan&) = delete;
   MdnsLan& operator=(const MdnsLan&) = delete;
 
-  /** Настраивает сокет для приёма discovery-beacon (bind + multicast join). */
   static bool setup_socket(UdpSocket& socket, std::string* err = nullptr);
 
-  /** Фоновые announce каждые ~3 с. */
-  void start_advertising(UdpSocket socket, Profile profile, uint16_t port,
-                         std::string host_ip);
+  void start_advertising(UdpSocket socket, Profile profile, uint16_t port, std::string host_ip);
   void stop_advertising();
 
-  /** Опрос LAN, сбор ответов beacon Nyx. */
   static std::vector<LanPeer> browse(UdpSocket& socket, int timeout_ms = 3000);
 
-  /** Одно announce (+ optional unicast to peers that miss ethernet multicast). */
-  static bool send_announcement(UdpSocket& socket, const Profile& profile,
-                                uint16_t port, const std::string& host_ip,
+  static bool send_announcement(UdpSocket& socket,
+                                const Profile& profile,
+                                uint16_t port,
+                                const std::string& host_ip,
                                 const std::vector<std::string>& unicast_hosts = {});
 
-  /** Разбор beacon-пакета (тесты). */
-  static std::optional<LanPeer> parse_beacon(const ByteBuffer& data,
-                                             const std::string& from_host);
+  static std::optional<LanPeer> parse_beacon(const ByteBuffer& data, const std::string& from_host);
 
- private:
-  std::atomic<bool> running_{false};
+private:
+  std::atomic<bool> running_ {false};
   std::thread thread_;
   UdpSocket advert_socket_;
 };
 
-}  // namespace nyx
+} // namespace nyx
