@@ -406,9 +406,9 @@ public final class NyxCameraCapture {
             else if (rotation == Surface.ROTATION_180) degrees = 180;
             else if (rotation == Surface.ROTATION_270) degrees = 270;
         } catch (Throwable ignored) {}
+        // MediaRecorder orientation hint — not JPEG EXIF (no front-camera mirror flip).
         if (sFront) {
-            int result = (sSensorOrientation + degrees) % 360;
-            return (360 - result) % 360;
+            return (sSensorOrientation + degrees) % 360;
         }
         return (sSensorOrientation - degrees + 360) % 360;
     }
