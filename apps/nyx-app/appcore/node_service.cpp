@@ -652,6 +652,8 @@ void NodeService::stop() {
   }
   if (discovery_thread_.joinable())
     discovery_thread_.join();
+  for (int i = 0; i < 50 && (discovery_busy_.load() || dm_reconnect_busy_.load()); ++i)
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   for (auto& s : to_join) {
     if (s->worker.joinable()) {
       if (s->worker.get_id() != std::this_thread::get_id())
