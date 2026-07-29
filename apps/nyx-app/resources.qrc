@@ -42,7 +42,6 @@
     <file>ui/controls/NyxMenuItem.qml</file>
     <file>ui/AccountGate.qml</file>
     <file>ui/dialogs/SettingsDialog.qml</file>
-    <file>ui/dialogs/GroupsDialog.qml</file>
     <file>ui/dialogs/FieldInfoDialog.qml</file>
     <file>ui/dialogs/PeerInfoDialog.qml</file>
     <file>ui/panels/ConnectionDrawer.qml</file>

@@ -502,12 +502,6 @@ void NodeController::setConnectionPanelOpen(bool open) {
   emit connectionPanelOpenChanged();
 }
 
-void NodeController::setGroupsDialogOpen(bool open) {
-  if (groups_dialog_open_ == open) return;
-  groups_dialog_open_ = open;
-  emit groupsDialogOpenChanged();
-}
-
 void NodeController::setFieldInfoOpen(bool open) {
   if (field_info_open_ == open) return;
   field_info_open_ = open;
@@ -5023,7 +5017,6 @@ void NodeController::startFieldHub(const QString& groupIdHex) {
   if (active_chat_key_ != QStringLiteral("group:") + gid || !in_chat_) {
     showGroupInView(gid);
   }
-  setGroupsDialogOpen(false);
   peer_status_text_ = QStringLiteral("открытие эфира…");
   emit chatChanged();
   showToast(QStringLiteral("Открываем эфир…"));
@@ -5041,7 +5034,6 @@ void NodeController::joinField(const QString& inviteHex) {
     showToast(err);
     return;
   }
-  setGroupsDialogOpen(false);
   pending_field_join_notify_ = true;
 
   // Enable the intent right away, or the list stays offline after the owner appears.

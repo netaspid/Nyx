@@ -198,13 +198,6 @@ ApplicationWindow {
         node: app
     }
 
-    GroupsDialog {
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        theme: appTheme
-        node: app
-    }
-
     FieldInfoDialog {
         parent: Overlay.overlay
         anchors.centerIn: parent

@@ -151,8 +151,6 @@ class NodeController : public QObject {
   Q_PROPERTY(int permFileManageRoles READ permFileManageRoles CONSTANT)
   Q_PROPERTY(bool connectionPanelOpen READ connectionPanelOpen WRITE setConnectionPanelOpen
                  NOTIFY connectionPanelOpenChanged)
-  Q_PROPERTY(bool groupsDialogOpen READ groupsDialogOpen WRITE setGroupsDialogOpen
-                 NOTIFY groupsDialogOpenChanged)
   Q_PROPERTY(bool fieldInfoOpen READ fieldInfoOpen WRITE setFieldInfoOpen
                  NOTIFY fieldInfoOpenChanged)
   Q_PROPERTY(QString fieldInfoGroupId READ fieldInfoGroupId NOTIFY fieldInfoOpenChanged)
@@ -291,7 +289,6 @@ class NodeController : public QObject {
   int permFileManageShares() const { return static_cast<int>(nyx::FilePermission::ManageShares); }
   int permFileManageRoles() const { return static_cast<int>(nyx::FilePermission::ManageRoles); }
   bool connectionPanelOpen() const { return connection_panel_open_; }
-  bool groupsDialogOpen() const { return groups_dialog_open_; }
   bool fieldInfoOpen() const { return field_info_open_; }
   void setFieldInfoOpen(bool open);
   QString fieldInfoGroupId() const { return field_info_group_id_; }
@@ -312,7 +309,6 @@ class NodeController : public QObject {
 
   void setWindowActive(bool active);
   void setConnectionPanelOpen(bool open);
-  void setGroupsDialogOpen(bool open);
   void setMainViewMode(int mode);
   void setFileScopeGroupId(const QString& groupIdHex);
 
@@ -570,7 +566,6 @@ class NodeController : public QObject {
   void mainViewModeChanged();
   void fileAccessChanged();
   void connectionPanelOpenChanged();
-  void groupsDialogOpenChanged();
   void fieldInfoOpenChanged();
   void peerInfoOpenChanged();
   void groupListChanged();
@@ -690,7 +685,6 @@ class NodeController : public QObject {
   void finishAccountUnlock(bool begin_session);
   bool window_active_ = true;
   bool connection_panel_open_ = false;
-  bool groups_dialog_open_ = false;
   bool field_info_open_ = false;
   QString field_info_group_id_;
   QString field_info_invite_;
