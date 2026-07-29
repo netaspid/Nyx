@@ -37,6 +37,9 @@ jobs:
             apps/nyx-app/appcore/node_service_avatar.cpp \
             apps/nyx-app/appcore/node_service_files.cpp \
             apps/nyx-app/appcore/node_service_group.cpp \
+            apps/nyx-app/appcore/node_service_chat.cpp \
+            apps/nyx-app/appcore/node_service_call.cpp \
+            apps/nyx-app/appcore/node_service.cpp \
             --checks='-*,misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty,bugprone-use-after-move,bugprone-dangling-handle,bugprone-undefined-memory-manipulation' \
             --warnings-as-errors='misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty,bugprone-use-after-move,bugprone-dangling-handle,bugprone-undefined-memory-manipulation'
       - name: clang-tidy (advisory)
