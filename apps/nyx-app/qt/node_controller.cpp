@@ -737,17 +737,6 @@ bool NodeController::canManageFileShares() const {
   return hasFilePermission(static_cast<int>(nyx::FilePermission::ManageShares));
 }
 
-bool NodeController::canRemoveShareFolder() const {
-  if (file_scope_group_id_.isEmpty()) return true;
-  for (const QVariant& v : group_list_) {
-    const QVariantMap m = v.toMap();
-    if (m.value(QStringLiteral("groupId")).toString() != file_scope_group_id_) continue;
-    if (m.value(QStringLiteral("isOwner")).toBool()) return true;
-    break;
-  }
-  return canManageFileShares();
-}
-
 bool NodeController::canAddShareFolder() const {
   if (file_scope_group_id_.isEmpty()) return true;
   return hasFilePermission(static_cast<int>(nyx::FilePermission::ManageShares)) ||
@@ -2551,7 +2540,6 @@ void NodeController::wireCallbacks() {
         this,
         [this, gid, invite]() {
           last_group_invite_ = QString::fromStdString(invite);
-          emit lastGroupInviteChanged();
           setStatus(QString("поле создано\n  id: %1\n  invite: %2")
                         .arg(QString::fromStdString(gid), last_group_invite_));
           refreshChatList();
@@ -4590,8 +4578,6 @@ QUrl NodeController::callLocalFrameUrl() const { return call_local_frame_url_; }
 bool NodeController::callCanSwitchCamera() const {
   return call_video_.canSwitchCamera();
 }
-
-QString NodeController::callFocusedPeerId() const { return call_video_.focusedPeerId(); }
 
 void NodeController::setCallFrameProvider(CallFrameProvider* provider) {
   call_frames_ = provider;

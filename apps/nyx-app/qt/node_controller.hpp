@@ -35,8 +35,6 @@ class NodeController : public QObject {
   Q_PROPERTY(QString profileNickname READ profileNickname WRITE setNickname NOTIFY profileChanged)
   Q_PROPERTY(QString profileIdShort READ profileIdShort NOTIFY profileChanged)
   Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
-  Q_PROPERTY(QString inviteToken READ inviteToken NOTIFY inviteTokenChanged)
-  Q_PROPERTY(QString lastGroupInvite READ lastGroupInvite NOTIFY lastGroupInviteChanged)
   Q_PROPERTY(QString peerTitle READ peerTitle NOTIFY chatChanged)
   Q_PROPERTY(QString peerConnectionLabel READ peerConnectionLabel NOTIFY chatChanged)
   Q_PROPERTY(QString peerStatusText READ peerStatusText NOTIFY chatChanged)
@@ -47,7 +45,6 @@ class NodeController : public QObject {
                  NOTIFY networkSettingsChanged)
   Q_PROPERTY(QString profileUserId READ profileUserIdHex NOTIFY profileChanged)
   Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
-  Q_PROPERTY(bool listening READ listening NOTIFY listeningChanged)
   Q_PROPERTY(bool inChat READ inChat NOTIFY chatChanged)
   Q_PROPERTY(bool canSendMessage READ canSendMessage NOTIFY chatChanged)
   Q_PROPERTY(bool sessionUnlocked READ sessionUnlocked NOTIFY sessionUnlockedChanged)
@@ -80,10 +77,8 @@ class NodeController : public QObject {
   Q_PROPERTY(QUrl callRemoteFrameUrl READ callRemoteFrameUrl NOTIFY callRemoteFrameChanged)
   Q_PROPERTY(QUrl callLocalFrameUrl READ callLocalFrameUrl NOTIFY callLocalFrameChanged)
   Q_PROPERTY(bool callCanSwitchCamera READ callCanSwitchCamera NOTIFY callChanged)
-  Q_PROPERTY(QString callFocusedPeerId READ callFocusedPeerId NOTIFY callVideoPeersChanged)
   Q_PROPERTY(QVariantList callVideoPeers READ callVideoPeers NOTIFY callVideoPeersChanged)
   Q_PROPERTY(QVariantList callRosterPeers READ callRosterPeers NOTIFY callVideoPeersChanged)
-  Q_PROPERTY(int callFrameEpoch READ callFrameEpoch NOTIFY callRemoteFrameChanged)
   Q_PROPERTY(QVariantList cameraDeviceList READ cameraDeviceList NOTIFY mediaDevicesChanged)
   Q_PROPERTY(QVariantList audioInputDeviceList READ audioInputDeviceList NOTIFY mediaDevicesChanged)
   Q_PROPERTY(QVariantList audioOutputDeviceList READ audioOutputDeviceList NOTIFY mediaDevicesChanged)
@@ -116,7 +111,6 @@ class NodeController : public QObject {
   Q_PROPERTY(QVariantList fileRemoteBrowseCrumbs READ fileRemoteBrowseCrumbs NOTIFY filesChanged)
   Q_PROPERTY(int filesSection READ filesSection WRITE setFilesSection NOTIFY filesChanged)
   Q_PROPERTY(bool canFileList READ canFileList NOTIFY fileAccessChanged)
-  Q_PROPERTY(bool canRemoveShareFolder READ canRemoveShareFolder NOTIFY fileAccessChanged)
   Q_PROPERTY(QString fileScopeGroupId READ fileScopeGroupId WRITE setFileScopeGroupId
                  NOTIFY filesChanged)
   Q_PROPERTY(QString fileScopeLabel READ fileScopeLabel NOTIFY filesChanged)
@@ -164,7 +158,6 @@ class NodeController : public QObject {
   Q_PROPERTY(bool peerInfoOpen READ peerInfoOpen WRITE setPeerInfoOpen
                  NOTIFY peerInfoOpenChanged)
   Q_PROPERTY(QString peerInfoUserId READ peerInfoUserId NOTIFY peerInfoOpenChanged)
-  Q_PROPERTY(bool trayAvailable READ trayAvailable CONSTANT)
   Q_PROPERTY(QString activeChatKey READ activeChatKey NOTIFY chatChanged)
   Q_PROPERTY(QString sessionSummary READ sessionSummary NOTIFY sessionsChanged)
   Q_PROPERTY(QString dmInboxToken READ dmInboxToken NOTIFY inviteTokenChanged)
@@ -176,8 +169,6 @@ class NodeController : public QObject {
   /** available | away | busy | invisible */
   Q_PROPERTY(QString profileAvailability READ profileAvailability WRITE setProfileAvailability
                  NOTIFY profileMetaChanged)
-  Q_PROPERTY(QString profileAvailabilityLabel READ profileAvailabilityLabel
-                 NOTIFY profileMetaChanged)
   Q_PROPERTY(QString profileAvatarPath READ profileAvatarPath NOTIFY profilePhotosChanged)
   Q_PROPERTY(QVariantList profilePhotoList READ profilePhotoList NOTIFY profilePhotosChanged)
 
@@ -188,8 +179,6 @@ class NodeController : public QObject {
   QString profileNickname() const { return profile_nickname_; }
   QString profileIdShort() const { return profile_id_short_; }
   QString statusText() const { return status_text_; }
-  QString inviteToken() const { return invite_token_; }
-  QString lastGroupInvite() const { return last_group_invite_; }
   QString peerTitle() const { return peer_title_; }
   QString peerConnectionLabel() const { return peer_connection_label_; }
   QString peerStatusText() const { return peer_status_text_; }
@@ -252,7 +241,6 @@ class NodeController : public QObject {
   QVariantList fileRemoteBrowseCrumbs() const { return file_remote_browse_crumbs_; }
   int filesSection() const { return files_section_; }
   bool canFileList() const;
-  bool canRemoveShareFolder() const;
   QString fileScopeGroupId() const { return file_scope_group_id_; }
   QString fileScopeLabel() const { return file_scope_label_; }
   bool fileExchangeReady() const;
@@ -302,7 +290,6 @@ class NodeController : public QObject {
   bool peerInfoOpen() const { return peer_info_open_; }
   void setPeerInfoOpen(bool open);
   QString peerInfoUserId() const { return peer_info_user_id_; }
-  bool trayAvailable() const { return tray_icon_ != nullptr; }
   QString activeChatKey() const { return active_chat_key_; }
   QString sessionSummary() const;
   QString dmInboxToken() const;
@@ -439,10 +426,8 @@ class NodeController : public QObject {
   QUrl callRemoteFrameUrl() const;
   QUrl callLocalFrameUrl() const;
   bool callCanSwitchCamera() const;
-  QString callFocusedPeerId() const;
   QVariantList callVideoPeers() const;
   QVariantList callRosterPeers() const;
-  int callFrameEpoch() const { return call_frame_epoch_; }
   void setCallFrameProvider(CallFrameProvider* provider);
   QVariantList cameraDeviceList() const;
   QVariantList audioInputDeviceList() const;
@@ -539,7 +524,6 @@ class NodeController : public QObject {
   void profileChanged();
   void statusTextChanged();
   void inviteTokenChanged();
-  void lastGroupInviteChanged();
   void contactListChanged();
   void sidebarModeChanged();
   void profileMetaChanged();
