@@ -26,7 +26,7 @@ jobs:
         run: ./build/nyx-tests
       - name: Test appcore
         run: ./build/nyx-appcore-tests
-      - name: clang-tidy gate (store loaders)
+      - name: clang-tidy gate (stores + appcore)
         run: |
           # Narrow warnings-as-errors set; expand as debt is cleared.
           clang-tidy -p build \
@@ -34,6 +34,9 @@ jobs:
             src/avatar_store.cpp src/network_config.cpp src/profile_meta.cpp src/file_index.cpp \
             src/account_store.cpp apps/nyx-app/appcore/session_types.hpp \
             apps/nyx-app/appcore/node_service_connect.cpp \
+            apps/nyx-app/appcore/node_service_avatar.cpp \
+            apps/nyx-app/appcore/node_service_files.cpp \
+            apps/nyx-app/appcore/node_service_group.cpp \
             --checks='-*,misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty,bugprone-use-after-move,bugprone-dangling-handle,bugprone-undefined-memory-manipulation' \
             --warnings-as-errors='misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty,bugprone-use-after-move,bugprone-dangling-handle,bugprone-undefined-memory-manipulation'
       - name: clang-tidy (advisory)
