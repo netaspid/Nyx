@@ -534,6 +534,45 @@ void NodeService::abandon_session_worker(const std::shared_ptr<NetSession>& sess
   }
 }
 
+void NodeService::schedule_session_worker_join(std::shared_ptr<NetSession> session) {
+  if (!session)
+    return;
+  bool start_worker = false;
+  {
+    std::lock_guard lock(session_join_mutex_);
+    session_join_queue_.push_back(std::move(session));
+    if (!session_join_running_) {
+      session_join_running_ = true;
+      start_worker = true;
+    }
+  }
+  if (!start_worker)
+    return;
+  if (session_join_thread_.joinable())
+    session_join_thread_.join();
+  session_join_thread_ = std::thread([this]() {
+    for (;;) {
+      std::shared_ptr<NetSession> s;
+      {
+        std::lock_guard lock(session_join_mutex_);
+        if (session_join_queue_.empty()) {
+          session_join_running_ = false;
+          return;
+        }
+        s = std::move(session_join_queue_.front());
+        session_join_queue_.erase(session_join_queue_.begin());
+      }
+      if (!s || !s->worker.joinable())
+        continue;
+      if (s->worker.get_id() == std::this_thread::get_id()) {
+        s->worker.detach();
+        continue;
+      }
+      s->worker.join();
+    }
+  });
+}
+
 bool NodeService::is_listening() const {
   std::lock_guard lock(sessions_mutex_);
   if (auto inbox = find_session_locked(kDmInboxSessionId)) {
@@ -620,6 +659,8 @@ void NodeService::stop() {
     dm_reconnect_thread_.join();
   if (dm_dial_thread_.joinable())
     dm_dial_thread_.join();
+  if (session_join_thread_.joinable())
+    session_join_thread_.join();
 
   std::vector<std::shared_ptr<NetSession>> to_join;
   {
@@ -670,6 +711,7 @@ bool NodeService::stop_session(const std::string& session_id) {
     mark_session_disconnected(make_dm_session_id(session->ref_id_hex));
   }
   session->running.store(false);
+  schedule_session_worker_join(session);
   emit_sessions_changed();
   return true;
 }

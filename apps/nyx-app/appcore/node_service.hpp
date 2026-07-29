@@ -557,6 +557,11 @@ private:
   std::atomic<bool> dm_reconnect_busy_ {false};
   std::thread dm_dial_thread_;
   std::atomic<bool> dm_dial_busy_ {false};
+  void schedule_session_worker_join(std::shared_ptr<NetSession> session);
+  std::mutex session_join_mutex_;
+  std::vector<std::shared_ptr<NetSession>> session_join_queue_;
+  std::thread session_join_thread_;
+  bool session_join_running_ = false;
 
   nyx::FileIndex file_index_;
   std::vector<nyx::FileEntry> hub_remote_catalog_;
