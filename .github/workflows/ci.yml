@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y cmake build-essential clang-format
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential clang-format clang-tidy
       - name: Check clang-format
         run: |
           mapfile -t files < <(find src include apps tests android \
@@ -19,10 +19,16 @@ jobs:
             -type f | sort)
           clang-format --dry-run --Werror "${files[@]}"
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DNYX_BUILD_GUI=OFF
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DNYX_BUILD_GUI=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Build
         run: cmake --build build -j
       - name: Test libnyx
         run: ./build/nyx-tests
       - name: Test appcore
         run: ./build/nyx-appcore-tests
+      - name: clang-tidy (advisory)
+        continue-on-error: true
+        run: |
+          mapfile -t files < <(find src include/nyx apps/nyx-app/appcore tests \
+            \( -name '*.cpp' -o -name '*.hpp' \) -type f | sort)
+          clang-tidy -p build "${files[@]}"
