@@ -49,6 +49,11 @@ Nyx — P2P-мессенджер: лички, поля (группы), обме�
 
 Готовый файл: `build-android\Nyx.apk`.
 
+Подпись по умолчанию — общий debug-keystore в репозитории
+(`android/keystore/nyx-debug.keystore`), чтобы APK с Linux и Windows
+обновляли одно и то же установленное приложение без uninstall.
+Переопределение: `NYX_ANDROID_KEYSTORE` (и при необходимости alias/пароли).
+
 Опционально через окружение:
 
 | Переменная | Смысл | По умолчанию |
@@ -57,6 +62,7 @@ Nyx — P2P-мессенджер: лички, поля (группы), обме�
 | `NYX_QT_VERSION` | Версия Qt | `6.5.3` |
 | `ANDROID_SDK_ROOT` | Android SDK | `%LOCALAPPDATA%\Android\Sdk` |
 | `NYX_ANDROID_BUILD_DIR` | Каталог сборки | `build-android` |
+| `NYX_ANDROID_KEYSTORE` | Keystore для подписи APK | `android/keystore/nyx-debug.keystore` |
 
 На Linux: `./scripts/build-android-apk.sh`.
 

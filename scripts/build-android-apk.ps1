@@ -67,7 +67,7 @@ $NdkVersion = if ($env:NYX_ANDROID_NDK_VERSION) { $env:NYX_ANDROID_NDK_VERSION }
 $ApiLevel = if ($env:NYX_ANDROID_API) { $env:NYX_ANDROID_API } else { "34" }
 $BuildTools = if ($env:NYX_ANDROID_BUILD_TOOLS) { $env:NYX_ANDROID_BUILD_TOOLS } else { "34.0.0" }
 $OutApk = Join-Path $BuildDir "Nyx.apk"
-$Keystore = if ($env:NYX_ANDROID_KEYSTORE) { $env:NYX_ANDROID_KEYSTORE } else { Join-Path $env:USERPROFILE ".android\debug.keystore" }
+$Keystore = if ($env:NYX_ANDROID_KEYSTORE) { $env:NYX_ANDROID_KEYSTORE } else { Join-Path $Root "android\keystore\nyx-debug.keystore" }
 $KeyAlias = if ($env:NYX_ANDROID_KEY_ALIAS) { $env:NYX_ANDROID_KEY_ALIAS } else { "androiddebugkey" }
 $StorePass = if ($env:NYX_ANDROID_STOREPASS) { $env:NYX_ANDROID_STOREPASS } else { "android" }
 $KeyPass = if ($env:NYX_ANDROID_KEYPASS) { $env:NYX_ANDROID_KEYPASS } else { "android" }
@@ -436,10 +436,15 @@ function Ensure-CMake-Ninja {
 }
 
 function Ensure-DebugKeystore {
-    $dir = Split-Path $Keystore -Parent
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
     if (Test-Path $Keystore) { return }
 
+    $repoKs = Join-Path $Root "android\keystore\nyx-debug.keystore"
+    if ($Keystore -eq $repoKs) {
+        Die "Missing $repoKs — commit it or set NYX_ANDROID_KEYSTORE to a shared keystore"
+    }
+
+    $dir = Split-Path $Keystore -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $keytool = Join-Path $env:JAVA_HOME "bin\keytool.exe"
     if (-not (Test-Path $keytool)) { Die "keytool not found in JAVA_HOME" }
     Log "Creating debug keystore at $Keystore…"

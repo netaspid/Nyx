@@ -11,7 +11,7 @@ NDK_VERSION="${NYX_ANDROID_NDK_VERSION:-25.2.9519653}"
 API_LEVEL="${NYX_ANDROID_API:-34}"
 BUILD_TOOLS="${NYX_ANDROID_BUILD_TOOLS:-34.0.0}"
 OUT_APK="$BUILD_DIR/Nyx.apk"
-KEYSTORE="${NYX_ANDROID_KEYSTORE:-$HOME/.android/debug.keystore}"
+KEYSTORE="${NYX_ANDROID_KEYSTORE:-$ROOT/android/keystore/nyx-debug.keystore}"
 KEY_ALIAS="${NYX_ANDROID_KEY_ALIAS:-androiddebugkey}"
 STOREPASS="${NYX_ANDROID_STOREPASS:-android}"
 KEYPASS="${NYX_ANDROID_KEYPASS:-android}"
@@ -172,17 +172,24 @@ ensure_qt() {
 }
 
 ensure_debug_keystore() {
-  mkdir -p "$(dirname "$KEYSTORE")"
-  if [[ ! -f "$KEYSTORE" ]]; then
-    log "Creating Android debug keystore at $KEYSTORE…"
-    keytool -genkeypair -v \
-      -keystore "$KEYSTORE" \
-      -storepass "$STOREPASS" \
-      -keypass "$KEYPASS" \
-      -alias "$KEY_ALIAS" \
-      -keyalg RSA -keysize 2048 -validity 10000 \
-      -dname "CN=Android Debug,O=Android,C=US"
+  # Prefer the repo keystore so Linux and Windows builds share one signing cert
+  # (required for sideload updates without uninstall).
+  if [[ -f "$KEYSTORE" ]]; then
+    return 0
   fi
+  local repo_ks="$ROOT/android/keystore/nyx-debug.keystore"
+  if [[ "$KEYSTORE" == "$repo_ks" ]]; then
+    die "Missing $repo_ks — commit it or set NYX_ANDROID_KEYSTORE to a shared keystore"
+  fi
+  mkdir -p "$(dirname "$KEYSTORE")"
+  log "Creating Android debug keystore at $KEYSTORE…"
+  keytool -genkeypair -v \
+    -keystore "$KEYSTORE" \
+    -storepass "$STOREPASS" \
+    -keypass "$KEYPASS" \
+    -alias "$KEY_ALIAS" \
+    -keyalg RSA -keysize 2048 -validity 10000 \
+    -dname "CN=Android Debug,O=Android,C=US"
 }
 
 configure_and_build() {
