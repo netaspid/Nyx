@@ -155,8 +155,6 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
   service_.set_call_relay_score(800);
 #endif
 
-
-
   call_audio_thread_.setObjectName(QStringLiteral("nyx-call-audio"));
   call_audio_.moveToThread(&call_audio_thread_);
   connect(&call_audio_, &CallAudioIo::startFailed, this, [this]() {
@@ -186,7 +184,6 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
     emit callVideoPeersChanged();
   });
   call_audio_thread_.start();
-
 
   call_video_thread_.setObjectName(QStringLiteral("nyx-call-video"));
   call_video_.moveToThread(&call_video_thread_);
@@ -413,7 +410,6 @@ bool NodeController::activeFieldIsOwner() const {
 }
 
 void NodeController::maybeAutoReconnectSessions() {
-
 
   service_.auto_reconnect_all();
   invite_token_ = QString::fromStdString(service_.dm_inbox_token_hex());
@@ -671,19 +667,6 @@ void NodeController::setMainViewMode(int mode) {
       refreshRemoteFileList();
   }
   emit mainViewModeChanged();
-}
-
-QString NodeController::joinFileRelPath(const QString& browseRel, const QString& entryRel) const {
-  QString rel = entryRel.trimmed();
-  rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
-  const QString browse = browseRel.trimmed();
-  if (browse.isEmpty())
-    return rel;
-  if (rel.isEmpty())
-    return browse;
-  if (rel.startsWith(browse + QLatin1Char('/')))
-    return rel;
-  return browse + QLatin1Char('/') + rel;
 }
 
 uint32_t NodeController::filePermissionsAt(const QString& rootPath,
@@ -1395,98 +1378,6 @@ QString NodeController::fileExchangeHint() const {
   return QString::fromStdString(service_.file_exchange_hint());
 }
 
-QVariantList NodeController::entriesToVariant(const std::vector<nyx::FileEntry>& entries,
-                                              bool remote) const {
-  QVariantList list;
-  const QString browse_rel = remote ? file_remote_browse_path_ : file_browse_path_;
-  for (const auto& e : entries) {
-    QVariantMap m;
-    const std::string leaf = e.leaf_name();
-    const std::string rel = e.relative_path;
-    QString display = utf8q(leaf);
-    if (display.isEmpty() && !rel.empty())
-      display = utf8q(rel);
-    const bool is_dir = e.is_directory();
-    QString full_rel;
-    if (is_dir) {
-      full_rel = utf8q(rel);
-      full_rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
-    } else {
-      full_rel = joinFileRelPath(browse_rel, utf8q(rel));
-    }
-    const QString root = utf8q(e.root_path);
-    QString owner_hex;
-    if (!std::all_of(e.owner_id.begin(), e.owner_id.end(), [](uint8_t b) { return b == 0; })) {
-      owner_hex = QString::fromStdString(nyx::to_hex(e.owner_id.data(), e.owner_id.size()));
-    } else if (is_dir && display.size() == 64) {
-
-      bool hex_ok = true;
-      for (const QChar c : display) {
-        if (!c.isDigit() && (c.toLower() < QLatin1Char('a') || c.toLower() > QLatin1Char('f'))) {
-          hex_ok = false;
-          break;
-        }
-      }
-      if (hex_ok)
-        owner_hex = display.toLower();
-    } else {
-      const QString posix = full_rel;
-      const int slash = posix.indexOf(QLatin1Char('/'));
-      const QString head = slash > 0 ? posix.left(slash) : QString {};
-      if (head.size() == 64)
-        owner_hex = head.toLower();
-    }
-    QString owner_label;
-    if (!owner_hex.isEmpty()) {
-      owner_label = userDisplayName(owner_hex);
-      if (is_dir && display.toLower() == owner_hex)
-        display = owner_label;
-    }
-    m.insert(QStringLiteral("name"), display);
-    m.insert(QStringLiteral("navPath"), utf8q(rel));
-    m.insert(QStringLiteral("fullRelPath"), full_rel);
-    m.insert(QStringLiteral("rootPath"), root);
-    m.insert(QStringLiteral("hash"), utf8q(nyx::hash_hex(e.hash)));
-    const auto size = static_cast<qulonglong>(e.size);
-    m.insert(QStringLiteral("size"), size);
-    m.insert(QStringLiteral("sizeLabel"), formatFileSizeLabel(size, is_dir));
-    m.insert(QStringLiteral("mime"), utf8q(e.mime));
-    m.insert(QStringLiteral("isRemote"), remote);
-    m.insert(QStringLiteral("isDirectory"), is_dir);
-    m.insert(QStringLiteral("ownerId"), owner_hex);
-    m.insert(QStringLiteral("ownerLabel"), owner_label);
-    if (remote) {
-      const bool can_dl =
-          is_dir ? canDownloadFolderAt(root, full_rel) : canFileDownloadAt(root, full_rel);
-      m.insert(QStringLiteral("canDownload"), can_dl);
-      m.insert(QStringLiteral("canOpenRemote"), !is_dir && canFileOpenRemoteAt(root, full_rel));
-    }
-    list.append(m);
-  }
-  return list;
-}
-
-void NodeController::resetFileBrowse() {
-  file_browse_path_.clear();
-  syncFileBrowseCrumbs();
-}
-
-QString NodeController::normalizeShareRootPath(const QString& path) const {
-  QString p = path.trimmed();
-  if (p.isEmpty())
-    return p;
-  p.replace(QLatin1Char('\\'), QLatin1Char('/'));
-#ifdef Q_OS_WIN
-  return p.toLower();
-#else
-  return p;
-#endif
-}
-
-bool NodeController::shareRootPathsEqual(const QString& a, const QString& b) const {
-  return normalizeShareRootPath(a) == normalizeShareRootPath(b);
-}
-
 QString NodeController::scopeLabelForGroupId(const QString& groupIdHex) const {
   if (groupIdHex.isEmpty())
     return QStringLiteral("Личные");
@@ -1537,7 +1428,6 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   if (roots.empty())
     return;
 
-
   if (!file_selected_share_root_.isEmpty()) {
     const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
     for (const auto& r : scope_roots) {
@@ -1555,7 +1445,6 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
   if (!scope_roots.empty())
     return;
-
 
 }
 
@@ -1591,7 +1480,6 @@ NodeController::remoteRootsCatalog(const std::vector<nyx::FileEntry>& all) const
     file_counts[nyx::normalize_utf8_path(e.root_path)]++;
   }
 
-
   std::map<std::string, nyx::FileEntry> by_root;
   for (const auto& e : all) {
     if (!e.is_directory())
@@ -1604,7 +1492,6 @@ NodeController::remoteRootsCatalog(const std::vector<nyx::FileEntry>& all) const
       marker.size = static_cast<uint64_t>(it->second);
     by_root[norm] = std::move(marker);
   }
-
 
   for (const auto& [path, count] : file_counts) {
     if (by_root.count(path))
@@ -1704,7 +1591,6 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
   if (p.isEmpty())
     return;
 
-
   QString canonical;
   const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
   for (const auto& r : scope_roots) {
@@ -1802,7 +1688,6 @@ void NodeController::browseUp() {
     return;
   }
 
-
   if (!file_selected_share_root_.isEmpty()) {
     file_selected_share_root_.clear();
     resetFileBrowse();
@@ -1883,7 +1768,6 @@ void NodeController::addDroppedUrls(const QVariantList& urls) {
   }
   runIndexJob(dirs.front(), file_scope_group_id_, false);
   for (int i = 1; i < dirs.size(); ++i) {
-
 
     Q_UNUSED(i);
   }
@@ -2047,7 +1931,6 @@ void NodeController::refreshFileLists() {
 
 QString NodeController::pickFolder() {
 #if defined(Q_OS_ANDROID)
-
 
   const QString base =
       QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/shares");
@@ -2368,7 +2251,17 @@ void NodeController::sendFileByHash(const QString& hashHex) {
 }
 
 void NodeController::wireCallbacks() {
-  service_.set_on_status([this](const std::string& text) {
+  wireStatusCallbacks();
+  wireChatCallbacks();
+  wireSessionCallbacks();
+  wireDiscoveryCallbacks();
+  wireGroupCallbacks();
+  wireCallCallbacks();
+  wireFileCallbacks();
+}
+
+void NodeController::wireStatusCallbacks() {
+service_.set_on_status([this](const std::string& text) {
     QMetaObject::invokeMethod(
         this,
         [this, text]() {
@@ -2431,7 +2324,11 @@ void NodeController::wireCallbacks() {
         Qt::QueuedConnection);
   });
 
-  service_.set_on_message([this](const nyx_app::UiMessage& msg) {
+  
+}
+
+void NodeController::wireChatCallbacks() {
+service_.set_on_message([this](const nyx_app::UiMessage& msg) {
     if (!msg.outgoing) {
       const auto blocks = nyx::parse_markdown_blocks(msg.text);
       const QString chat_key = QString::fromStdString(msg.chat_key);
@@ -2529,7 +2426,11 @@ void NodeController::wireCallbacks() {
             Qt::QueuedConnection);
       });
 
-  service_.set_on_chat_ready([this](const std::string& session_id,
+  
+}
+
+void NodeController::wireSessionCallbacks() {
+service_.set_on_chat_ready([this](const std::string& session_id,
                                     const std::string& peer_title,
                                     const std::string& conn_label,
                                     nyx::ConversationKind kind,
@@ -2550,7 +2451,6 @@ void NodeController::wireCallbacks() {
           const bool user_waiting = pending_field_join_notify_;
           const bool was_selected = !active_chat_key_.isEmpty() && active_chat_key_ == list_key;
           pending_field_join_notify_ = false;
-
 
           if (user_waiting || was_selected) {
             service_.set_active_session(session_id);
@@ -2612,7 +2512,6 @@ void NodeController::wireCallbacks() {
             }
           }
 
-
           if (sid.startsWith(QStringLiteral("group:")) &&
               !sid.startsWith(QStringLiteral("group:join:"))) {
             const auto st = service_.session_state(session_id);
@@ -2636,7 +2535,11 @@ void NodeController::wireCallbacks() {
         Qt::QueuedConnection);
   });
 
-  service_.set_on_sessions_changed([this]() {
+  
+}
+
+void NodeController::wireDiscoveryCallbacks() {
+service_.set_on_sessions_changed([this]() {
     QMetaObject::invokeMethod(
         this,
         [this]() {
@@ -2678,7 +2581,11 @@ void NodeController::wireCallbacks() {
         Qt::QueuedConnection);
   });
 
-  service_.set_on_group_created([this](const std::string& gid, const std::string& invite) {
+  
+}
+
+void NodeController::wireGroupCallbacks() {
+service_.set_on_group_created([this](const std::string& gid, const std::string& invite) {
     QMetaObject::invokeMethod(
         this,
         [this, gid, invite]() {
@@ -2722,7 +2629,11 @@ void NodeController::wireCallbacks() {
         Qt::QueuedConnection);
   });
 
-  service_.set_on_call_changed([this]() {
+  
+}
+
+void NodeController::wireCallCallbacks() {
+service_.set_on_call_changed([this]() {
     QMetaObject::invokeMethod(
         this,
         [this]() {
@@ -2755,7 +2666,11 @@ void NodeController::wireCallbacks() {
             Qt::QueuedConnection);
       });
 
-  service_.set_on_file_progress([this](const std::string& label, int percent) {
+  
+}
+
+void NodeController::wireFileCallbacks() {
+service_.set_on_file_progress([this](const std::string& label, int percent) {
     QMetaObject::invokeMethod(
         this,
         [this, label, percent]() {
@@ -3526,7 +3441,6 @@ void NodeController::openConversation(const QString& key,
   const bool live = service_.is_session_live(key.toStdString());
   const bool is_group = kind == static_cast<int>(nyx::ConversationKind::Group);
 
-
   active_chat_kind_ = kind;
   active_chat_ref_id_ = refId;
   const bool owner_field = is_group && activeFieldIsOwner();
@@ -3570,7 +3484,6 @@ void NodeController::openConversation(const QString& key,
     chat_list_.setSessionState(key, QStringLiteral("offline"));
     return;
   }
-
 
   chat_list_.setSessionState(key, QStringLiteral("connecting"));
   showToast(QStringLiteral("Открываем эфир…"));
@@ -4026,7 +3939,6 @@ QString NodeController::mediaLocalPath(const QString& hashHex) const {
       return false;
     return true;
   };
-
 
   if (const auto object = service_.find_file_object(hex.toStdString())) {
     const QString path = QString::fromStdString(object->absolute_path());
@@ -4544,7 +4456,6 @@ bool NodeController::callIsFieldRoom() const {
 void NodeController::startCall(bool video) {
   const std::string key = active_chat_key_.toStdString();
   if (!service_.is_session_up(key)) {
-
 
     if (service_.ensure_session(key)) {
       showToast(QStringLiteral("Нет связи — переподключаюсь. Позвоните ещё раз через пару секунд."),
@@ -5296,7 +5207,6 @@ void NodeController::joinField(const QString& inviteHex) {
     return;
   }
   pending_field_join_notify_ = true;
-
 
   nyx::InviteToken token {};
   if (nyx::GroupStore::invite_from_hex(normalized.toStdString(), token)) {

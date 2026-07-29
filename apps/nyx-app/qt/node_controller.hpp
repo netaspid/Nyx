@@ -576,6 +576,13 @@ signals:
 private:
   static void chatCapturePermissionCallback(bool micOk, bool cameraOk, void* ctx);
   void wireCallbacks();
+  void wireStatusCallbacks();
+  void wireChatCallbacks();
+  void wireSessionCallbacks();
+  void wireDiscoveryCallbacks();
+  void wireGroupCallbacks();
+  void wireCallCallbacks();
+  void wireFileCallbacks();
   void setStatus(const QString& text);
   void showToast(const QString& text, bool isError = false);
   QString normalizeInviteHex(const QString& hex) const;
