@@ -32,4 +32,4 @@ std::vector<ConversationSummary> list_conversations(const UserId& self);
 
 std::string format_last_seen(uint64_t last_seen_ms, uint64_t now_ms);
 
-}
+} // namespace nyx

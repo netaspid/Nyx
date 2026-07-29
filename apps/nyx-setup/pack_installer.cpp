@@ -40,7 +40,7 @@ std::string rel_path(const fs::path& root, const fs::path& file) {
   return rel;
 }
 
-}
+} // namespace
 
 int main(int argc, char** argv) {
   std::string stub_path;

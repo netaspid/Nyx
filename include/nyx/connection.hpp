@@ -21,9 +21,7 @@ class RendezvousClient {
 public:
   RendezvousClient(UdpSocket socket, std::string server_host, uint16_t server_port);
 
-
   bool register_token(const InviteToken& token);
-
 
   std::optional<EndpointHint> lookup(const InviteToken& token);
 
@@ -41,12 +39,10 @@ class Connection {
 public:
   Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port);
 
-
   static std::optional<Connection> connect_initiator(UdpSocket socket,
                                                      const std::string& peer_host,
                                                      uint16_t peer_port,
                                                      int timeout_ms = 15000);
-
 
   static std::optional<Connection> accept_responder(UdpSocket socket,
                                                     const std::string& peer_host,
@@ -56,39 +52,28 @@ public:
 
   ConnectionState state() const { return state_; }
 
-
   bool ping();
-
 
   bool drive();
 
-
   bool send_payload(uint32_t stream_id, const ByteBuffer& data);
-
 
   bool send_realtime(const ByteBuffer& data);
 
-
   bool recv_realtime(ByteBuffer& out);
 
-
   bool peer_alive() const { return peer_alive_; }
-
 
   std::uint64_t session_rekey_epoch() const;
 
   const std::string& peer_host() const { return peer_host_; }
   uint16_t peer_port() const { return peer_port_; }
 
-
   bool recv_stream(uint32_t& stream_id, ByteBuffer& out);
-
 
   bool pop_stream(uint32_t& stream_id, ByteBuffer& out);
 
-
   void feed_wire(const ByteBuffer& wire);
-
 
   bool drive_without_recv();
 
@@ -139,9 +124,7 @@ public:
   PendingConnection(const PendingConnection&) = delete;
   PendingConnection& operator=(const PendingConnection&) = delete;
 
-
   bool start(const ByteBuffer* first_wire = nullptr);
-
 
   bool feed_wire(const ByteBuffer& wire);
 
@@ -149,7 +132,6 @@ public:
   bool failed() const { return failed_; }
   const std::string& peer_host() const { return peer_host_; }
   uint16_t peer_port() const { return peer_port_; }
-
 
   std::optional<Connection> take();
 
@@ -166,4 +148,4 @@ private:
   bool started_ = false;
 };
 
-}
+} // namespace nyx

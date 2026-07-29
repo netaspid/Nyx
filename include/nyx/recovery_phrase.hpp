@@ -18,4 +18,4 @@ bool normalize_recovery_phrase(const std::string& phrase,
 
 std::vector<std::string> split_recovery_words(const std::string& normalized_phrase);
 
-}
+} // namespace nyx

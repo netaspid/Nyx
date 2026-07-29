@@ -125,7 +125,6 @@ QImage frameToImage(QVideoFrame frame) {
   if (!frame.isValid())
     return {};
 
-
   {
     QImage img = frame.toImage();
     if (!img.isNull())
@@ -295,7 +294,7 @@ QImage i420ToImage(const nyx::Av1Decoder::Frame& frame) {
   return out;
 }
 
-}
+} // namespace
 
 int CallVideoIo::encodeWidth() const {
   return nyx::kCallVideoWidth;
@@ -524,7 +523,6 @@ void CallVideoIo::handleCameraFrame(const QVideoFrame&) {}
 void CallVideoIo::wireVideoSink() {}
 
 bool CallVideoIo::openCamera(const QCameraDevice& device) {
-
 
   Q_UNUSED(device);
   NYX_VIDEO_LOG("openCamera native prefer_front=%d thr=%p gui=%p",

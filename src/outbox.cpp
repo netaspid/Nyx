@@ -59,4 +59,4 @@ std::size_t Outbox::pending_count() const {
   return pending_.size();
 }
 
-}
+} // namespace nyx

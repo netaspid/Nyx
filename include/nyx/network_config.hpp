@@ -33,14 +33,11 @@ struct NetworkConfig {
   bool load();
   bool save() const;
 
-
   RendezvousServer primary_rendezvous() const;
 
-
   std::string rendezvous_list_string() const;
-
 
   static bool parse_rendezvous_list(const std::string& csv, NetworkConfig& out);
 };
 
-}
+} // namespace nyx

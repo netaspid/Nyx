@@ -28,7 +28,7 @@ void write_str(ByteBuffer& out, const std::string& s) {
   out.insert(out.end(), s.begin(), s.end());
 }
 
-}
+} // namespace
 
 bool is_avatar_frame(const ByteBuffer& data) {
   if (data.empty())
@@ -139,4 +139,4 @@ std::optional<AvatarDeny> AvatarDeny::decode(const ByteBuffer& data) {
   return m;
 }
 
-}
+} // namespace nyx

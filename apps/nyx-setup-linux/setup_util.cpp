@@ -95,7 +95,7 @@ bool terminate_by_name_in_dir(const char* exe_name, const std::string& install_d
   return stopped;
 }
 
-}
+} // namespace
 
 bool stop_nyx_for_install(const std::string& install_dir, std::string* err) {
   (void)err;
@@ -304,7 +304,7 @@ std::string install_command(PackageManager pm, bool need_pdf, bool need_office) 
   return {};
 }
 
-}
+} // namespace
 
 bool ensure_document_dependencies(const std::string& install_dir,
                                   std::string* err,
@@ -440,4 +440,4 @@ bool repair_installation(const std::vector<std::uint8_t>& blob,
   return verify_installation(install_dir, err);
 }
 
-}
+} // namespace nyx_setup

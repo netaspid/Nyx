@@ -77,4 +77,4 @@ private:
   RealtimeCallback on_realtime_;
 };
 
-}
+} // namespace nyx

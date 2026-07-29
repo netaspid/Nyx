@@ -27,13 +27,11 @@ class SessionIntentStore {
 public:
   explicit SessionIntentStore(std::string path = {});
 
-
   bool load();
 
   bool save() const;
 
   const std::vector<SessionIntent>& all() const { return intents_; }
-
 
   void upsert(SessionIntent intent);
 
@@ -55,4 +53,4 @@ bool load_or_create_dm_inbox_token(InviteToken& out);
 
 std::string dm_inbox_token_hex();
 
-}
+} // namespace nyx

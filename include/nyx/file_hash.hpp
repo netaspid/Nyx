@@ -17,4 +17,4 @@ std::string hash_hex(const FileHash& hash);
 
 bool hash_from_hex(const std::string& hex, FileHash& out);
 
-}
+} // namespace nyx

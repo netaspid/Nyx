@@ -27,7 +27,7 @@ bool read_nickname(const ByteBuffer& data, std::size_t offset, std::size_t len, 
   return true;
 }
 
-}
+} // namespace
 
 ByteBuffer HelloMessage::encode() const {
   ByteBuffer out;
@@ -181,4 +181,4 @@ void remember_contact(const HelloMessage& peer) {
   book.save();
 }
 
-}
+} // namespace nyx

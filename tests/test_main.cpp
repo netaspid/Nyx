@@ -732,8 +732,6 @@ static void test_file_index_three() {
   }
   assert(has_sub);
 
-
-
   {
     std::vector<nyx::FileEntry> wire_level;
     for (const auto& e : level) {
@@ -755,7 +753,6 @@ static void test_file_index_three() {
     }
     assert(has_sub_again);
     assert(files_again >= 3);
-
 
     std::vector<nyx::FileEntry> nested_wire;
     for (const auto& e : index.entries_for_session({})) {
@@ -783,7 +780,6 @@ static void test_file_index_three() {
   assert(index.entries().empty());
   assert(index.share_roots().empty());
   assert(index.listing_for_session({}).empty());
-
 
   assert(index.add_root(dir));
   assert(index.entries().size() == 4);
@@ -915,7 +911,6 @@ static void test_file_index_migration_and_objects() {
   std::filesystem::create_directories(dir);
   std::ofstream(dir + "/legacy.txt") << "legacy payload";
 
-
   {
     std::ofstream out(nyx::FileIndex::index_path(), std::ios::binary | std::ios::trunc);
     out << "{\"roots\":[{\"root\":\"" << dir << "\"}],"
@@ -944,7 +939,6 @@ static void test_file_index_migration_and_objects() {
     assert(json.find("\"group\"") != std::string::npos);
   }
 
-
   std::filesystem::remove_all(dir);
   {
     nyx::FileIndex index;
@@ -952,7 +946,6 @@ static void test_file_index_migration_and_objects() {
     assert(index.share_roots().empty());
     assert(index.entries().empty());
   }
-
 
   std::filesystem::create_directories(dir);
   std::ofstream(dir + "/obj.bin") << "object-bytes";
@@ -1077,7 +1070,6 @@ static void test_file_catalog_snapshot_semantics() {
       saw_b = true;
   }
   assert(!saw_gone && saw_new && saw_b);
-
 
   nyx::FileRequest req;
   req.hash = fresh.hash;
@@ -1513,7 +1505,6 @@ static void test_profile_meta_photos_wire() {
   assert(out.photo_hashes.size() == 1);
   assert(out.photo_hashes[0] == h);
 
-
   nyx::ByteBuffer legacy;
   nyx::write_u16_le(legacy, 2);
   legacy.push_back('o');
@@ -1786,7 +1777,6 @@ static void test_group_meta_message() {
   assert(decoded->tags == "a, b");
   assert(decoded->visibility == nyx::GroupVisibility::PublicListed);
 
-
   nyx::GroupMetaMessage empty;
   const auto empty_wire = empty.encode();
   assert(!nyx::ByeMessage::decode(empty_wire));
@@ -1950,7 +1940,6 @@ static void test_call_media_and_opus() {
   assert(d && d->origin == f.origin && d->hop_count == 1 && d->audio_level == 99 &&
          d->payload == f.payload);
 
-
   nyx::CallMediaFrame fat;
   fat.type = nyx::CallMediaType::Opus;
   fat.seq = 1;
@@ -1994,7 +1983,6 @@ static void test_call_av1_fragment() {
   assert(full && full->data.size() == big.size());
   assert(full->keyframe);
   assert(std::equal(full->data.begin(), full->data.end(), big.begin()));
-
 
   nyx::CallVideoReassembler fec_reasm;
   full.reset();
@@ -2586,8 +2574,7 @@ int main() {
   test_account_recovery_and_remember();
   test_file_transfer_1mb();
   {
-    const std::string obj =
-        R"({"roles":[{"id":"a","name":"A"},{"id":"b","name":"B"}],"n":2})";
+    const std::string obj = R"({"roles":[{"id":"a","name":"A"},{"id":"b","name":"B"}],"n":2})";
     std::vector<std::string> ids;
     nyx::json_parse_object_array(obj, "roles", [&](const std::string& item) {
       if (auto id = nyx::json_get_string(item, "id"))

@@ -28,18 +28,13 @@ public:
 
   ChatService(Connection& connection, Profile profile, PeerInfo peer);
 
-
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
-
 
   bool send_call_frame(const ByteBuffer& frame);
 
-
   void handle_payload(const ByteBuffer& payload);
 
-
   void tick();
-
 
   bool send_bye(const std::string& reason);
 
@@ -80,4 +75,4 @@ private:
   CallFrameCallback on_call_frame_;
 };
 
-}
+} // namespace nyx

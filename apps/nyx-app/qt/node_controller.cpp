@@ -89,7 +89,7 @@ QString mediaRelativeDir(const QString& chatKey, const QString&, const QString& 
   return QStringLiteral("Медиа/") + conversation + QLatin1Char('/') + leaf;
 }
 
-}
+} // namespace
 
 #include <cmath>
 #include <cstring>
@@ -136,7 +136,7 @@ bool parse_user_id_hex(const QString& hex, nyx::UserId& out) {
   return true;
 }
 
-}
+} // namespace
 
 NodeController::NodeController(QObject* parent) : QObject(parent) {
   connect(&document_viewer_,
@@ -1445,7 +1445,6 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   const auto scope_roots = service_.share_roots_for_scope(file_scope_group_id_.toStdString());
   if (!scope_roots.empty())
     return;
-
 }
 
 void NodeController::setFilesSection(int section) {
@@ -2261,7 +2260,7 @@ void NodeController::wireCallbacks() {
 }
 
 void NodeController::wireStatusCallbacks() {
-service_.set_on_status([this](const std::string& text) {
+  service_.set_on_status([this](const std::string& text) {
     QMetaObject::invokeMethod(
         this,
         [this, text]() {
@@ -2323,12 +2322,10 @@ service_.set_on_status([this](const std::string& text) {
         },
         Qt::QueuedConnection);
   });
-
-  
 }
 
 void NodeController::wireChatCallbacks() {
-service_.set_on_message([this](const nyx_app::UiMessage& msg) {
+  service_.set_on_message([this](const nyx_app::UiMessage& msg) {
     if (!msg.outgoing) {
       const auto blocks = nyx::parse_markdown_blocks(msg.text);
       const QString chat_key = QString::fromStdString(msg.chat_key);
@@ -2415,22 +2412,19 @@ service_.set_on_message([this](const nyx_app::UiMessage& msg) {
         Qt::QueuedConnection);
   });
 
-  service_.set_on_delivery(
-      [this](const std::string& , uint64_t message_id, bool delivered) {
-        QMetaObject::invokeMethod(
-            this,
-            [this, message_id, delivered]() {
-              messages_.setDelivery(
-                  message_id, delivered ? QStringLiteral("delivered") : QStringLiteral("failed"));
-            },
-            Qt::QueuedConnection);
-      });
-
-  
+  service_.set_on_delivery([this](const std::string&, uint64_t message_id, bool delivered) {
+    QMetaObject::invokeMethod(
+        this,
+        [this, message_id, delivered]() {
+          messages_.setDelivery(message_id,
+                                delivered ? QStringLiteral("delivered") : QStringLiteral("failed"));
+        },
+        Qt::QueuedConnection);
+  });
 }
 
 void NodeController::wireSessionCallbacks() {
-service_.set_on_chat_ready([this](const std::string& session_id,
+  service_.set_on_chat_ready([this](const std::string& session_id,
                                     const std::string& peer_title,
                                     const std::string& conn_label,
                                     nyx::ConversationKind kind,
@@ -2534,12 +2528,10 @@ service_.set_on_chat_ready([this](const std::string& session_id,
         },
         Qt::QueuedConnection);
   });
-
-  
 }
 
 void NodeController::wireDiscoveryCallbacks() {
-service_.set_on_sessions_changed([this]() {
+  service_.set_on_sessions_changed([this]() {
     QMetaObject::invokeMethod(
         this,
         [this]() {
@@ -2580,12 +2572,10 @@ service_.set_on_sessions_changed([this]() {
         },
         Qt::QueuedConnection);
   });
-
-  
 }
 
 void NodeController::wireGroupCallbacks() {
-service_.set_on_group_created([this](const std::string& gid, const std::string& invite) {
+  service_.set_on_group_created([this](const std::string& gid, const std::string& invite) {
     QMetaObject::invokeMethod(
         this,
         [this, gid, invite]() {
@@ -2628,12 +2618,10 @@ service_.set_on_group_created([this](const std::string& gid, const std::string& 
         },
         Qt::QueuedConnection);
   });
-
-  
 }
 
 void NodeController::wireCallCallbacks() {
-service_.set_on_call_changed([this]() {
+  service_.set_on_call_changed([this]() {
     QMetaObject::invokeMethod(
         this,
         [this]() {
@@ -2665,12 +2653,10 @@ service_.set_on_call_changed([this]() {
             },
             Qt::QueuedConnection);
       });
-
-  
 }
 
 void NodeController::wireFileCallbacks() {
-service_.set_on_file_progress([this](const std::string& label, int percent) {
+  service_.set_on_file_progress([this](const std::string& label, int percent) {
     QMetaObject::invokeMethod(
         this,
         [this, label, percent]() {
@@ -4773,7 +4759,7 @@ void NodeController::startMicTest() {
 #if defined(Q_OS_ANDROID)
   nyx_android::request_call_permissions(
       false,
-      [](bool mic_ok, bool , void* ctx) {
+      [](bool mic_ok, bool, void* ctx) {
         auto* self = static_cast<NodeController*>(ctx);
         if (!mic_ok) {
           QMetaObject::invokeMethod(
@@ -4948,7 +4934,7 @@ void NodeController::setCallCameraOn(bool on) {
   auto* ctx = new Ctx {this};
   nyx_android::request_call_permissions(
       true,
-      [](bool , bool cam_ok, void* p) {
+      [](bool, bool cam_ok, void* p) {
         auto* c = static_cast<Ctx*>(p);
         NodeController* self = c->self;
         delete c;

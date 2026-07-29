@@ -20,12 +20,9 @@ struct Frame {
   FrameHeader header;
   ByteBuffer payload;
 
-
   static Frame make(PacketType type, uint32_t stream_id, uint32_t seq, ByteBuffer payload);
 
-
   ByteBuffer encode() const;
-
 
   static std::optional<Frame>
   decode(const uint8_t* data, std::size_t len, std::string* err = nullptr);
@@ -37,7 +34,6 @@ struct EndpointHint {
   std::array<uint8_t, 8> nonce {};
   ByteBuffer encode() const;
   static std::optional<EndpointHint> decode(const uint8_t* data, std::size_t len);
-
 
   std::string host_string() const;
 };
@@ -81,4 +77,4 @@ bool is_handshake_datagram(const ByteBuffer& data);
 
 bool is_punch_datagram(const ByteBuffer& data);
 
-}
+} // namespace nyx

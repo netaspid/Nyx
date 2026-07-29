@@ -13,7 +13,7 @@ OpusDecoder* as_dec(void* p) {
   return static_cast<OpusDecoder*>(p);
 }
 
-}
+} // namespace
 
 OpusEncoderWrap::OpusEncoderWrap() {
   int err = 0;
@@ -75,4 +75,4 @@ std::optional<std::vector<int16_t>> OpusDecoderWrap::decode(const uint8_t* data,
   return pcm;
 }
 
-}
+} // namespace nyx

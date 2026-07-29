@@ -153,7 +153,6 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
         nyx::to_hex(peer_hello.dm_inbox_token.data(), peer_hello.dm_inbox_token.size());
   } else if (via == ConnectionVia::LanDirect && !peer_host.empty()) {
 
-
     invite_for_intent =
         "lan://" + peer_host + ":" + std::to_string(session->connection->peer_port());
   }
@@ -960,4 +959,4 @@ std::optional<nyx::FileEntry> NodeService::find_file_object(const std::string& h
   return entry;
 }
 
-}
+} // namespace nyx_app

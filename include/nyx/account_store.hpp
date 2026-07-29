@@ -72,4 +72,4 @@ bool import_legacy_profile(const std::string& password,
 
 bool legacy_profile_pending();
 
-}
+} // namespace nyx

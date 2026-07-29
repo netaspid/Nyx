@@ -215,7 +215,7 @@ bool encrypt_profile_blob(const Profile& profile,
   return true;
 }
 
-}
+} // namespace
 
 bool save_encrypted_profile(const std::string& path,
                             const Profile& profile,
@@ -402,4 +402,4 @@ bool read_profile_kdf_salt(const std::string& path, std::array<uint8_t, 16>& sal
   return true;
 }
 
-}
+} // namespace nyx

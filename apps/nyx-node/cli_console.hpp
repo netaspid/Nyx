@@ -18,27 +18,20 @@ class CliConsole {
 public:
   explicit CliConsole(std::string self_nickname);
 
-
   void print_header(const std::string& peer_nickname, const std::string& peer_id_short);
 
-
   void print_event(const std::string& text);
-
 
   void print_message(uint64_t timestamp_ms,
                      const std::string& author,
                      const std::string& text,
                      bool outgoing);
 
-
   void print_history(const std::vector<HistoryLine>& lines);
-
 
   void print_prompt();
 
-
   void print_help() const;
-
 
   void print_status(const std::string& peer_nickname,
                     const std::string& peer_endpoint,
@@ -54,4 +47,4 @@ private:
   std::string self_nickname_;
 };
 
-}
+} // namespace nyx_node

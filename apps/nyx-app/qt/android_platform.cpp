@@ -184,7 +184,7 @@ std::string wifi_ipv4_legacy_dhcp() {
   return buf;
 }
 
-}
+} // namespace
 
 void acquire_multicast_lock() {
   std::lock_guard lock(g_lock_mutex);
@@ -395,12 +395,8 @@ void bring_app_to_foreground() {
                           "(Landroid/content/Context;Ljava/lang/String;)Landroid/content/Intent;",
                           ctx.object<jobject>(),
                           activity.object<jstring>());
-  intent.callObjectMethod("addFlags",
-                          "(I)Landroid/content/Intent;",
-                          jint(0x10000000));
-  intent.callObjectMethod("addFlags",
-                          "(I)Landroid/content/Intent;",
-                          jint(0x20000000));
+  intent.callObjectMethod("addFlags", "(I)Landroid/content/Intent;", jint(0x10000000));
+  intent.callObjectMethod("addFlags", "(I)Landroid/content/Intent;", jint(0x20000000));
   ctx.callMethod<void>("startActivity", "(Landroid/content/Intent;)V", intent.object<jobject>());
 }
 
@@ -453,10 +449,7 @@ void set_hangup_handler(void (*fn)()) {
   g_hangup_fn = fn;
 }
 
-void show_native_hangup_overlay(bool ) {
-
-
-}
+void show_native_hangup_overlay(bool) {}
 
 void invoke_hangup_handler() {
   if (g_hangup_fn)
@@ -676,7 +669,7 @@ bool open_file(const QString& path, const QString& mime) {
       mime_arg.object<jstring>());
 }
 
-}
+} // namespace nyx_android
 
 #include <QMetaObject>
 #include <QObject>
@@ -844,9 +837,7 @@ std::string wifi_ipv4() {
   return {};
 }
 
-void request_call_permissions(bool ,
-                              void (*done)(bool mic_ok, bool cam_ok, void* ctx),
-                              void* ctx) {
+void request_call_permissions(bool, void (*done)(bool mic_ok, bool cam_ok, void* ctx), void* ctx) {
   done(true, true, ctx);
 }
 
@@ -912,6 +903,6 @@ bool open_file(const QString&, const QString&) {
   return false;
 }
 
-}
+} // namespace nyx_android
 
 #endif

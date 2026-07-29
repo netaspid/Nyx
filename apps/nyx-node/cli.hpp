@@ -21,4 +21,4 @@ NodeConfig parse_config(int argc, char** argv, int start_index);
 
 void print_usage();
 
-}
+} // namespace nyx_node

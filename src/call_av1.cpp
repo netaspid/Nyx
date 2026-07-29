@@ -47,8 +47,6 @@ std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id,
   if (n == 0 || n > 255)
     return out;
 
-
-
   CallVideoFragHeader ph;
   ph.frame_id = frame_id;
   ph.frag_index = static_cast<uint8_t>(n);
@@ -92,8 +90,6 @@ CallVideoReassembler::push(const ByteBuffer& frag_payload) {
   const bool parity = (h->keyframe & CallVideoFragHeader::kParity) != 0;
 
   if (active_ && h->frame_id != cur_id_) {
-
-
 
     const uint16_t delta = static_cast<uint16_t>(cur_id_ - h->frame_id);
     const bool stalled = (now - started_) > std::chrono::milliseconds(150);
@@ -339,4 +335,4 @@ std::optional<Av1Decoder::Frame> Av1Decoder::decode(const uint8_t* data, std::si
   return f;
 }
 
-}
+} // namespace nyx

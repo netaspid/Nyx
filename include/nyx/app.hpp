@@ -45,4 +45,4 @@ bool exchange_hello(Connection& connection,
 
 void remember_contact(const HelloMessage& peer);
 
-}
+} // namespace nyx

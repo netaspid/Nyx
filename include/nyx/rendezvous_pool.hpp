@@ -16,15 +16,11 @@ public:
 
   void set_servers(const std::vector<RendezvousServer>& servers);
 
-
   bool register_token(const InviteToken& token);
-
 
   bool unregister_token(const InviteToken& token);
 
-
   std::optional<EndpointHint> lookup(const InviteToken& token);
-
 
   bool probe_server(const RendezvousServer& server, int timeout_ms = 2000);
 
@@ -47,4 +43,4 @@ bool unregister_token_on(UdpSocket& socket,
                          const std::vector<RendezvousServer>& servers,
                          const InviteToken& token);
 
-}
+} // namespace nyx

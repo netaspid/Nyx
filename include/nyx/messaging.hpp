@@ -50,4 +50,4 @@ uint64_t next_message_id();
 
 uint64_t now_ms();
 
-}
+} // namespace nyx

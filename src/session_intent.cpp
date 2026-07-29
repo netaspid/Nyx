@@ -38,7 +38,7 @@ std::string dm_inbox_path() {
   return data_dir() + "/dm_inbox.token";
 }
 
-}
+} // namespace
 
 std::string default_session_intents_path() {
   return data_dir() + "/session_intents.json";
@@ -177,4 +177,4 @@ std::string dm_inbox_token_hex() {
   return to_hex(token.data(), token.size());
 }
 
-}
+} // namespace nyx

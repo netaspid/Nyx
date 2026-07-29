@@ -126,7 +126,7 @@ inline std::vector<std::string> json_split_objects(const std::string& arr) {
 }
 
 inline std::optional<std::pair<std::size_t, std::size_t>> json_array_bounds(const std::string& json,
-                                                                             std::size_t from) {
+                                                                            std::size_t from) {
   const auto start = json.find('[', from);
   if (start == std::string::npos)
     return std::nullopt;
@@ -159,4 +159,4 @@ inline void json_parse_object_array(const std::string& obj,
     on_object(item);
 }
 
-}
+} // namespace nyx

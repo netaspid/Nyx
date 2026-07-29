@@ -477,9 +477,8 @@ void FileTransferService::handle_request(const FileRequest& req) {
 
     send_bulk(deny.encode());
 
-    deferred_callbacks_.push_back([this, hash = req.hash] {
-      emit_event("запрос файла " + hash_hex(hash) + " — не найден");
-    });
+    deferred_callbacks_.push_back(
+        [this, hash = req.hash] { emit_event("запрос файла " + hash_hex(hash) + " — не найден"); });
 
     return;
   }
@@ -800,9 +799,8 @@ bool FileTransferService::send_file(const std::string& path_or_hash_hex) {
 
       if (!std::filesystem::exists(fs_path, ec)) {
 
-        deferred_callbacks_.push_back([this, path = path_or_hash_hex] {
-          emit_event("файл не найден: " + path);
-        });
+        deferred_callbacks_.push_back(
+            [this, path = path_or_hash_hex] { emit_event("файл не найден: " + path); });
 
       } else {
 
@@ -886,4 +884,4 @@ bool FileTransferService::push_field_index(const std::vector<FileEntry>& entries
   return send_bulk(encode_index_push(entries, root_paths, ++index_revision_));
 }
 
-}
+} // namespace nyx

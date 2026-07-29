@@ -43,23 +43,18 @@ struct FileEntry {
 
 class FileIndex {
 public:
-
   using ScanProgressFn =
       std::function<void(const std::string& path, int files_scanned, bool finished)>;
 
   FileIndex();
 
-
   void clear();
-
 
   bool add_root(const std::string& root_path,
                 const GroupId* group_id = nullptr,
                 ScanProgressFn progress = nullptr);
 
-
   bool remove_root(const std::string& root_path, const GroupId* group_id = nullptr);
-
 
   std::vector<ShareRoot> roots_for_session(const GroupId& session_group) const;
 
@@ -67,12 +62,9 @@ public:
 
   std::vector<FileEntry> entries() const;
 
-
   std::vector<FileEntry> entries_for_session(const GroupId& session_group) const;
 
-
   std::vector<FileEntry> listing_for_session(const GroupId& session_group) const;
-
 
   static std::vector<FileEntry> listing_level(const std::vector<FileEntry>& source,
                                               const std::string& share_root_path,
@@ -82,15 +74,12 @@ public:
                                                 const std::string& share_root_path,
                                                 const std::string& parent_rel) const;
 
-
   std::vector<FileEntry> listing_at_root(const std::string& share_root_path,
                                          const std::string& parent_rel,
                                          const GroupId* scope_group = nullptr) const;
 
-
   int count_in_root(const std::string& root_path) const;
   int count_in_root(const std::string& root_path, const GroupId& scope_group) const;
-
 
   bool rescan_root(const std::string& root_path,
                    const GroupId* group_id = nullptr,
@@ -117,13 +106,11 @@ public:
                                        const UserId* owner_id = nullptr,
                                        const std::string& relative_dir = {});
 
-
   static std::string library_root_path(const GroupId& scope_group);
 
   static std::string library_owner_dir(const GroupId& scope_group, const UserId& owner_id);
 
   bool ensure_library_root(const GroupId& scope_group);
-
 
   std::optional<FileEntry> find_for_session(const FileHash& hash,
                                             const GroupId& session_group) const;
@@ -133,7 +120,6 @@ public:
 
   bool load();
   bool save() const;
-
 
   bool reload() { return load(); }
 
@@ -147,4 +133,4 @@ private:
   std::vector<FileEntry> entries_;
 };
 
-}
+} // namespace nyx

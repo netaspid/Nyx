@@ -32,7 +32,6 @@ public:
   bool complete() const { return complete_; }
   HandshakeRole role() const { return role_; }
 
-
   std::optional<ByteBuffer> step(const ByteBuffer* inbound = nullptr);
 
 private:
@@ -61,15 +60,11 @@ public:
   std::optional<ByteBuffer>
   decrypt_realtime(std::uint64_t nonce, const ByteBuffer& cipher, std::string* err = nullptr);
 
-
   std::uint64_t rekey_epoch() const { return rekey_epoch_; }
-
 
   std::uint64_t bytes_transferred() const { return bytes_transferred_; }
 
-
   bool needs_rekey() const;
-
 
   bool perform_rekey(std::uint64_t epoch);
 
@@ -93,4 +88,4 @@ private:
   std::chrono::steady_clock::time_point started_at_ {};
 };
 
-}
+} // namespace nyx

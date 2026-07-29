@@ -54,4 +54,4 @@ inline std::string make_group_session_id(const std::string& group_hex) {
 
 inline constexpr const char* kDmInboxSessionId = "inbox";
 
-}
+} // namespace nyx_app

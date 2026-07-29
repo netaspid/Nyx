@@ -26,7 +26,7 @@ nyx::Profile load_profile_for_session(const NodeConfig& config) {
   return nyx::load_or_create_profile(path, config.nickname);
 }
 
-}
+} // namespace
 
 int run_listen(const NodeConfig& config) {
   const auto profile = load_profile_for_session(config);
@@ -220,4 +220,4 @@ int run_browse(int timeout_ms) {
   return 0;
 }
 
-}
+} // namespace nyx_node

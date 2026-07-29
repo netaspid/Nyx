@@ -18,7 +18,7 @@ void sha256_bytes(const uint8_t* data, std::size_t len, ChatId& out) {
   sha256_finish(&ctx, out.data());
 }
 
-}
+} // namespace
 
 ChatId dm_chat_id(const UserId& self, const UserId& peer) {
   UserId lo = self;
@@ -48,4 +48,4 @@ std::string chat_id_hex(const ChatId& id) {
   return to_hex(id.data(), id.size());
 }
 
-}
+} // namespace nyx

@@ -66,4 +66,4 @@ private:
   std::vector<Contact> contacts_;
 };
 
-}
+} // namespace nyx

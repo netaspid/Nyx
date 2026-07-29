@@ -57,7 +57,7 @@ decode_msg_body(const ByteBuffer& data, std::size_t off, bool has_chat_id) {
   return msg;
 }
 
-}
+} // namespace
 
 uint64_t next_message_id() {
   static std::atomic<uint64_t> counter {
@@ -163,4 +163,4 @@ std::optional<AckMessage> AckMessage::decode(const ByteBuffer& data) {
   return msg;
 }
 
-}
+} // namespace nyx

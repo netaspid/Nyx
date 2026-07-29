@@ -17,7 +17,7 @@ bool send_rendezvous_to(UdpSocket& socket,
   return socket.send_to(wire, server.host, server.port);
 }
 
-}
+} // namespace
 
 RendezvousPool::RendezvousPool(UdpSocket socket) : socket_(std::move(socket)) {}
 
@@ -142,4 +142,4 @@ bool RendezvousPool::probe_server(const RendezvousServer& server, int timeout_ms
   return false;
 }
 
-}
+} // namespace nyx

@@ -34,4 +34,4 @@ std::string default_logs_dir();
 
 std::string default_log_file_path();
 
-}
+} // namespace nyx

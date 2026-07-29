@@ -21,7 +21,6 @@ class RendezvousRegistry {
 public:
   explicit RendezvousRegistry(RendezvousServerConfig config);
 
-
   std::optional<ByteBuffer> handle_datagram(const std::string& client_ip,
                                             const ByteBuffer& datagram);
 
@@ -41,4 +40,4 @@ private:
       rate_buckets_;
 };
 
-}
+} // namespace nyx

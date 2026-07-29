@@ -25,7 +25,7 @@ namespace nyx {
 class CallVideoReassembler;
 class Av1Encoder;
 class Av1Decoder;
-}
+} // namespace nyx
 
 class CallVideoIo : public QObject {
   Q_OBJECT

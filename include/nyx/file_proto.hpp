@@ -130,4 +130,4 @@ std::optional<GroupFileAccess> decode_policy_push(const ByteBuffer& data);
 
 ByteBuffer encode_policy_request();
 
-}
+} // namespace nyx

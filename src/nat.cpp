@@ -122,12 +122,12 @@ std::string physical_lan_ipv4(const std::string& routed_ip) {
 }
 #endif
 
-}
+} // namespace
 
 namespace {
 std::string g_lan_ipv4_override;
 std::mutex g_lan_ipv4_mutex;
-}
+} // namespace
 
 void set_lan_ipv4_override(const std::string& ipv4) {
   std::lock_guard lock(g_lan_ipv4_mutex);
@@ -271,7 +271,6 @@ std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,
 EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host, uint16_t port) {
   const std::string lan = fallback_host.empty() ? guess_lan_ipv4() : fallback_host;
 
-
   if (is_lan_ipv4(lan) && lan != "127.0.0.1" && lan != "localhost") {
     return make_hint(lan, port);
   }
@@ -298,4 +297,4 @@ bool is_lan_ipv4(const std::string& host) {
   return false;
 }
 
-}
+} // namespace nyx

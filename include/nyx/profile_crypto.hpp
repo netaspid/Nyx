@@ -37,4 +37,4 @@ bool read_profile_kdf_salt(const std::string& path, std::array<uint8_t, 16>& sal
 
 inline constexpr std::size_t kMinAccountPasswordLen = 8;
 
-}
+} // namespace nyx

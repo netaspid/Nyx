@@ -225,7 +225,7 @@ void resampleMono(
   }
 }
 
-}
+} // namespace
 
 bool CallAudioIo::ensureOnAudioThread(const char* where) {
   if (QThread::currentThread() == thread())

@@ -16,7 +16,7 @@ constexpr auto kCallAnnounceInterval = std::chrono::milliseconds(400);
 constexpr int kCallAnnounceBursts = 20;
 constexpr auto kCallSignalRetryInterval = std::chrono::milliseconds(350);
 
-}
+} // namespace
 
 void NodeService::set_on_call_changed(CallChangedCallback cb) {
   std::lock_guard lock(cb_mutex_);
@@ -861,7 +861,6 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
     {
       std::lock_guard lock(call_mutex_);
 
-
       const bool field_guest_leave = call_.scope == nyx::CallScope::Field &&
                                      hang->reason != nyx::CallHangupReason::HubClosed &&
                                      from != nyx::UserId {};
@@ -982,7 +981,6 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
         call_relay_candidates_.erase(gone->user_id);
         call_speaker_levels_.erase(gone->user_id);
         call_.on_peer_leave(gone->call_id);
-
 
         const bool direct = call_.scope == nyx::CallScope::Direct;
         if (direct || call_participants_.size() <= 1) {
@@ -1241,7 +1239,6 @@ bool NodeService::hangup_call() {
   self = load_profile().public_key;
   gone.user_id = self;
 
-
   if (auto session = find_session(sid)) {
     const nyx::ByteBuffer wire = (field && !is_host) ? gone.encode() : hang.encode();
     send_call_frame_on_session(session, wire);
@@ -1271,4 +1268,4 @@ bool NodeService::hangup_call() {
   return true;
 }
 
-}
+} // namespace nyx_app

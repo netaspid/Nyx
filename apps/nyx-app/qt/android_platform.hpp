@@ -94,4 +94,4 @@ bool export_file(const QString& path, const QString& display_name, const QString
 
 bool open_file(const QString& path, const QString& mime);
 
-}
+} // namespace nyx_android

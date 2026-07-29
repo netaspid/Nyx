@@ -47,7 +47,6 @@ public:
 
   GroupHub(UdpSocket socket, Profile owner, GroupRecord group);
 
-
   void poll();
 
   bool send_message(const std::string& text);
@@ -66,13 +65,10 @@ public:
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_call_frame(CallFrameCallback cb) { on_call_frame_ = std::move(cb); }
 
-
   void
   attach_files(FileIndex& index, const GroupId& share_scope, FileAccessStore* access = nullptr);
 
-
   bool set_member_role(const UserId& user_id, GroupRole role);
-
 
   GroupRole role_of(const UserId& user_id) const;
 
@@ -82,15 +78,11 @@ public:
   UdpSocket& socket() { return socket_; }
   MessageStore& store() { return store_; }
 
-
   bool remove_member(const UserId& user_id);
-
 
   void notify_shutdown(const std::string& reason = "эфир закрыт");
 
-
   void broadcast_file_access_policy();
-
 
   bool publish_meta(const std::string& description,
                     const std::string& direction,
@@ -100,21 +92,17 @@ public:
   void send_meta_to(HubMember& member);
   void broadcast_meta();
 
-
   std::vector<FileEntry> catalog_for(const UserId& requester) const;
 
   std::vector<FileEntry> catalog_level_for(const UserId& requester,
                                            const std::string& root_path,
                                            const std::string& parent_rel) const;
 
-
   bool download_local_file(const FileHash& hash,
                            const std::string& dest_path,
                            std::string* saved_path = nullptr) const;
 
-
   bool request_file_from_provider(const FileHash& hash, const std::string& dest_path);
-
 
   bool provider_transfer_busy(const FileHash& hash) const;
 
@@ -181,4 +169,4 @@ private:
   std::optional<FileRelay> active_relay_;
 };
 
-}
+} // namespace nyx

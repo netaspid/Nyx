@@ -177,11 +177,9 @@ public:
 
   void reset_join_reconnect_budget(const std::string& chat_key);
 
-
   bool stop_session(const std::string& session_id = {});
 
   void stop();
-
 
   void auto_reconnect_all();
 
@@ -202,10 +200,8 @@ public:
   std::string load_files_selected_root() const;
   void save_files_selected_root(const std::string& root_path) const;
 
-
   bool send_message(const std::string& text, const std::string& session_id = {});
   bool send_bye(const std::string& reason);
-
 
   bool start_call(bool video, const std::string& session_id = {});
   bool accept_call();
@@ -479,7 +475,6 @@ private:
   nyx::GroupId scope_from_hex(const std::string& scope_group_id_hex) const;
   void remember_intent_for_session(const std::shared_ptr<NetSession>& session,
                                    const std::string& invite_hex = {});
-
 
   struct JoinReconnectBudget {
     int failures = 0;

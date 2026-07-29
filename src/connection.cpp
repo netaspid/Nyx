@@ -14,7 +14,7 @@ PacketType handshake_reply_type(HandshakeRole role) {
   return role == HandshakeRole::Initiator ? PacketType::HandshakeFinish : PacketType::HandshakeResp;
 }
 
-}
+} // namespace
 
 Connection::Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port)
     : socket_(std::move(socket)), peer_host_(std::move(peer_host)), peer_port_(peer_port) {}
@@ -202,7 +202,6 @@ bool Connection::handle_realtime_wire(const Frame& frame) {
     return false;
   ByteBuffer payload(plain->begin() + 4, plain->end());
 
-
   constexpr std::size_t kMaxInbox = 384;
   auto is_video = [](const ByteBuffer& p) {
     return !p.empty() && p[0] == static_cast<uint8_t>(CallMediaType::Video);
@@ -270,7 +269,6 @@ bool Connection::drive_without_recv() {
     return false;
 
   const auto now = std::chrono::steady_clock::now();
-
 
   if (now - last_peer_activity_ > std::chrono::seconds(120)) {
     peer_alive_ = false;
@@ -413,7 +411,7 @@ PacketType pending_hs_reply(HandshakeRole role) {
   return role == HandshakeRole::Initiator ? PacketType::HandshakeFinish : PacketType::HandshakeResp;
 }
 
-}
+} // namespace
 
 PendingConnection::PendingConnection(UdpSocket socket,
                                      std::string peer_host,
@@ -496,4 +494,4 @@ std::optional<Connection> PendingConnection::take() {
   return Connection(socket_, peer_host_, peer_port_, std::move(*sess));
 }
 
-}
+} // namespace nyx

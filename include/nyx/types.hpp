@@ -50,4 +50,4 @@ enum class ConnectionState { Handshaking, Established, Closed };
 
 using ByteBuffer = std::vector<uint8_t>;
 
-}
+} // namespace nyx

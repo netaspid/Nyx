@@ -31,12 +31,9 @@ public:
 
   void track(PendingMessage pending);
 
-
   bool on_ack(uint64_t message_id);
 
-
   std::vector<uint64_t> due_for_retry(std::chrono::steady_clock::time_point now) const;
-
 
   bool mark_retried(uint64_t message_id, std::chrono::steady_clock::time_point now);
 
@@ -49,4 +46,4 @@ private:
   std::map<uint64_t, PendingMessage> pending_;
 };
 
-}
+} // namespace nyx

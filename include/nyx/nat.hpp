@@ -26,4 +26,4 @@ EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host,
 
 bool is_lan_ipv4(const std::string& host);
 
-}
+} // namespace nyx

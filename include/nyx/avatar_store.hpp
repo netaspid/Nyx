@@ -33,14 +33,11 @@ public:
 
   std::optional<AvatarEntry> current() const;
 
-
   bool set_from_file(const std::string& source_path);
-
 
   bool make_current(const FileHash& hash);
 
   bool remove(const FileHash& hash);
-
 
   bool cache_peer_photo(const UserId& peer,
                         const FileHash& hash,
@@ -49,7 +46,6 @@ public:
 
   std::string peer_path(const UserId& peer, const FileHash& hash) const;
   bool has_peer_photo(const UserId& peer, const FileHash& hash) const;
-
 
   bool read_bytes(const FileHash& hash, ByteBuffer& out) const;
 
@@ -61,4 +57,4 @@ private:
   std::string store_json_path() const;
 };
 
-}
+} // namespace nyx

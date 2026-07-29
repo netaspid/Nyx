@@ -53,4 +53,4 @@ struct GroupMetaMessage {
 
 bool is_group_frame(const ByteBuffer& data);
 
-}
+} // namespace nyx

@@ -31,4 +31,4 @@ std::string default_install_dir();
 
 std::string data_root();
 
-}
+} // namespace nyx_setup

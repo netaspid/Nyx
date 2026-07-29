@@ -55,4 +55,4 @@ struct AvatarDeny {
 
 bool is_avatar_frame(const ByteBuffer& data);
 
-}
+} // namespace nyx

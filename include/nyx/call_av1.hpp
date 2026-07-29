@@ -39,7 +39,6 @@ public:
     bool keyframe = false;
   };
 
-
   std::optional<Assembled> push(const ByteBuffer& frag_payload);
 
 private:
@@ -95,4 +94,4 @@ private:
   bool ok_ = false;
 };
 
-}
+} // namespace nyx

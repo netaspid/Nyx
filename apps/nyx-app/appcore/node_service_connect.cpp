@@ -139,7 +139,6 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
       continue;
     }
 
-
     std::shared_ptr<NetSession> dm;
     {
       std::lock_guard lock(sessions_mutex_);
@@ -268,7 +267,6 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     return;
   }
 
-
   session->kind = SessionKind::Direct;
   run_direct_chat(session,
                   std::make_unique<nyx::Connection>(std::move(*conn)),
@@ -344,10 +342,6 @@ void NodeService::run_connect_peer(std::shared_ptr<NetSession> session,
   const auto profile = load_profile();
   emit_status("подключение к " + host + ':' + std::to_string(port) + "...");
 
-
-
-
-
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
     emit_status("не удалось открыть сетевой порт");
@@ -404,7 +398,6 @@ void NodeService::run_browse(int timeout_ms) {
 void NodeService::run_lan_scan(int timeout_ms) {
   const auto peers = browse_lan_peers(timeout_ms);
   if (peers.empty()) {
-
   }
 
   LanPeersCallback cb;
@@ -511,4 +504,4 @@ bool NodeService::start_listen(bool lan_advertise) {
   return true;
 }
 
-}
+} // namespace nyx_app

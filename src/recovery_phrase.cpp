@@ -93,7 +93,7 @@ bool phrase_checksum_ok(const std::vector<int>& indices) {
   return true;
 }
 
-}
+} // namespace
 
 std::string generate_recovery_phrase() {
   std::array<uint8_t, 16> entropy {};
@@ -171,4 +171,4 @@ bool normalize_recovery_phrase(const std::string& phrase,
   return true;
 }
 
-}
+} // namespace nyx

@@ -431,7 +431,6 @@ bool GroupHub::try_accept(const std::string& host, uint16_t port, const ByteBuff
   if (!conn)
     return false;
 
-
   file_services_.clear();
   active_relay_.reset();
   HubMember member {std::move(*conn), {}, "", false};
@@ -1005,4 +1004,4 @@ bool GroupHub::remove_member(const UserId& user_id) {
   return true;
 }
 
-}
+} // namespace nyx

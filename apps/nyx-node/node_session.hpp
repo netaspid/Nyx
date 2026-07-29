@@ -17,4 +17,4 @@ int run_connect_peer(const NodeConfig& config);
 
 int run_browse(int timeout_ms);
 
-}
+} // namespace nyx_node

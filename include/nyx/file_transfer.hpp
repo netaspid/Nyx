@@ -24,26 +24,19 @@ public:
 
   FileTransferService(Connection& connection, FileIndex& index, std::string download_dir);
 
-
   void set_share_scope(const GroupId& group_id) { share_scope_ = group_id; }
   const GroupId& share_scope() const { return share_scope_; }
 
-
   void handle_bulk(const ByteBuffer& payload);
 
-
   void pump();
-
 
   bool request_list();
   bool request_list(const std::string& root_path, const std::string& parent_rel);
 
-
   bool request_policy();
 
-
   bool request_file(const std::string& hash_hex, const std::string& dest_path = {});
-
 
   bool send_file(const std::string& path_or_hash_hex);
   bool announce_capabilities();
@@ -52,10 +45,8 @@ public:
 
   std::vector<std::pair<std::string, std::string>> outgoing_queue_snapshot() const;
 
-
   void respond_list();
   void respond_list(const std::string& root_path, const std::string& parent_rel);
-
 
   bool push_field_index(const std::vector<FileEntry>& entries,
                         const std::vector<std::string>& root_paths = {});
@@ -68,9 +59,7 @@ public:
     on_remote_list_ = std::move(cb);
   }
 
-
   std::vector<FileEntry> remote_list_snapshot() const;
-
 
   bool busy() const;
 
@@ -137,4 +126,4 @@ private:
   uint64_t index_revision_ = 0;
 };
 
-}
+} // namespace nyx

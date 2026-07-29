@@ -46,4 +46,4 @@ std::optional<CallMediaFrame> CallMediaFrame::decode(const ByteBuffer& data) {
   return f;
 }
 
-}
+} // namespace nyx

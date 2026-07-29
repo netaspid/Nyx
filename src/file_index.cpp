@@ -69,7 +69,7 @@ std::string path_to_posix(std::string path) {
   return path;
 }
 
-}
+} // namespace
 
 void FileIndex::clear() {
   std::lock_guard lock(mutex_);
@@ -122,8 +122,6 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
       share_group_set = true;
     }
   };
-
-
 
   auto immediate_child = [&](const std::string& rel) -> std::string {
     std::string rest;
@@ -188,7 +186,6 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
     const auto slash = rest.find('/');
     if (slash == std::string::npos) {
       FileEntry file = e;
-
 
       file.relative_path = parent.empty() ? rest : parent + "/" + rest;
       files.push_back(std::move(file));
@@ -359,7 +356,6 @@ bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
         progress(rel_for_progress, scanned, false);
     }
   } catch (const std::exception&) {
-
   }
   if (progress)
     progress({}, scanned, true);
@@ -568,7 +564,6 @@ bool FileIndex::load() {
   const std::string json = ss.str();
   if (json.empty())
     return true;
-
 
   (void)json_get_u64(json, "schema_version");
 
@@ -798,7 +793,6 @@ std::optional<FileEntry> FileIndex::adopt_file(const std::string& source_path,
     library_dir = library_root;
   }
 
-
   const std::string object_root =
       normalize_utf8_path(data_dir() + "/objects/" + hash_hex(expected_hash));
   const std::string object_path =
@@ -888,4 +882,4 @@ std::optional<FileEntry> FileIndex::import_file(const std::string& source_path,
   return adopt_file(source_path, hash, display_name, mime, scope_group, owner_id, relative_dir);
 }
 
-}
+} // namespace nyx

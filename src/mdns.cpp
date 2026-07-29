@@ -105,7 +105,7 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
   return peer;
 }
 
-}
+} // namespace
 
 void add_discovery_unicast_target(const std::string& ipv4) {
   if (ipv4.empty() || ipv4 == "0.0.0.0" || ipv4 == "127.0.0.1")
@@ -222,4 +222,4 @@ std::vector<LanPeer> MdnsLan::browse(UdpSocket& socket, int timeout_ms) {
   return out;
 }
 
-}
+} // namespace nyx

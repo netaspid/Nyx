@@ -42,4 +42,4 @@ struct CallSession {
   void reset();
 };
 
-}
+} // namespace nyx

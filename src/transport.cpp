@@ -35,7 +35,7 @@ void parse_ack(const ByteBuffer& payload, uint32_t& ack, std::vector<uint32_t>& 
   }
 }
 
-}
+} // namespace
 
 ReliableSession::ReliableSession(std::size_t window, std::size_t mtu)
     : mtu_(mtu), window_(window) {}
@@ -248,4 +248,4 @@ std::vector<ByteBuffer> ReliableSession::make_ack_frames(uint32_t stream_id) con
   return {std::move(wire)};
 }
 
-}
+} // namespace nyx

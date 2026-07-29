@@ -28,7 +28,7 @@ nyx::Profile load_profile(const NodeConfig& config) {
   return nyx::load_or_create_profile(path, config.nickname);
 }
 
-}
+} // namespace
 
 int run_group_create(const std::string& name, const NodeConfig& config) {
   if (name.empty()) {
@@ -267,4 +267,4 @@ int run_group_join(const std::string& token_hex, const NodeConfig& config) {
   return 0;
 }
 
-}
+} // namespace nyx_node

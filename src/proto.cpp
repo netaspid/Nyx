@@ -234,4 +234,4 @@ std::string EndpointHint::host_string() const {
   return buf;
 }
 
-}
+} // namespace nyx

@@ -172,4 +172,4 @@ CallId generate_call_id();
 std::string call_id_hex(const CallId& id);
 bool call_id_from_hex(const std::string& hex, CallId& out);
 
-}
+} // namespace nyx

@@ -14,4 +14,4 @@ enum class ConnectionVia {
 
 std::string connection_label(ConnectionVia via, const std::string& peer_host);
 
-}
+} // namespace nyx_app

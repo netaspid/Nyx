@@ -85,7 +85,6 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
   session->share_scope = group_id;
   remember_intent_for_session(session, nyx::GroupStore::invite_hex(group->invite_token));
 
-
   session->group_hub = std::make_unique<nyx::GroupHub>(rv.socket(), profile, *group);
   session->group_hub->attach_files(file_index_, group_id, &file_access_);
   session->group_hub->set_on_message([this, session](const nyx::ChatMessage& msg, bool outgoing) {
@@ -137,7 +136,6 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
   load_download_queue(session);
   wire_call_handlers(session);
   sync_live_group_from_session(session);
-
 
   if (network_config_.mode != nyx::DiscoveryMode::Internet) {
     nyx::Profile hub_profile = profile;
@@ -476,4 +474,4 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   emit_status(user_stopped ? "выход из поля" : "поле недоступно (владелец офлайн)");
 }
 
-}
+} // namespace nyx_app

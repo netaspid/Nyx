@@ -36,7 +36,7 @@ std::string mime_for_path(const std::string& path) {
   return "image/jpeg";
 }
 
-}
+} // namespace
 
 AvatarStore::AvatarStore() = default;
 
@@ -259,4 +259,4 @@ bool AvatarStore::read_bytes(const FileHash& hash, ByteBuffer& out) const {
   return !out.empty();
 }
 
-}
+} // namespace nyx

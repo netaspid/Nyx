@@ -29,4 +29,4 @@ struct CallMediaFrame {
 
 constexpr std::size_t kMaxCallMediaPayload = 1000;
 
-}
+} // namespace nyx

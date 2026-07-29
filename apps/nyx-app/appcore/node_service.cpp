@@ -191,7 +191,7 @@ std::string files_ui_state_path() {
   return nyx::data_dir() + "/files_ui.json";
 }
 
-}
+} // namespace
 
 std::string NodeService::load_files_scope_group_id() const {
   std::ifstream in(files_ui_state_path());
@@ -491,7 +491,6 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
   session->running.store(false);
   session->quiet_ui.store(false);
   session->state.store(final_state);
-
 
   {
     std::lock_guard lock(sessions_mutex_);
@@ -883,7 +882,6 @@ bool NodeService::update_group_meta(const std::string& group_id_hex,
   if (!store.update_meta(gid, description, direction, tags, visibility))
     return false;
 
-
   {
     std::lock_guard lock(sessions_mutex_);
     for (auto& [id, session] : sessions_) {
@@ -1077,7 +1075,6 @@ bool NodeService::start_group_join(const std::string& invite_hex, bool quiet_ui)
     }
   }
 
-
   if (!ref_hex.empty()) {
     const std::string legacy = "group:join:" + invite_hex.substr(0, 12);
     if (legacy != sid) {
@@ -1209,7 +1206,6 @@ void NodeService::auto_reconnect_all() {
   store.load();
   intent_store_.load();
 
-
   for (const auto& g : store.all()) {
     if (g.owner_id != profile.user_id())
       continue;
@@ -1224,8 +1220,6 @@ void NodeService::auto_reconnect_all() {
 
   if (!network_config_.auto_start_owned_hub)
     return;
-
-
 
   const int64_t now_ms = steady_now_ms();
   for (const auto& g : store.all()) {
@@ -1281,8 +1275,6 @@ void NodeService::auto_reconnect_all() {
       intent_store_.save();
   }
 
-
-
   struct DmDialPlan {
     std::string peer_hex;
     std::string token_hex;
@@ -1303,7 +1295,6 @@ void NodeService::auto_reconnect_all() {
 
     DmDialPlan plan;
     plan.peer_hex = intent.ref_id_hex;
-
 
     if (intent.invite_hex.rfind("lan://", 0) == 0) {
       const std::string ep = intent.invite_hex.substr(6);
@@ -1488,4 +1479,4 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
   set_live_group_snapshot(live.id, std::move(live));
 }
 
-}
+} // namespace nyx_app

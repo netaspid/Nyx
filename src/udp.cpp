@@ -99,7 +99,7 @@ bool leave_mcast_group(socket_t s, const std::string& group, uint32_t iface_nbo)
   return true;
 }
 
-}
+} // namespace
 
 bool UdpSocket::platform_init() {
   if (g_net_init)
@@ -335,4 +335,4 @@ bool UdpSocket::set_multicast_interface(const std::string& ipv4, std::string* er
   return true;
 }
 
-}
+} // namespace nyx

@@ -287,7 +287,6 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
       continue;
     }
 
-
     if (trimmed.rfind("$$", 0) == 0) {
       flush_para(para);
       std::string body = trimmed.substr(2);
@@ -355,7 +354,6 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
       continue;
     }
 
-
     if (looks_like_table_row(line) && i + 1 < lines.size() && is_table_sep_line(lines[i + 1])) {
       flush_para(para);
       std::string table = line;
@@ -392,7 +390,6 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
 
 std::string markdown_to_html(const std::string& src, const std::set<int>& revealed_spoilers) {
   std::string text = src;
-
 
   std::vector<std::string> fences;
   {
@@ -486,7 +483,6 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
     text = std::move(acc);
   }
 
-
   {
     static const std::regex re(R"(\[([^\]]+)\]\((nyx-user:[a-fA-F0-9]{64}|https?://[^)\s]+)\))");
     text = std::regex_replace(text, re, "<a href=\"$2\">$1</a>");
@@ -543,7 +539,6 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
         quote_body = line.substr(4);
     }
 
-
     if (trim_copy(line) == "---" || trim_copy(line) == "***") {
       if (in_quote) {
         html += "</blockquote>";
@@ -566,7 +561,6 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
         html += "</blockquote>";
         in_quote = false;
       }
-
 
       std::smatch hm;
       static const std::regex hre(R"(^(#{1,3})\s+(.+)$)");
@@ -624,4 +618,4 @@ std::string markdown_to_html(const std::string& src, const std::set<int>& reveal
   return html;
 }
 
-}
+} // namespace nyx

@@ -21,4 +21,4 @@ bool extract_payload(const std::vector<std::uint8_t>& blob,
                      ProgressFn progress,
                      std::string* err);
 
-}
+} // namespace nyx_setup

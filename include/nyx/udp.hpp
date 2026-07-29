@@ -19,17 +19,13 @@ public:
   UdpSocket(UdpSocket&& other) noexcept = default;
   UdpSocket& operator=(UdpSocket&& other) noexcept = default;
 
-
   bool bind(const std::string& host, uint16_t port, std::string* err = nullptr);
 
   bool send_to(const ByteBuffer& data, const std::string& host, uint16_t port);
 
-
   std::optional<ByteBuffer> recv_from(std::string& host, uint16_t& port, int timeout_ms = -1);
 
-
   uint16_t local_port() const;
-
 
   bool bind_multicast_listener(const std::string& group,
                                uint16_t port,
@@ -37,7 +33,6 @@ public:
                                const std::string& iface_ipv4 = {});
 
   bool enable_broadcast(std::string* err = nullptr);
-
 
   bool set_multicast_interface(const std::string& ipv4, std::string* err = nullptr);
 
@@ -53,4 +48,4 @@ private:
   static bool platform_init();
 };
 
-}
+} // namespace nyx

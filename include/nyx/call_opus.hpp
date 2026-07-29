@@ -44,4 +44,4 @@ private:
   void* dec_ = nullptr;
 };
 
-}
+} // namespace nyx

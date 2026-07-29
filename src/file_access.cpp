@@ -231,7 +231,7 @@ bool parse_group_policy_object(const std::string& obj, GroupFileAccess& policy) 
       policy.group_id.begin(), policy.group_id.end(), [](uint8_t b) { return b == 0; });
 }
 
-}
+} // namespace
 
 FileAccessStore::FileAccessStore() {
   load();
@@ -743,4 +743,4 @@ bool FileAccessStore::decode_group_policy_json(const std::string& json, GroupFil
   return parse_group_policy_object(json, policy);
 }
 
-}
+} // namespace nyx

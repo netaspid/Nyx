@@ -36,7 +36,6 @@ public:
   void setMuted(bool muted);
   bool muted() const { return muted_.load(std::memory_order_acquire); }
 
-
   bool takeSendFailure() { return send_failed_.exchange(false); }
 
   QString preferredInputId() const { return preferred_input_id_; }
@@ -45,7 +44,6 @@ public:
   void setPreferredOutputId(const QString& id);
   static QVariantList listInputDevices();
   static QVariantList listOutputDevices();
-
 
   Q_INVOKABLE bool startMicLevelTest();
   Q_INVOKABLE void stopMicLevelTest();

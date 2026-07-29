@@ -12,7 +12,7 @@ bool call_id_zero(const CallId& id) {
   return true;
 }
 
-}
+} // namespace
 
 bool CallSession::start_outgoing(CallMode m, CallScope s, const UserId& target, CallId id) {
   if (!idle())
@@ -72,7 +72,7 @@ bool CallSession::accept(CallMode m) {
   return true;
 }
 
-bool CallSession::reject(CallRejectReason ) {
+bool CallSession::reject(CallRejectReason) {
   if (state != CallState::Incoming)
     return false;
   end_reason = "reject";
@@ -114,7 +114,7 @@ bool CallSession::on_reject(const CallRejectMessage& msg) {
   return true;
 }
 
-bool CallSession::hangup(CallHangupReason ) {
+bool CallSession::hangup(CallHangupReason) {
   if (state != CallState::Active && state != CallState::Outgoing && state != CallState::Ringing &&
       state != CallState::Incoming)
     return false;
@@ -150,4 +150,4 @@ void CallSession::reset() {
   end_reason.clear();
 }
 
-}
+} // namespace nyx

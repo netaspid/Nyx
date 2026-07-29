@@ -378,7 +378,7 @@ bool provision_account(const Profile& profile,
   return open_account_session(id, profile, &key, err);
 }
 
-}
+} // namespace
 
 std::string account_data_dir(const std::string& account_id) {
   return accounts_root() + "/" + account_id;
@@ -624,9 +624,6 @@ bool update_session_nickname(const std::string& nickname, std::string* err) {
   if (!persist_session_profile(err))
     return false;
   if (account_has_recovery(active_id)) {
-
-
-
   }
   auto accounts = list_accounts();
   for (auto& a : accounts) {
@@ -636,4 +633,4 @@ bool update_session_nickname(const std::string& nickname, std::string* err) {
   return save_registry(accounts);
 }
 
-}
+} // namespace nyx

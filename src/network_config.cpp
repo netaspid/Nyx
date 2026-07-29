@@ -37,7 +37,7 @@ bool parse_one_host_port(const std::string& part, RendezvousServer& out) {
   return true;
 }
 
-}
+} // namespace
 
 std::string NetworkConfig::config_path() {
   return data_dir() + "/network.json";
@@ -178,4 +178,4 @@ bool NetworkConfig::save() const {
   return static_cast<bool>(file);
 }
 
-}
+} // namespace nyx

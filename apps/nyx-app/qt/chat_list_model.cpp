@@ -23,7 +23,7 @@ QString formatListTime(quint64 ms) {
   return dt.toString(QStringLiteral("dd.MM"));
 }
 
-}
+} // namespace
 
 ChatListModel::ChatListModel(QObject* parent) : QAbstractListModel(parent) {}
 

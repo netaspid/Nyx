@@ -53,4 +53,4 @@ void print_usage() {
             << "В чате: текст + Enter. Команды: /help /who /status /history /quit\n";
 }
 
-}
+} // namespace nyx_node

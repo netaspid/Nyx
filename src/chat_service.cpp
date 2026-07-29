@@ -173,4 +173,4 @@ std::vector<StoredMessage> ChatService::search(const std::string& query, std::si
   return store_.search(query, limit);
 }
 
-}
+} // namespace nyx

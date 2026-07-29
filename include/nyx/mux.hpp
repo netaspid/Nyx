@@ -14,18 +14,13 @@ class Multiplexer {
 public:
   Multiplexer();
 
-
   ByteBuffer send(uint32_t stream_id, const ByteBuffer& data);
-
 
   std::optional<ByteBuffer> recv(uint32_t stream_id);
 
-
   ByteBuffer ping();
 
-
   std::vector<ByteBuffer> handle_control(const ByteBuffer& payload);
-
 
   void push(uint32_t stream_id, ByteBuffer data);
 
@@ -40,4 +35,4 @@ private:
   uint32_t next_stream_id_ = 2;
 };
 
-}
+} // namespace nyx

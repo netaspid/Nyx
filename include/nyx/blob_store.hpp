@@ -15,7 +15,6 @@ public:
   bool open();
   uint64_t size() const { return size_; }
 
-
   std::size_t read_at(uint64_t offset, ByteBuffer& out, std::size_t max_len);
 
 private:
@@ -37,4 +36,4 @@ private:
   std::fstream file_;
 };
 
-}
+} // namespace nyx

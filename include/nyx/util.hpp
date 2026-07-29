@@ -35,4 +35,4 @@ std::string normalize_utf8_path(const std::string& utf8);
 
 std::string normalize_grant_root(const std::string& root_path);
 
-}
+} // namespace nyx

@@ -192,4 +192,4 @@ std::string normalize_grant_root(const std::string& root_path) {
   return out;
 }
 
-}
+} // namespace nyx

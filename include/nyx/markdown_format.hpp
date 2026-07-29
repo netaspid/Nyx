@@ -47,4 +47,4 @@ std::string table_to_html(const std::string& table_src);
 
 std::string markdown_to_html(const std::string& src, const std::set<int>& revealed_spoilers = {});
 
-}
+} // namespace nyx

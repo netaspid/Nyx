@@ -263,4 +263,4 @@ void GroupMemberService::apply_meta(const GroupMetaMessage& meta) {
     on_meta_();
 }
 
-}
+} // namespace nyx

@@ -40,4 +40,4 @@ void pump_direct_chat(nyx::ChatService& chat,
   }
 }
 
-}
+} // namespace nyx_app

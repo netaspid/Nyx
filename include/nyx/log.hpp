@@ -21,4 +21,4 @@ inline void log_info(const std::string& msg) {
   log_write(LogLevel::Info, msg);
 }
 
-}
+} // namespace nyx

@@ -48,7 +48,7 @@ bool read_member(const ByteBuffer& data, std::size_t& off, GroupMemberRecord& m)
   return true;
 }
 
-}
+} // namespace
 
 bool is_group_frame(const ByteBuffer& data) {
   if (data.empty())
@@ -187,4 +187,4 @@ std::optional<GroupMetaMessage> GroupMetaMessage::decode(const ByteBuffer& data)
   return msg;
 }
 
-}
+} // namespace nyx

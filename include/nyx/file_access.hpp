@@ -76,21 +76,16 @@ public:
 
   void clear();
 
-
   GroupFileAccess& ensure_policy(const GroupId& group_id, const GroupRecord& group);
-
 
   GroupFileAccess& policy_for(const GroupId& group_id);
   const GroupFileAccess* find_policy(const GroupId& group_id) const;
 
-
   uint32_t permissions_for(const GroupId& group_id, const UserId& user_id) const;
-
 
   uint32_t permissions_for(const GroupId& group_id,
                            const UserId& user_id,
                            const std::string& root_path) const;
-
 
   uint32_t permissions_for(const GroupId& group_id,
                            const UserId& user_id,
@@ -135,9 +130,7 @@ public:
   static UserId path_role_user();
   static GroupFileAccess default_policy(const GroupId& group_id, const GroupRecord& group);
 
-
   bool import_policy(const GroupFileAccess& policy);
-
 
   static std::string encode_group_policy_json(const GroupFileAccess& policy);
 
@@ -149,4 +142,4 @@ private:
   std::vector<GroupFileAccess> policies_;
 };
 
-}
+} // namespace nyx

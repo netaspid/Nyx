@@ -19,7 +19,7 @@ void sha256_finish_hash(sha256_context_t& ctx, FileHash& out) {
   sha256_finish(&ctx, out.data());
 }
 
-}
+} // namespace
 
 bool hash_file(const std::string& path, FileHash& out) {
   std::ifstream file(path_from_utf8(path), std::ios::binary);
@@ -62,4 +62,4 @@ bool hash_from_hex(const std::string& hex, FileHash& out) {
   return true;
 }
 
-}
+} // namespace nyx

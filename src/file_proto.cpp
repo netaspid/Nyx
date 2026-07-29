@@ -27,7 +27,7 @@ bool read_string(const ByteBuffer& data,
   return true;
 }
 
-}
+} // namespace
 
 ByteBuffer FileOffer::encode() const {
   ByteBuffer out;
@@ -430,4 +430,4 @@ ByteBuffer encode_policy_request() {
   return out;
 }
 
-}
+} // namespace nyx

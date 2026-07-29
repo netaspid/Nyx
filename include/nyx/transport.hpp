@@ -14,18 +14,13 @@ class ReliableSession {
 public:
   explicit ReliableSession(std::size_t window = 256, std::size_t mtu = kDefaultMtu);
 
-
   std::vector<ByteBuffer> send(uint32_t stream_id, const ByteBuffer& data);
-
 
   void recv_wire(const ByteBuffer& wire);
 
-
   std::optional<ByteBuffer> poll_recv();
 
-
   std::vector<ByteBuffer> make_ack_frames(uint32_t stream_id) const;
-
 
   std::vector<ByteBuffer> drain_outbound();
 
@@ -79,4 +74,4 @@ private:
   std::map<uint32_t, ByteBuffer> recv_hold_;
 };
 
-}
+} // namespace nyx

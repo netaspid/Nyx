@@ -56,10 +56,8 @@ public:
   bool load();
   bool save() const;
 
-
   GroupRecord
   create(const std::string& name, const UserId& owner_id, const std::string& owner_nickname);
-
 
   bool update_meta(const GroupId& id,
                    const std::string& description,
@@ -83,10 +81,8 @@ public:
   static std::string invite_hex(const InviteToken& token);
   static bool invite_from_hex(const std::string& hex, InviteToken& out);
 
-
   static void merge_member_roster(std::vector<GroupMemberRecord>& target,
                                   const std::vector<GroupMemberRecord>& live);
-
 
   static void ensure_roster(GroupRecord& group, const std::string& owner_nickname_fallback = {});
 
@@ -94,4 +90,4 @@ private:
   std::vector<GroupRecord> groups_;
 };
 
-}
+} // namespace nyx

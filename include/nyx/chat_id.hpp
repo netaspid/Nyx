@@ -16,4 +16,4 @@ ChatId group_chat_id(const GroupId& group_id);
 
 std::string chat_id_hex(const ChatId& id);
 
-}
+} // namespace nyx

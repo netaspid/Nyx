@@ -81,4 +81,4 @@ std::optional<ByteBuffer> RendezvousRegistry::handle_datagram(const std::string&
   return std::nullopt;
 }
 
-}
+} // namespace nyx

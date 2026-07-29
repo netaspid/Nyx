@@ -167,7 +167,7 @@ bool terminate_by_name_in_dir(const wchar_t* exe_name, const std::wstring& insta
   return stopped;
 }
 
-}
+} // namespace
 
 bool stop_nyx_for_install(const std::wstring& install_dir, std::wstring* err) {
   (void)err;
@@ -335,7 +335,7 @@ bool windows_build_at_least(DWORD major, DWORD minor, DWORD build) {
   return ver.dwBuildNumber >= build;
 }
 
-}
+} // namespace
 
 bool ensure_system_prerequisites(std::wstring* err) {
   if (!windows_build_at_least(10, 0, 0)) {
@@ -546,7 +546,6 @@ bool install_mupdf_tools(const std::wstring& install_dir, std::wstring* err) {
   const std::wstring extract = std::wstring(temp_path) + L"nyx-mupdf";
   const std::wstring tools = install_dir + L"\\tools";
 
-
   const std::wstring url =
       L"https://github.com/ArtifexSoftware/mupdf-downloads/releases/download/1.28.0/"
       L"mupdf-1.28.0-windows.zip";
@@ -592,7 +591,7 @@ bool install_libreoffice(std::wstring* err) {
   return false;
 }
 
-}
+} // namespace
 
 bool ensure_document_dependencies(const std::wstring& install_dir,
                                   std::wstring* err,
@@ -738,4 +737,4 @@ bool browse_for_folder(HWND owner, std::wstring& path) {
   return true;
 }
 
-}
+} // namespace nyx_setup

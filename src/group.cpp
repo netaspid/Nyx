@@ -104,7 +104,7 @@ std::optional<GroupRecord> parse_group_object(const std::string& obj) {
   return group;
 }
 
-}
+} // namespace
 
 GroupStore::GroupStore() {
   load();
@@ -368,4 +368,4 @@ bool GroupStore::save() const {
   return static_cast<bool>(file);
 }
 
-}
+} // namespace nyx

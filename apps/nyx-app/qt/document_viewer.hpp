@@ -56,7 +56,6 @@ public:
   Q_INVOKABLE void zoomOut();
   Q_INVOKABLE bool openExternally();
 
-
   static bool canHandle(const QString& path, const QString& mime);
 
 signals:

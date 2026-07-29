@@ -22,7 +22,7 @@ bool ask_yes_no(const char* prompt) {
   return !line.empty() && (line[0] == 'y' || line[0] == 'Y');
 }
 
-}
+} // namespace
 
 int main(int argc, char** argv) {
   std::vector<std::uint8_t> payload;

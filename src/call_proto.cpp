@@ -54,7 +54,7 @@ void write_user_id(ByteBuffer& out, const UserId& id) {
   out.insert(out.end(), id.begin(), id.end());
 }
 
-}
+} // namespace
 
 bool is_call_frame(const ByteBuffer& data) {
   if (data.empty())
@@ -412,4 +412,4 @@ std::optional<CallRelaySetMessage> CallRelaySetMessage::decode(const ByteBuffer&
   return m;
 }
 
-}
+} // namespace nyx

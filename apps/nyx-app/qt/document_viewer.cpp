@@ -158,7 +158,7 @@ QString windows_soffice_path() {
 }
 #endif
 
-}
+} // namespace
 
 DocumentViewer::DocumentViewer(QObject* parent) : QObject(parent) {
   ensure_bundled_tools_executable();
@@ -476,7 +476,6 @@ void DocumentViewer::queryPageCount() {
                                               : QStringList {QStringLiteral("info"), pdf_path_};
   const int gen = ++render_gen_;
   const QString pdf = pdf_path_;
-
 
   std::thread([this, program, args, gen, pdf]() {
     int code = -1;

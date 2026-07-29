@@ -31,23 +31,18 @@ public:
   MdnsLan(const MdnsLan&) = delete;
   MdnsLan& operator=(const MdnsLan&) = delete;
 
-
   static bool setup_socket(UdpSocket& socket, std::string* err = nullptr);
-
 
   void start_advertising(UdpSocket socket, Profile profile, uint16_t port, std::string host_ip);
   void stop_advertising();
 
-
   static std::vector<LanPeer> browse(UdpSocket& socket, int timeout_ms = 3000);
-
 
   static bool send_announcement(UdpSocket& socket,
                                 const Profile& profile,
                                 uint16_t port,
                                 const std::string& host_ip,
                                 const std::vector<std::string>& unicast_hosts = {});
-
 
   static std::optional<LanPeer> parse_beacon(const ByteBuffer& data, const std::string& from_host);
 
@@ -57,4 +52,4 @@ private:
   UdpSocket advert_socket_;
 };
 
-}
+} // namespace nyx

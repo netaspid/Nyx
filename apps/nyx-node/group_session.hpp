@@ -14,4 +14,4 @@ int run_group_hub(const std::string& group_id_hex, const NodeConfig& config);
 
 int run_group_join(const std::string& token_hex, const NodeConfig& config);
 
-}
+} // namespace nyx_node

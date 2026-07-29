@@ -41,9 +41,7 @@ public:
                      GroupId group_id,
                      std::string group_name);
 
-
   bool join(int timeout_ms = 10000);
-
 
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
   bool send_call_frame(const ByteBuffer& frame);
@@ -86,4 +84,4 @@ private:
   std::unordered_set<uint64_t> pending_acks_;
 };
 
-}
+} // namespace nyx

@@ -20,4 +20,4 @@ HintConnectResult connect_via_rendezvous_hint(nyx::UdpSocket socket,
   return out;
 }
 
-}
+} // namespace nyx_app

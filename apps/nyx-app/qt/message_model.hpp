@@ -19,7 +19,6 @@ public:
     AuthorUserIdRole,
   };
 
-
   explicit MessageModel(QObject* parent = nullptr);
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override;
