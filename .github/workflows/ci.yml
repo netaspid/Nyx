@@ -11,7 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential clang-format
+      - name: Check clang-format
+        run: |
+          mapfile -t files < <(find src include apps tests android \
+            \( -name '*.cpp' -o -name '*.hpp' -o -name '*.h' -o -name '*.c' -o -name '*.cc' -o -name '*.mm' \) \
+            -type f | sort)
+          clang-format --dry-run --Werror "${files[@]}"
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DNYX_BUILD_GUI=OFF
       - name: Build
