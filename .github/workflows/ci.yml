@@ -31,6 +31,7 @@ jobs:
           # Narrow warnings-as-errors set; expand as debt is cleared.
           clang-tidy -p build \
             src/session_intent.cpp src/group.cpp src/identity.cpp src/file_access.cpp \
+            src/avatar_store.cpp src/network_config.cpp src/profile_meta.cpp src/file_index.cpp \
             --checks='-*,misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty' \
             --warnings-as-errors='misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty'
       - name: clang-tidy (advisory)
