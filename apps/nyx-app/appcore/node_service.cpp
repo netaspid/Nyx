@@ -669,7 +669,7 @@ bool NodeService::stop_session(const std::string& session_id) {
   if (!session->ref_id_hex.empty() && id.rfind("dm:", 0) == 0) {
     mark_session_disconnected(make_dm_session_id(session->ref_id_hex));
   }
-  abandon_session_worker(session);
+  session->running.store(false);
   emit_sessions_changed();
   return true;
 }
