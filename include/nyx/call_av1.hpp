@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file call_av1.hpp
- *  AV1 encode/decode для видеозвонков (libaom).
+ *  AV1 encode/decode for video calls (libaom).
  */
 
 #include "nyx/types.hpp"
@@ -18,7 +18,7 @@ constexpr int kCallVideoHeight = 360;
 constexpr int kCallVideoFps = 12;
 constexpr int kCallVideoTargetKbps = 900;
 
-/** Фрагмент видеокадра в CallMediaType::Video payload. */
+/** Video frame fragment inside a CallMediaType::Video payload. */
 struct CallVideoFragHeader {
   uint16_t frame_id = 0;
   uint8_t frag_index = 0;
@@ -32,12 +32,12 @@ struct CallVideoFragHeader {
   static std::optional<CallVideoFragHeader> read(const uint8_t* data, std::size_t len);
 };
 
-/** Нарезает AV1 OBU-буфер на фрагменты ≤ max_payload (с заголовком). */
+/** Splits an AV1 OBU buffer into fragments <= max_payload (with header). */
 std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id, bool keyframe,
                                            const ByteBuffer& encoded,
                                            std::size_t max_payload);
 
-/** Сборка фрагментов одного frame_id. */
+/** Reassembles fragments of one frame_id. */
 class CallVideoReassembler {
  public:
   struct Assembled {
@@ -45,7 +45,7 @@ class CallVideoReassembler {
     bool keyframe = false;
   };
 
-  /** @return полный кадр когда все фрагменты собраны. */
+  /** @return the full frame once all fragments arrived. */
   std::optional<Assembled> push(const ByteBuffer& frag_payload);
 
  private:

@@ -1,8 +1,8 @@
 #pragma once
 
 /** @file chat_service.hpp
- *  AppCore API мессенджера (фаза 3): отправка, история, доставка, события.
- *  Используется CLI и будущим nyx-app (QML через тонкую обёртку).
+ *  Messenger core API: sending, history, delivery, events.
+ *  Used by the CLI and nyx-app (QML through a thin wrapper).
  */
 
 #include "nyx/app.hpp"
@@ -19,7 +19,7 @@
 
 namespace nyx {
 
-/** Сессия чата 1:1 поверх установленного Connection. */
+/** 1:1 chat session over an established Connection. */
 class ChatService {
  public:
   struct PeerInfo {
@@ -35,19 +35,19 @@ class ChatService {
 
   ChatService(Connection& connection, Profile profile, PeerInfo peer);
 
-  /** Отправляет ChatMessage, ставит в outbox, сохраняет в историю. */
+  /** Sends a ChatMessage, queues it in the outbox and stores it in history. */
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
 
-  /** Сигналинг звонка на kChatStream. */
+  /** Call signaling on kChatStream. */
   bool send_call_frame(const ByteBuffer& frame);
 
-  /** Обрабатывает payload с kChatStream. */
+  /** Handles a kChatStream payload. */
   void handle_payload(const ByteBuffer& payload);
 
-  /** Keep-alive + повтор исходящих без Ack. */
+  /** Keep-alive plus resend of un-Acked outgoing messages. */
   void tick();
 
-  /** Корректное отключение. */
+  /** Graceful disconnect. */
   bool send_bye(const std::string& reason);
 
   std::vector<StoredMessage> history(std::size_t count) const;

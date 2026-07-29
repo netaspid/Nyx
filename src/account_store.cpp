@@ -123,7 +123,7 @@ bool protect_bytes(const uint8_t* data, std::size_t len, std::vector<uint8_t>& o
   LocalFree(protected_blob.pbData);
   return true;
 #else
-  // Portable fallback: XOR with machine-local mask (не равно DPAPI, но закрывает токен на диске).
+  // Portable fallback: XOR with a machine-local mask (weaker than DPAPI, but keeps the token off disk in plain form).
   std::array<uint8_t, 32> mask{};
   const std::string seed = "nyx-remember-v1|" + std::to_string(geteuid());
   for (std::size_t i = 0; i < mask.size(); ++i) {
@@ -533,9 +533,9 @@ bool update_session_nickname(const std::string& nickname, std::string* err) {
   session_profile.nickname = nickname;
   if (!persist_session_profile(err)) return false;
   if (account_has_recovery(active_id)) {
-    // recovery.nyx содержит старый nickname — обновляем только profile.nyx достаточно
-    // для входа; nickname в recovery обновится при следующем reset. Для консистентности
-    // перезаписывать recovery без фразы нельзя.
+    // recovery.nyx still holds the old nickname; updating profile.nyx is enough to log
+    // in, and recovery is refreshed on the next reset. Rewriting recovery without the
+    // phrase would break consistency.
   }
   auto accounts = list_accounts();
   for (auto& a : accounts) {

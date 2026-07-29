@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file file_proto.hpp
- *  Протокол передачи файлов на kBulkStream (фаза 4).
+ *  File transfer protocol on kBulkStream.
  */
 
 #include "nyx/file_access.hpp"
@@ -15,7 +15,7 @@
 
 namespace nyx {
 
-/** Тип кадра на bulk-потоке. */
+/** Frame type on the bulk stream. */
 enum class FileKind : uint8_t {
   ListReq = 1,
   ListResp = 2,
@@ -24,11 +24,11 @@ enum class FileKind : uint8_t {
   Chunk = 5,
   Complete = 6,
   Deny = 7,
-  /** Участник публикует свой индекс поля на hub. */
+  /** Member publishes its field index to the hub. */
   IndexPush = 8,
-  /** Hub → участник: полная политика ACL поля. */
+  /** Hub -> member: the full field ACL policy. */
   PolicyPush = 9,
-  /** Участник → hub: запрос актуальной политики ACL. */
+  /** Member -> hub: request for the current ACL policy. */
   PolicyReq = 10,
   Capabilities = 11,
   RangeRequest = 12,
@@ -108,21 +108,21 @@ struct FileDeny {
 };
 
 ByteBuffer encode_list_request();
-/** ListReq с путём: корень + relative parent (пустые = только share-корни). */
+/** ListReq with a path: root + relative parent (empty = share roots only). */
 ByteBuffer encode_list_request(const std::string& root_path, const std::string& parent_rel);
 std::optional<std::pair<std::string, std::string>> decode_list_request(const ByteBuffer& data);
 
-/** ListResp / IndexPush: записи каталога (папки первыми; обрезается под лимит Noise). */
+/** ListResp / IndexPush: catalog entries (folders first; trimmed to the Noise limit). */
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries);
 
-/** Участник отправляет hub свой список файлов поля. */
+/** Member sends the hub its field file list. */
 ByteBuffer encode_index_push(const std::vector<FileEntry>& entries,
                              const std::vector<std::string>& root_paths = {},
                              uint64_t revision = 0);
 
 std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& data);
 
-/** Полезная нагрузка IndexPush: файлы и корни папок участника. */
+/** IndexPush payload: the member files and folder roots. */
 struct IndexPushPayload {
   std::vector<FileEntry> entries;
   std::vector<std::string> root_paths;
@@ -131,9 +131,9 @@ struct IndexPushPayload {
 
 std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data);
 
-/** Hub отправляет участнику JSON политики поля. */
+/** Hub sends the member the field policy JSON. */
 ByteBuffer encode_policy_push(const GroupFileAccess& policy);
-/** Разбор PolicyPush; std::nullopt при ошибке. */
+/** Parses PolicyPush; std::nullopt on error. */
 std::optional<GroupFileAccess> decode_policy_push(const ByteBuffer& data);
 
 ByteBuffer encode_policy_request();

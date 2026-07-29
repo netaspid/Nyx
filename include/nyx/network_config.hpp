@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file network_config.hpp
- *  Настройки обнаружения: список rendezvous, режим LAN/Интернет.
+ *  Discovery settings: rendezvous list, LAN/Internet mode.
  */
 
 #include <cstdint>
@@ -10,43 +10,43 @@
 
 namespace nyx {
 
-/** Режим подключения через bootstrap. */
+/** Bootstrap connection mode. */
 enum class DiscoveryMode : uint8_t {
   Auto = 0,     /**< LAN + rendezvous */
-  LanOnly = 1,  /**< только mDNS / прямой peer */
-  Internet = 2, /**< rendezvous + hole punch (без LAN-only) */
+  LanOnly = 1,  /**< mDNS / direct peer only */
+  Internet = 2, /**< rendezvous + hole punch */
 };
 
-/** Один bootstrap-сервер (host:port). */
+/** One bootstrap server (host:port). */
 struct RendezvousServer {
   std::string host;
   uint16_t port = 3478;
-  std::string label; /**< «VDS EU», для UI */
+  std::string label; /**< UI label, e.g. "VDS EU" */
 };
 
-/** Сохраняемая конфигурация сети: data_dir()/network.json. */
+/** Persisted network configuration: data_dir()/network.json. */
 struct NetworkConfig {
   DiscoveryMode mode = DiscoveryMode::Auto;
   std::vector<RendezvousServer> rendezvous_servers;
   bool use_stun = true;
   std::string stun_host = "stun.l.google.com";
   uint16_t stun_port = 19302;
-  /** Интервал повторной Register на rendezvous (сек). */
+  /** Re-register interval on rendezvous, seconds. */
   uint32_t register_refresh_sec = 120;
-  /** Автозапуск hub / reconnect сессий после старта (master switch). */
+  /** Master switch for hub autostart / session reconnect after launch. */
   bool auto_start_owned_hub = true;
 
   static std::string config_path();
   bool load();
   bool save() const;
 
-  /** Первый сервер или localhost:3478. */
+  /** First server, or localhost:3478. */
   RendezvousServer primary_rendezvous() const;
 
-  /** Строка host:port,host:port для CLI. */
+  /** host:port,host:port string for the CLI. */
   std::string rendezvous_list_string() const;
 
-  /** Парсит список из CSV host:port. */
+  /** Parses the list from CSV host:port. */
   static bool parse_rendezvous_list(const std::string& csv, NetworkConfig& out);
 };
 

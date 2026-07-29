@@ -70,7 +70,7 @@ bool GroupMemberService::join(int timeout_ms) {
         view_.members = std::move(ack->members);
         chat_id_ = group_chat_id(group_id_);
         group_name_ = view_.name;
-        // До JoinAck group_id мог быть пустым — история шла бы в чужой файл.
+        // Before JoinAck group_id may be empty and history would go to the wrong file.
         store_.rebind(MessageStore::path_for_group(group_id_));
         if (on_event_) {
           on_event_("в поле «" + view_.name + "» (" +

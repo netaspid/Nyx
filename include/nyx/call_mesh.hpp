@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file call_mesh.hpp
- *  Mesh-медиасеть звонка: PeerIntro/Endpoint через хаб, медиа peer↔peer.
+ *  Call media mesh: PeerIntro/Endpoint via the hub, media peer-to-peer.
  */
 
 #include "nyx/call_proto.hpp"

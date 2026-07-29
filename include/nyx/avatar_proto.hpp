@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file avatar_proto.hpp
- *  Обмен фото профиля на kBulkStream (отдельные kind, не FileKind).
+ *  Profile photo exchange on kBulkStream (dedicated kinds, not FileKind).
  */
 
 #include "nyx/file_hash.hpp"

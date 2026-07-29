@@ -46,7 +46,7 @@ std::vector<ByteBuffer> ReliableSession::fragment(uint32_t msg_id,
   const std::size_t chunk = mtu_ - kFragHdr;
   const std::size_t need =
       std::max<std::size_t>(1, (data.size() + chunk - 1) / chunk);
-  // total в заголовке — uint16_t; переполнение ломает сборку (UB/порча кучи).
+  // total is uint16_t in the header; overflow breaks reassembly (UB / heap corruption).
   if (need > 65535) return {};
   const uint16_t total = static_cast<uint16_t>(need);
   std::vector<ByteBuffer> out;
@@ -79,7 +79,7 @@ std::optional<ReliableSession::AssembledMessage> ReliableSession::assemble(
     p.total = total;
     p.parts.assign(total, std::nullopt);
   } else if (p.total != total) {
-    // Конфликт заголовков — сброс.
+    // Header conflict: reset the partial message.
     partials_.erase(msg_id);
     return std::nullopt;
   }

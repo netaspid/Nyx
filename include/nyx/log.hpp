@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file log.hpp
- *  Файловое логирование (фаза 7): уровни, ротация по размеру.
+ *  File logging: levels, size-based rotation.
  */
 
 #include <string>
@@ -15,10 +15,10 @@ enum class LogLevel {
   Error = 3,
 };
 
-/** Инициализация: каталог logs/, открытие nyx.log. Безопасно вызывать повторно. */
+/** Initializes logs/ and opens nyx.log. Safe to call repeatedly. */
 void log_init();
 
-/** Путь к текущему log-файлу после log_init(). */
+/** Path of the current log file after log_init(). */
 std::string default_log_path();
 
 void log_write(LogLevel level, const std::string& message);

@@ -122,7 +122,7 @@ bool SessionIntentStore::is_enabled(const std::string& key) const {
   for (const auto& it : intents_) {
     if (it.key == key) return it.enabled;
   }
-  // Нет записи — не поднимать сессию сами (только после явного join / enable).
+  // No record: never auto-start the session (only after an explicit join/enable).
   return false;
 }
 

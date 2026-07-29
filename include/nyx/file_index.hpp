@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file file_index.hpp
- *  Индекс файлов в shared-папках: hash, размер, политика share (фаза 4–5).
+ *  Index of files in shared folders: hash, size, share policy.
  */
 
 #include "nyx/chat_id.hpp"
@@ -17,7 +17,7 @@
 
 namespace nyx {
 
-/** Корень индекса с областью видимости. group_id = 0 → только личка 1:1. */
+/** Index root with a visibility scope. group_id = 0 -> DM only. */
 struct ShareRoot {
   std::string path;
   GroupId group_id{};
@@ -27,7 +27,7 @@ struct ShareRoot {
   }
 };
 
-/** Запись в индексе. */
+/** Index entry. */
 struct FileEntry {
   FileHash hash{};
   uint64_t size = 0;
@@ -41,13 +41,13 @@ struct FileEntry {
 
   std::string absolute_path() const;
   std::string display_name() const { return relative_path; }
-  /** Имя для отображения в списке (последний сегмент пути). */
+  /** Display name for lists (last path segment). */
   std::string leaf_name() const;
-  /** Маркер папки в списке (не скачивается). */
+  /** Folder marker in a listing (not downloadable). */
   bool is_directory() const { return mime == "application/x-nyx-directory"; }
 };
 
-/** Сканирование и хранение метаданных файлов. */
+/** Scans and stores file metadata. */
 class FileIndex {
  public:
   /** progress(path, files_scanned, finished). */
@@ -56,30 +56,30 @@ class FileIndex {
 
   FileIndex();
 
-  /** Сбрасывает индекс в памяти (без записи на диск). */
+  /** Clears the in-memory index (nothing written to disk). */
   void clear();
 
-  /** Добавляет корень и сканирует файлы (потокобезопасно). group_id=nullptr/zero → личка. */
+  /** Adds a root and scans files (thread-safe). group_id nullptr/zero -> DM scope. */
   bool add_root(const std::string& root_path, const GroupId* group_id = nullptr,
                 ScanProgressFn progress = nullptr);
 
-  /** Удаляет корень и его файлы; повторный add_root того же пути допустим. */
+  /** Removes a root and its files; re-adding the same path later is allowed. */
   bool remove_root(const std::string& root_path, const GroupId* group_id = nullptr);
 
-  /** Корни, видимые в области (личка или поле). */
+  /** Roots visible in a scope (DM or field). */
   std::vector<ShareRoot> roots_for_session(const GroupId& session_group) const;
-  /** Копия корней (потокобезопасно относительно сканирования). */
+  /** Copy of the roots (safe against concurrent scans). */
   std::vector<ShareRoot> share_roots() const;
-  /** Копия записей индекса. */
+  /** Copy of the index entries. */
   std::vector<FileEntry> entries() const;
 
-  /** Файлы, видимые в текущей сессии (личка или конкретное поле). */
+  /** Files visible in the current session (DM or one field). */
   std::vector<FileEntry> entries_for_session(const GroupId& session_group) const;
 
-  /** Файлы + маркеры папок (size = число файлов внутри). */
+  /** Files plus folder markers (size = number of files inside). */
   std::vector<FileEntry> listing_for_session(const GroupId& session_group) const;
 
-  /** Один уровень дерева внутри share root (parent_rel "" = корень папки). */
+  /** One tree level inside a share root (parent_rel "" = the folder root). */
   static std::vector<FileEntry> listing_level(const std::vector<FileEntry>& source,
                                               const std::string& share_root_path,
                                               const std::string& parent_rel);
@@ -93,11 +93,11 @@ class FileIndex {
                                          const std::string& parent_rel,
                                          const GroupId* scope_group = nullptr) const;
 
-  /** Число проиндексированных файлов в корне. */
+  /** Number of indexed files under a root. */
   int count_in_root(const std::string& root_path) const;
   int count_in_root(const std::string& root_path, const GroupId& scope_group) const;
 
-  /** Пересканировать существующий корень. */
+  /** Rescans an existing root. */
   bool rescan_root(const std::string& root_path, const GroupId* group_id = nullptr,
                    ScanProgressFn progress = nullptr);
 
@@ -130,7 +130,7 @@ class FileIndex {
   /** Ensures ShareRoot exists so library files appear in Field resources. */
   bool ensure_library_root(const GroupId& scope_group);
 
-  /** find + проверка share policy для сессии. */
+  /** find plus a share-policy check for the session. */
   std::optional<FileEntry> find_for_session(const FileHash& hash,
                                             const GroupId& session_group) const;
 
@@ -141,7 +141,7 @@ class FileIndex {
   bool load();
   bool save() const;
 
-  /** Перечитывает индекс из data_dir() активного аккаунта. */
+  /** Reloads the index from the active account data_dir(). */
   bool reload() { return load(); }
 
   static std::string index_path();

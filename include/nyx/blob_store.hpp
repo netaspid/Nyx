@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file blob_store.hpp
- *  Чтение файлов с диска чанками (фаза 4).
+ *  Chunked file reads from disk.
  */
 
 #include "nyx/types.hpp"
@@ -12,7 +12,7 @@
 
 namespace nyx {
 
-/** Последовательное чтение файла для передачи по сети. */
+/** Sequential file reader for network transfer. */
 class BlobReader {
  public:
   explicit BlobReader(std::string path);
@@ -20,7 +20,7 @@ class BlobReader {
   bool open();
   uint64_t size() const { return size_; }
 
-  /** Читает до max_len байт с offset. @return 0 при EOF или ошибке. */
+  /** Reads up to max_len bytes at offset. @return 0 on EOF or error. */
   std::size_t read_at(uint64_t offset, ByteBuffer& out, std::size_t max_len);
 
  private:
@@ -29,7 +29,7 @@ class BlobReader {
   uint64_t size_ = 0;
 };
 
-/** Запись принимаемого файла на диск. */
+/** Writes a received file to disk. */
 class BlobWriter {
  public:
   explicit BlobWriter(std::string path);

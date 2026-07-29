@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file call_media.hpp
- *  Кадры медиа на kRealtimeStream (без ARQ).
+ *  Media frames on kRealtimeStream (no ARQ).
  */
 
 #include "nyx/identity.hpp"

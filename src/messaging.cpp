@@ -127,7 +127,7 @@ std::optional<ByeMessage> ByeMessage::decode(const ByteBuffer& data) {
     return std::nullopt;
   }
   const uint16_t len = read_u16_le(data.data() + 1);
-  // Точная длина: иначе чужой кадр с первым байтом 4 (исторически) мог читаться как Bye.
+  // Exact length required: otherwise a foreign frame starting with byte 4 could parse as Bye.
   if (data.size() != 3u + len) return std::nullopt;
   ByeMessage msg;
   if (!read_string(data, 3, len, kMaxByeReasonLen, msg.reason)) return std::nullopt;

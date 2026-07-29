@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file connection.hpp
- *  Соединение P2P: NAT (rendezvous), handshake, шифрование, потоки.
+ *  P2P connection: NAT (rendezvous), handshake, encryption, streams.
  */
 
 #include "nyx/crypto.hpp"
@@ -19,18 +19,18 @@
 
 namespace nyx {
 
-/** Собирает EndpointHint для регистрации на rendezvous. */
+/** Builds an EndpointHint for rendezvous registration. */
 EndpointHint make_hint(const std::string& host, uint16_t port);
 
-/** Клиент bootstrap-сервера: register и lookup invite token. */
+/** Bootstrap server client: register and lookup of an invite token. */
 class RendezvousClient {
  public:
   RendezvousClient(UdpSocket socket, std::string server_host, uint16_t server_port);
 
-  /** Публикует token и текущий UDP-адрес узла. */
+  /** Publishes the token and the current node UDP address. */
   bool register_token(const InviteToken& token);
 
-  /** Ищет адрес по token. Ждёт только ответ от rendezvous, hint.port != 0. */
+  /** Looks up an address by token. Waits only for the rendezvous reply, hint.port != 0. */
   std::optional<EndpointHint> lookup(const InviteToken& token);
 
   UdpSocket& socket() { return socket_; }
@@ -43,63 +43,62 @@ class RendezvousClient {
   uint16_t server_port_;
 };
 
-/** Полное P2P-соединение с одним peer. */
+/** Full P2P connection to one peer. */
 class Connection {
  public:
   Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port);
 
-  /** Исходящее соединение: handshake initiator. */
+  /** Outgoing connection: handshake initiator. */
   static std::optional<Connection> connect_initiator(UdpSocket socket,
                                                      const std::string& peer_host,
                                                      uint16_t peer_port,
                                                      int timeout_ms = 15000);
 
-  /** Входящее: responder, first_packet — уже принятый HandshakeInit. */
+  /** Incoming: responder; first_packet is the already received HandshakeInit. */
   static std::optional<Connection> accept_responder(
       UdpSocket socket, const std::string& peer_host, uint16_t peer_port,
       const ByteBuffer* first_packet, int timeout_ms = 15000);
 
   ConnectionState state() const { return state_; }
 
-  /** Ping на control stream. */
+  /** Ping on the control stream. */
   bool ping();
 
-  /** Опрос сети, keep-alive ping, проверка таймаута peer. @return false если peer мёртв. */
+  /** Polls the network, keep-alive ping, peer timeout check. @return false when the peer is dead. */
   bool drive();
 
-  /** Отправка текста на логический поток (UTF-8 байты). */
 
-  /** Отправка произвольной нагрузки на логический поток. */
+  /** Sends an arbitrary payload on a logical stream. */
   bool send_payload(uint32_t stream_id, const ByteBuffer& data);
 
   /**
-   * Ненадёжная отправка на kRealtimeStream (PacketType::Realtime).
-   * Без ARQ/retransmit — для аудио/видео. Рекомендуемый размер ≤ ~1100 байт.
+   * Unreliable send on kRealtimeStream (PacketType::Realtime).
+   * No ARQ/retransmit; meant for audio/video. Recommended size <= ~1100 bytes.
    */
   bool send_realtime(const ByteBuffer& data);
 
-  /** Неблокирующий приём realtime-кадра (после drive/feed_wire). */
+  /** Non-blocking receive of a realtime frame (after drive/feed_wire). */
   bool recv_realtime(ByteBuffer& out);
 
-  /** false после таймаута без ответа от peer. */
+  /** false after a timeout with no peer response. */
   bool peer_alive() const { return peer_alive_; }
 
-  /** Epoch rekey сессии (0 после handshake). */
+  /** Session rekey epoch (0 right after the handshake). */
   std::uint64_t session_rekey_epoch() const;
 
   const std::string& peer_host() const { return peer_host_; }
   uint16_t peer_port() const { return peer_port_; }
 
-  /** Неблокирующий приём: stream_id + данные. */
+  /** Non-blocking receive: stream_id + data. */
   bool recv_stream(uint32_t& stream_id, ByteBuffer& out);
 
-  /** Забирает payload из mux без чтения UDP (для hub). */
+  /** Takes a payload from the mux without reading UDP (for the hub). */
   bool pop_stream(uint32_t& stream_id, ByteBuffer& out);
 
-  /** Принимает сырой UDP-кадр (hub диспетчеризует по peer). */
+  /** Accepts a raw UDP frame (the hub dispatches per peer). */
   void feed_wire(const ByteBuffer& wire);
 
-  /** Keep-alive без чтения с сокета (hub сам диспетчеризует recv). */
+  /** Keep-alive without reading the socket (the hub dispatches recv itself). */
   bool drive_without_recv();
 
  private:
@@ -135,8 +134,8 @@ class Connection {
 };
 
 /**
- * Пошаговый Noise handshake на shared UDP (mesh / demux).
- * Не вызывает recv_from — пакеты подаёт владелец сокета через feed_wire.
+ * Stepwise Noise handshake on a shared UDP socket (mesh / demux).
+ * Never calls recv_from; the socket owner feeds packets via feed_wire.
  */
 class PendingConnection {
  public:
@@ -147,10 +146,10 @@ class PendingConnection {
   PendingConnection(const PendingConnection&) = delete;
   PendingConnection& operator=(const PendingConnection&) = delete;
 
-  /** Отправить первый шаг; для responder — передать уже принятый HandshakeInit wire. */
+  /** Sends the first step; a responder passes the already received HandshakeInit wire. */
   bool start(const ByteBuffer* first_wire = nullptr);
 
-  /** Обработать один UDP-кадр с peer. @return true если handshake завершён. */
+  /** Processes one UDP frame from the peer. @return true when the handshake completed. */
   bool feed_wire(const ByteBuffer& wire);
 
   bool complete() const { return complete_; }
@@ -158,7 +157,7 @@ class PendingConnection {
   const std::string& peer_host() const { return peer_host_; }
   uint16_t peer_port() const { return peer_port_; }
 
-  /** Забирает Established Connection (только после complete). */
+  /** Takes the Established Connection (only after completion). */
   std::optional<Connection> take();
 
  private:

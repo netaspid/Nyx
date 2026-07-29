@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file mdns.hpp
- *  LAN discovery через multicast beacon Nyx, фаза 6.
+ *  LAN discovery via the Nyx multicast beacon.
  */
 
 #include "nyx/identity.hpp"
@@ -21,7 +21,7 @@ namespace nyx {
 void add_discovery_unicast_target(const std::string& ipv4);
 std::vector<std::string> discovery_unicast_targets();
 
-/** Узел, найденный в локальной сети. */
+/** Node discovered on the local network. */
 struct LanPeer {
   std::string instance;
   std::string host;
@@ -29,7 +29,7 @@ struct LanPeer {
   std::string user_id_short;
 };
 
-/** Периодическая публикация и опрос mDNS. */
+/** Periodic beacon announce and browse. */
 class MdnsLan {
  public:
   MdnsLan() = default;
@@ -38,23 +38,23 @@ class MdnsLan {
   MdnsLan(const MdnsLan&) = delete;
   MdnsLan& operator=(const MdnsLan&) = delete;
 
-  /** Настраивает сокет для приёма discovery-beacon (bind + multicast join). */
+  /** Prepares the socket for discovery beacons (bind + multicast join). */
   static bool setup_socket(UdpSocket& socket, std::string* err = nullptr);
 
-  /** Фоновые announce каждые ~3 с. */
+  /** Background announces every ~3 s. */
   void start_advertising(UdpSocket socket, Profile profile, uint16_t port,
                          std::string host_ip);
   void stop_advertising();
 
-  /** Опрос LAN, сбор ответов beacon Nyx. */
+  /** Browses the LAN, collecting Nyx beacon replies. */
   static std::vector<LanPeer> browse(UdpSocket& socket, int timeout_ms = 3000);
 
-  /** Одно announce (+ optional unicast to peers that miss ethernet multicast). */
+  /** One announce (+ optional unicast to peers that miss ethernet multicast). */
   static bool send_announcement(UdpSocket& socket, const Profile& profile,
                                 uint16_t port, const std::string& host_ip,
                                 const std::vector<std::string>& unicast_hosts = {});
 
-  /** Разбор beacon-пакета (тесты). */
+  /** Parses a beacon packet (exposed for tests). */
   static std::optional<LanPeer> parse_beacon(const ByteBuffer& data,
                                              const std::string& from_host);
 

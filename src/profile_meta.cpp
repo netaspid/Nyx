@@ -143,7 +143,7 @@ bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, Profile
   ++offset;
   out.photo_hashes.clear();
   out.updated_ms = wall_ms();
-  // Расширение: updated_ms + photo hashes (старые пиры не шлют).
+  // Extension fields: updated_ms + photo hashes (older peers do not send them).
   if (offset + 8 <= data.size()) {
     out.updated_ms = read_u64_le(data.data() + offset);
     offset += 8;

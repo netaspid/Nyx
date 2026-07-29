@@ -146,7 +146,7 @@ bool Connection::send_payload(uint32_t stream_id, const ByteBuffer& data) {
 
 bool Connection::send_realtime(const ByteBuffer& data) {
   if (!session_ || state_ != ConnectionState::Established || !peer_alive_) return false;
-  // Бюджет: MTU минус заголовок кадра и Noise tag; оставляем запас.
+  // Budget: MTU minus frame header and Noise tag, with headroom.
   constexpr std::size_t kMaxRealtimePlain = 1100;
   if (data.size() > kMaxRealtimePlain) return false;
 
@@ -159,7 +159,7 @@ bool Connection::send_realtime(const ByteBuffer& data) {
       Frame::make(PacketType::Realtime, kRealtimeStream, seq, std::move(*encrypted))
           .encode();
   if (wire.empty()) return false;
-  // Realtime — сразу в сокет, без очереди reliable (минимум задержки).
+  // Realtime goes straight to the socket, bypassing the reliable queue for low latency.
   if (!socket_.send_to(wire, peer_host_, peer_port_)) return false;
   maybe_rekey();
   return true;

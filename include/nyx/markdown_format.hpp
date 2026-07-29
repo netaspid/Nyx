@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file markdown_format.hpp
- *  Nyx Markdown → HTML / блоки для пузырей (RichText + медиа).
+ *  Nyx Markdown -> HTML / bubble blocks (RichText + media).
  */
 
 #include <cstdint>
@@ -11,7 +11,7 @@
 
 namespace nyx {
 
-/** Тип блока сообщения. */
+/** Message block type. */
 enum class MdBlockType : uint8_t {
   Paragraph = 0,
   Table = 1,
@@ -21,14 +21,14 @@ enum class MdBlockType : uint8_t {
   File = 5,
 };
 
-/** Один блок после разбора текста сообщения. */
+/** One block after parsing a message text. */
 struct MdBlock {
   MdBlockType type = MdBlockType::Paragraph;
   /** paragraph / table raw / formula latex / action body. */
   std::string text;
-  /** Медиа: hex hash. */
+  /** Media: hex hash. */
   std::string hash;
-  /** Медиа: подпись. */
+  /** Media: caption. */
   std::string caption;
   /** File-card MIME and size. */
   std::string mime;
@@ -37,29 +37,29 @@ struct MdBlock {
   bool display_math = false;
 };
 
-/** Экранирование HTML-сущностей. */
+/** Escapes HTML entities. */
 std::string html_escape(const std::string& s);
 
-/** `/me foo` → `nyx-me:foo`; иначе исходная строка (trim справа не трогаем). */
+/** `/me foo` -> `nyx-me:foo`; otherwise the input string (no right trim). */
 std::string normalize_me_message(const std::string& text);
 
-/** Сообщение-действие. */
+/** Action message. */
 bool is_action_message(const std::string& text);
 
-/** Тело после `nyx-me:`. */
+/** Body after `nyx-me:`. */
 std::string action_message_body(const std::string& text);
 
-/** Разбор на блоки: action / formula / media / table / paragraph. */
+/** Splits into blocks: action / formula / media / table / paragraph. */
 std::vector<MdBlock> parse_markdown_blocks(const std::string& src);
 
-/** Lite TeX → HTML (греческий, frac, sqrt, ^ _). */
+/** Lite TeX -> HTML (Greek letters, frac, sqrt, ^ _). */
 std::string formula_to_html(const std::string& latex);
 
 /** GFM pipe-table → HTML table. */
 std::string table_to_html(const std::string& table_src);
 
 /**
- * Markdown → HTML для paragraph-блока.
+ * Markdown -> HTML for a paragraph block.
  * fence, code, spoiler, links (http + nyx-user:), **bold**, __u__, ~~s~~, *i*,
  * > quote, # headings, lists, ---, $inline math$.
  */

@@ -1,8 +1,8 @@
 #pragma once
 
 /** @file profile_meta.hpp
- *  Публичная мета профиля: подпись, интересы, доступность.
- *  Локальный JSON; при handshake уходит в Hello (capability).
+ *  Public profile meta: bio, interests, availability.
+ *  Stored as local JSON; sent inside Hello (capability) at handshake.
  */
 
 #include "nyx/file_hash.hpp"
@@ -16,7 +16,7 @@ namespace nyx {
 
 constexpr std::size_t kMaxProfilePhotosWire = 5;
 
-/** Статус доступности, которым делимся с peer. */
+/** Availability status shared with peers. */
 enum class Availability : uint8_t {
   Available = 0,
   Away = 1,
@@ -24,17 +24,17 @@ enum class Availability : uint8_t {
   Invisible = 3,
 };
 
-/** Публичная карточка «о себе» (не секретные ключи). */
+/** Public "about" card (no secret keys). */
 struct ProfileMeta {
   std::string bio;
   std::string interests;
   Availability availability = Availability::Available;
   uint64_t updated_ms = 0;
-  /** Хеши фото (current = [0]), до kMaxProfilePhotosWire; в Hello. */
+  /** Photo hashes (current = [0]), up to kMaxProfilePhotosWire; sent in Hello. */
   std::vector<FileHash> photo_hashes;
 };
 
-/** Загрузка/сохранение data_dir()/profile_meta.json. */
+/** Loads/saves data_dir()/profile_meta.json. */
 bool load_profile_meta(ProfileMeta& out);
 bool save_profile_meta(const ProfileMeta& meta);
 
@@ -42,9 +42,9 @@ std::string availability_to_string(Availability a);
 Availability availability_from_string(const std::string& s);
 std::string availability_label_ru(Availability a);
 
-/** Сериализация меты в байты для Hello (после inbox token). */
+/** Serializes meta bytes for Hello (after the inbox token). */
 void append_profile_meta_wire(ByteBuffer& out, const ProfileMeta& meta);
-/** Разбор меты с offset; двигает offset. */
+/** Parses meta at offset and advances it. */
 bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, ProfileMeta& out);
 
 }  // namespace nyx

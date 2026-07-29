@@ -133,8 +133,8 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
     }
   };
 
-  /** Прямой потомок parent в relative_path; пусто если не подходит.
-   *  Допускает leaf-имя без префикса parent (как в уже урезанном ListResp). */
+  // Direct child of parent within relative_path; empty when it does not match.
+  // Accepts a leaf name without the parent prefix (as in an already-trimmed ListResp).
   auto immediate_child = [&](const std::string& rel) -> std::string {
     std::string rest;
     if (parent.empty()) {
@@ -159,7 +159,7 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
 
     if (e.is_directory()) {
       const std::string rel = path_to_posix(e.relative_path);
-      // Маркер share-корня (имя папки / «участник: …») — не подпапка внутри корня.
+      // Share-root marker (folder name / member label), not a subfolder inside the root.
       if (parent.empty()) {
         if (rel == root_leaf) continue;
         if (rel.rfind("участник:", 0) == 0) continue;
@@ -180,7 +180,7 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
                rel[parent.size()] == '/') {
       rest = rel.substr(parent.size() + 1);
     } else if (rel.find('/') == std::string::npos) {
-      // Ответ уровня уже с leaf-путём — файл лежит в текущем parent.
+      // Level response already uses leaf paths: the file lives in the current parent.
       rest = rel;
     } else {
       continue;
@@ -190,8 +190,8 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
     const auto slash = rest.find('/');
     if (slash == std::string::npos) {
       FileEntry file = e;
-      // Полный путь от share-корня (не leaf): иначе повторный listing_level на клиенте
-      // с parent="node_modules" отбрасывает ".modules.yaml".
+      // Full path from the share root (not a leaf): otherwise a repeated
+      // listing_level with parent="node_modules" drops ".modules.yaml".
       file.relative_path = parent.empty() ? rest : parent + "/" + rest;
       files.push_back(std::move(file));
     } else {
@@ -287,7 +287,7 @@ std::string FileIndex::guess_mime(const std::string& path) {
 }
 
 bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
-  // Вызывающий уже держит mutex_. Progress не должен снова входить в FileIndex.
+  // Caller already holds mutex_; the progress callback must not re-enter FileIndex.
   std::error_code ec;
   const std::string norm = normalize_utf8_path(root.path);
   const std::filesystem::path root_fs = path_from_utf8(norm);
@@ -325,7 +325,7 @@ bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
 
       entry.size = static_cast<uint64_t>(it->file_size(file_ec));
       if (file_ec) entry.size = 0;
-      // file_time_type::time_since_epoch() на Windows может бросать — не используем.
+      // file_time_type::time_since_epoch() may throw on Windows; skip it.
       entry.mtime_ms = 0;
       entry.mime = guess_mime(abs);
       infer_owner_from_rel(entry.relative_path, entry.owner_id);
@@ -335,7 +335,7 @@ bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
       if (progress) progress(rel_for_progress, scanned, false);
     }
   } catch (const std::exception&) {
-    // Повреждённый путь / symlink loop — отдаём то, что успели просканировать.
+    // Broken path / symlink loop: return whatever was scanned so far.
   }
   if (progress) progress({}, scanned, true);
   return true;

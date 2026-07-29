@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file rendezvous_pool.hpp
- *  Несколько bootstrap-серверов: register на все, lookup с failover.
+ *  Multiple bootstrap servers: register on all, lookup with failover.
  */
 
 #include "nyx/network_config.hpp"
@@ -14,23 +14,23 @@
 
 namespace nyx {
 
-/** Клиент с поддержкой списка rendezvous. */
+/** Client supporting a rendezvous server list. */
 class RendezvousPool {
  public:
   explicit RendezvousPool(UdpSocket socket);
 
   void set_servers(const std::vector<RendezvousServer>& servers);
 
-  /** Register token на каждом сервере из списка. */
+  /** Registers the token on every server in the list. */
   bool register_token(const InviteToken& token);
 
-  /** Снять token с bootstrap (при остановке listen/hub). */
+  /** Unregisters the token from bootstrap (when listen/hub stops). */
   bool unregister_token(const InviteToken& token);
 
-  /** Lookup: опрашивает серверы по порядку, первый успешный hint. */
+  /** Lookup: queries servers in order, first successful hint wins. */
   std::optional<EndpointHint> lookup(const InviteToken& token);
 
-  /** Проверка UDP-доступности (Register с пустым token не шлём — только lookup ping). */
+  /** UDP reachability check (no empty-token Register; lookup ping only). */
   bool probe_server(const RendezvousServer& server, int timeout_ms = 2000);
 
   UdpSocket& socket() { return socket_; }
@@ -45,10 +45,10 @@ class RendezvousPool {
   std::vector<RendezvousServer> servers_;
 };
 
-/** Register/Unreg через уже открытый UDP-сокет (hub/listen refresh). */
+/** Register/unregister via an already open UDP socket (hub/listen refresh). */
 bool register_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
                        const InviteToken& token);
-/** Снять invite с bootstrap при остановке hub/listen. */
+/** Removes the invite from bootstrap when hub/listen stops. */
 bool unregister_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
                           const InviteToken& token);
 

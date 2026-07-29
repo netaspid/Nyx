@@ -205,7 +205,7 @@ bool AvatarStore::cache_peer_photo(const UserId& peer, const FileHash& hash, con
 bool AvatarStore::read_bytes(const FileHash& hash, ByteBuffer& out) const {
   std::string path = path_for(hash);
   if (path.empty()) {
-    // поиск в peers/*
+
     std::error_code ec;
     const auto root = peers_dir();
     if (std::filesystem::exists(root, ec)) {

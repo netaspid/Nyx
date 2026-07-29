@@ -75,7 +75,7 @@ bool CallSession::reject(CallRejectReason /*reason*/) {
 
 bool CallSession::on_accept(const CallAcceptMessage& msg) {
   if (msg.call_id != call_id) return false;
-  // Поле: комната уже Active — участник присоединился.
+  // Field room already Active: a participant joined.
   if (scope == CallScope::Field && state == CallState::Active) {
     mode = msg.mode;
     return true;
@@ -89,7 +89,7 @@ bool CallSession::on_accept(const CallAcceptMessage& msg) {
 bool CallSession::on_reject(const CallRejectMessage& msg) {
   if (msg.call_id != call_id) return false;
   if (scope == CallScope::Field && state == CallState::Active) {
-    // Хаб отклонил старт (нет роли) — закрываем комнату у инициатора.
+    // Hub rejected the start (no role): close the room on the initiator side.
     if (msg.reason == CallRejectReason::Unsupported) {
       end_reason = "unsupported";
       state = CallState::Ended;

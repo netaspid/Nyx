@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file identity.hpp
- *  Долгоживущая идентичность: Ed25519 ключи, nickname, профиль, контакты.
+ *  Long-lived identity: Ed25519 keys, nickname, profile, contacts.
  */
 
 #include "nyx/profile_meta.hpp"
@@ -20,7 +20,7 @@ using PublicKey = std::array<uint8_t, kPublicKeySize>;
 using SecretKey = std::array<uint8_t, kSecretKeySize>;
 using UserId = PublicKey;
 
-/** Профиль пользователя на диске. */
+/** User profile on disk. */
 struct Profile {
   std::string nickname;
   SecretKey secret_key{};
@@ -29,38 +29,37 @@ struct Profile {
   UserId user_id() const { return public_key; }
 };
 
-/** Короткий id для лога: первые 8 hex символов публичного ключа. */
+/** Short id for logs: first 8 hex chars of the public key. */
 std::string short_user_id(const UserId& id);
 
-/** Генерирует новую пару ключей и nickname. */
+/** Generates a new key pair and nickname. */
 Profile generate_profile(const std::string& nickname);
 
-/** Загружает профиль или создаёт новый и сохраняет на диск. */
+/** Loads the profile, or creates and saves a new one. */
 Profile load_or_create_profile(const std::string& path, const std::string& nickname);
 
-/** Сохраняет профиль в JSON. */
 bool save_profile(const std::string& path, const Profile& profile);
 
-/** Загружает профиль. @return false если файла нет или формат неверный. */
+/** Loads the profile. @return false when the file is missing or malformed. */
 bool load_profile(const std::string& path, Profile& out);
 
-/** Запись в локальной книге контактов. */
+/** Local contact book record. */
 struct Contact {
   UserId user_id{};
   std::string nickname;
   uint8_t trust_level = 0;
   uint64_t last_seen_ms = 0;
-  /** Стабильный DM-inbox token peer (hex, 64); пусто если неизвестен. */
+  /** Stable peer DM-inbox token (hex, 64); empty when unknown. */
   std::string dm_inbox_token_hex;
-  /** Последняя известная публичная мета (из Hello). */
+  /** Last known public meta (from Hello). */
   std::string bio;
   std::string interests;
   Availability availability = Availability::Available;
-  /** Хеши фото peer (current = [0]), hex 64. */
+  /** Peer photo hashes (current = [0]), hex 64. */
   std::vector<std::string> photo_hashes;
 };
 
-/** Локальная книга контактов (JSON на диске). */
+/** Local contact book (JSON on disk). */
 class ContactBook {
  public:
   explicit ContactBook(std::string path);
@@ -69,7 +68,7 @@ class ContactBook {
   bool save() const;
 
   void upsert(Contact contact);
-  /** Удаляет контакт по user_id. @return true если запись была. */
+  /** Removes a contact by user_id. @return true when the record existed. */
   bool remove(const UserId& user_id);
   const std::vector<Contact>& contacts() const { return contacts_; }
 

@@ -231,8 +231,8 @@ std::optional<std::pair<std::string, std::string>> decode_list_request(const Byt
 }
 
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
-  // Connection шифрует весь bulk-кадр до фрагментации; Noise ≤ 65519 байт plaintext.
-  // mux добавляет 4 байта stream_id — держим запас.
+  // Connection encrypts the whole bulk frame before fragmenting; Noise caps
+  // plaintext at 65519 bytes and mux adds a 4-byte stream_id, so keep headroom.
   constexpr std::size_t kMaxListBytes = 48000;
 
   std::vector<const FileEntry*> ordered;
@@ -247,7 +247,7 @@ ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
   ByteBuffer out;
   out.reserve(std::min(kMaxListBytes, ordered.size() * 128 + 8));
   out.push_back(static_cast<uint8_t>(FileKind::ListResp));
-  write_u16_le(out, 0);  // count — заполним в конце
+  write_u16_le(out, 0);  // count is patched in below
 
   uint16_t count = 0;
   for (const FileEntry* pe : ordered) {

@@ -48,7 +48,7 @@ std::vector<std::string> split_objects(const std::string& arr) {
   return out;
 }
 
-/** Индексы открывающей и закрывающей скобки массива, начиная поиск с from. */
+// Indices of the array brackets, searching from `from`.
 std::optional<std::pair<std::size_t, std::size_t>> json_array_bounds(const std::string& json,
                                                                      std::size_t from) {
   const auto start = json.find('[', from);
@@ -120,7 +120,7 @@ std::string path_to_posix_copy(const std::string& path) {
   return out;
 }
 
-/** Share-корень, если grant на вложенную папку совпадает с проиндексированным корнем. */
+// Share root when a grant for a nested folder matches an indexed root.
 std::string grant_effective_share_root(const FileRootGrant& g) {
   if (g.relative_path.empty()) return normalize_grant_root(g.root_path);
   const auto combined =
@@ -141,7 +141,7 @@ uint32_t grant_role_permissions(const GroupFileAccess& policy, const FileRootGra
   return static_cast<uint32_t>(FilePermission::List);
 }
 
-/** Grant на подпапку, совпадающую с share-корнем entries (overview → remote). */
+// Grant for a subfolder matching the share root of entries (overview -> remote).
 bool permissions_from_share_root_grant(const GroupFileAccess& policy,
                                        const std::string& root_norm,
                                        const UserId& user_id,

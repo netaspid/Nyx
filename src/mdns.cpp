@@ -24,7 +24,7 @@ namespace {
 
 constexpr char kMagic[] = "NYX1";
 constexpr std::size_t kMagicLen = 4;
-/** Собственный multicast Nyx (не 5353 — там системный mDNS/Bonjour). */
+// Nyx-specific multicast group; port 5353 is taken by system mDNS/Bonjour.
 constexpr char kDiscoveryGroup[] = "239.255.77.77";
 constexpr uint16_t kDiscoveryPort = 34779;
 

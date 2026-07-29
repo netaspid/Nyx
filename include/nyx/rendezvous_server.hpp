@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file rendezvous_server.hpp
- *  Логика UDP bootstrap-сервера (register/lookup, TTL, rate limit).
+ *  UDP bootstrap server logic (register/lookup, TTL, rate limit).
  */
 
 #include "nyx/proto.hpp"
@@ -13,21 +13,21 @@
 
 namespace nyx {
 
-/** Конфигурация процесса nyx-rendezvous. */
+/** nyx-rendezvous process configuration. */
 struct RendezvousServerConfig {
   std::string bind_host = "0.0.0.0";
   uint16_t bind_port = 3478;
   std::chrono::minutes entry_ttl{5};
-  /** Макс. register+lookup в минуту с одного IP (0 = без лимита). */
+  /** Max register+lookup per minute per IP (0 = unlimited). */
   std::uint32_t rate_limit_per_minute = 120;
 };
 
-/** In-memory registry с TTL и rate limiting. */
+/** In-memory registry with TTL and rate limiting. */
 class RendezvousRegistry {
  public:
   explicit RendezvousRegistry(RendezvousServerConfig config);
 
-  /** Обрабатывает один UDP payload от клиента; возвращает wire-ответ или пусто. */
+  /** Handles one client UDP payload; returns the wire reply or empty. */
   std::optional<ByteBuffer> handle_datagram(const std::string& client_ip,
                                             const ByteBuffer& datagram);
 

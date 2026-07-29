@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file group_member.hpp
- *  Клиент поля: подключение к hub, GroupJoin, групповой чат (фаза 5).
+ *  Field client: connects to the hub, GroupJoin, group chat.
  */
 
 #include "nyx/connection.hpp"
@@ -27,12 +27,12 @@ struct GroupRecordView {
   std::string direction;
   std::string tags;
   GroupVisibility visibility = GroupVisibility::Circle;
-  /** true после GroupMeta от hub — можно перезаписывать локальную мету. */
+  /** true after GroupMeta from the hub: local meta may be overwritten. */
   bool meta_received = false;
   std::vector<GroupMemberRecord> members;
 };
 
-/** Сессия участника поля (не owner hub). */
+/** Field member session (not the owner hub). */
 class GroupMemberService {
  public:
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
@@ -45,14 +45,14 @@ class GroupMemberService {
   GroupMemberService(Connection& connection, Profile profile, GroupId group_id,
                      std::string group_name);
 
-  /** После Hello: отправляет GroupJoin и ждёт JoinAck. */
+  /** After Hello: sends GroupJoin and waits for JoinAck. */
   bool join(int timeout_ms = 10000);
 
-  /** Отправка в поле; false если hub мёртв / не joined. */
+  /** Sends into the field; false when the hub is dead or not joined. */
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
   bool send_call_frame(const ByteBuffer& frame);
   void handle_payload(const ByteBuffer& payload);
-  /** Keep-alive; при таймауте peer сбрасывает joined. */
+  /** Keep-alive; the peer drops joined on timeout. */
   void tick();
 
   void set_on_message(MessageCallback cb) { on_message_ = std::move(cb); }

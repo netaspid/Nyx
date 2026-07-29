@@ -1,8 +1,8 @@
 #pragma once
 
 /** @file account_store.hpp
- *  Локальные аккаунты: реестр, разблокировка, recovery, remember-me.
- *  Нет серверной регистрации — identity = Ed25519, защищённые паролем.
+ *  Local accounts: registry, unlock, recovery, remember-me.
+ *  No server-side registration; identity = Ed25519 keys protected by a password.
  */
 
 #include "nyx/identity.hpp"
@@ -23,67 +23,67 @@ struct AccountMeta {
   bool remember_active = false;
 };
 
-/** Срок «запомнить меня» (30 суток). */
+/** Remember-me lifetime (30 days). */
 inline constexpr std::int64_t kRememberMeDays = 30;
 
-/** Список аккаунтов из registry.json (без секретов). */
+/** Account list from registry.json (no secrets). */
 std::vector<AccountMeta> list_accounts();
 
-/** Каталог данных аккаунта: data_root()/accounts/<id>/. */
+/** Account data directory: data_root()/accounts/<id>/. */
 std::string account_data_dir(const std::string& account_id);
 
-/** Последний выбранный аккаунт (для преселекта в UI). */
+/** Last selected account (used for UI preselection). */
 std::string last_account_id();
 void set_last_account_id(const std::string& account_id);
 
-/** Создаёт аккаунт. @param recovery_phrase_out 12-словная BIP39-фраза (показать пользователю). */
+/** Creates an account. @param recovery_phrase_out 12-word BIP39 phrase to show the user. */
 bool create_account(const std::string& nickname, const std::string& password,
                     std::string* recovery_phrase_out, AccountMeta* created = nullptr,
                     std::string* err = nullptr);
 
-/** Разблокирует аккаунт паролем. remember_me — сохранить сессию на 30 дней. */
+/** Unlocks the account with a password. remember_me keeps the session for 30 days. */
 bool unlock_account(const std::string& account_id, const std::string& password,
                     bool remember_me = false, Profile* profile_out = nullptr,
                     std::string* err = nullptr);
 
-/** Разблокирует по remember-токену, если не истёк (OS-bound). */
+/** Unlocks via the remember token when not expired (OS-bound). */
 bool try_unlock_remembered(const std::string& account_id, Profile* profile_out = nullptr,
                            std::string* err = nullptr);
 
-/** Сброс пароля по recovery-фразе; remember-токен сбрасывается. */
+/** Password reset via the recovery phrase; the remember token is invalidated. */
 bool reset_password_with_recovery(const std::string& account_id,
                                   const std::string& recovery_phrase,
                                   const std::string& new_password, std::string* err = nullptr);
 
-/** Есть ли recovery.nyx у аккаунта. */
+/** Whether the account has recovery.nyx. */
 bool account_has_recovery(const std::string& account_id);
 
-/** Активен ли непросроченный remember-токен. */
+/** Whether a non-expired remember token exists. */
 bool account_remember_active(const std::string& account_id);
 
-/** Сбрасывает remember-токен аккаунта (выход / смена пароля). */
+/** Clears the account remember token (logout / password change). */
 void clear_remember_token(const std::string& account_id);
 
-/** Сохраняет remember-токен для уже открытой сессии. */
+/** Stores a remember token for an already open session. */
 bool enable_remember_me(std::string* err = nullptr);
 
-/** Завершает сессию и снимает process-lock. */
+/** Ends the session and releases the process lock. */
 void lock_session(bool clear_remember = false);
 
-/** Активный аккаунт в этой сессии (пусто если не разблокирован). */
+/** Active account in this session (empty when locked). */
 std::string active_account_id();
 
-/** Активный профиль текущей сессии. */
+/** Active profile of the current session. */
 bool active_profile(Profile& out);
 
-/** Обновляет никнейм активной сессии и сохраняет на диск. */
+/** Updates the active session nickname and persists it. */
 bool update_session_nickname(const std::string& nickname, std::string* err = nullptr);
 
-/** Импорт legacy profile.json; генерирует recovery-фразу. */
+/** Imports a legacy profile.json; generates a recovery phrase. */
 bool import_legacy_profile(const std::string& password, std::string* recovery_phrase_out,
                            AccountMeta* created = nullptr, std::string* err = nullptr);
 
-/** Есть ли неимпортированный profile.json в корне data. */
+/** Whether an unimported profile.json exists in the data root. */
 bool legacy_profile_pending();
 
 }  // namespace nyx

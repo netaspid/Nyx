@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file group_hub.hpp
- *  Hub поля (star): создатель принимает несколько Connection на одном UDP-сокете.
+ *  Field hub (star topology): the owner accepts multiple Connections on one UDP socket.
  */
 
 #include "nyx/call_proto.hpp"
@@ -34,7 +34,7 @@ struct UserIdHash {
   }
 };
 
-/** Сессия участника на hub. */
+/** Member session on the hub. */
 struct HubMember {
   Connection connection;
   UserId user_id{};
@@ -42,7 +42,7 @@ struct HubMember {
   bool joined = false;
 };
 
-/** Центральный узел поля: relay MsgV2 всем участникам. */
+/** Central field node: relays MsgV2 to all members. */
 class GroupHub {
  public:
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
@@ -54,10 +54,9 @@ class GroupHub {
 
   GroupHub(UdpSocket socket, Profile owner, GroupRecord group);
 
-  /** Один цикл: recv с сокета, drive участников, accept новых handshake. */
+  /** One cycle: socket recv, drive members, accept new handshakes. */
   void poll();
 
-  /** Отправка сообщения от owner в групповой чат. */
   bool send_message(const std::string& text);
 
   bool send_call_frame(const ByteBuffer& frame, const UserId* skip_user = nullptr);
@@ -75,14 +74,14 @@ class GroupHub {
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_call_frame(CallFrameCallback cb) { on_call_frame_ = std::move(cb); }
 
-  /** Индекс, scope и ACL для kBulkStream на соединениях участников. */
+  /** Index, scope and ACL for kBulkStream on member connections. */
   void attach_files(FileIndex& index, const GroupId& share_scope,
                     FileAccessStore* access = nullptr);
 
-  /** Обновляет роль участника (не Owner) и рассылает MemberJoined с новой ролью. */
+  /** Updates a non-owner member role and broadcasts MemberJoined with it. */
   bool set_member_role(const UserId& user_id, GroupRole role);
 
-  /** Роль в roster; Owner для создателя. */
+  /** Roster role; Owner for the creator. */
   GroupRole role_of(const UserId& user_id) const;
 
   const GroupRecord& group() const { return group_; }
@@ -91,29 +90,29 @@ class GroupHub {
   UdpSocket& socket() { return socket_; }
   MessageStore& store() { return store_; }
 
-  /** Отключает участника и обновляет roster. */
+  /** Disconnects a member and updates the roster. */
   bool remove_member(const UserId& user_id);
 
-  /** Bye всем участникам перед остановкой hub (мгновенный офлайн у клиентов). */
+  /** Bye to all members before hub stop so clients go offline immediately. */
   void notify_shutdown(const std::string& reason = "эфир закрыт");
 
-  /** Рассылает актуальную ACL всем участникам поля. */
+  /** Broadcasts the current ACL to all field members. */
   void broadcast_file_access_policy();
 
-  /** Обновляет мету в group_, пишет на диск и шлёт GroupMeta всем joined. */
+  /** Updates meta in group_, persists it and sends GroupMeta to all joined. */
   bool publish_meta(const std::string& description, const std::string& direction,
                     const std::string& tags, GroupVisibility visibility);
-  /** Шлёт текущую мету одному участнику (после JoinAck). */
+  /** Sends the current meta to one member (after JoinAck). */
   void send_meta_to(HubMember& member);
   void broadcast_meta();
 
-  /** Каталог share-корней поля с учётом ACL (без рекурсивного дампа файлов). */
+  /** Field share-root catalog filtered by ACL (no recursive file dump). */
   std::vector<FileEntry> catalog_for(const UserId& requester) const;
-  /** Один уровень внутри share-корня (подпапки-маркеры + файлы). */
+  /** One level inside a share root (subfolder markers + files). */
   std::vector<FileEntry> catalog_level_for(const UserId& requester, const std::string& root_path,
                                           const std::string& parent_rel) const;
 
-  /** Копирует файл из локального индекса hub в dest_path; проверяет hash. */
+  /** Copies a file from the local hub index to dest_path, verifying the hash. */
   bool download_local_file(const FileHash& hash, const std::string& dest_path,
                            std::string* saved_path = nullptr) const;
 
@@ -137,7 +136,7 @@ class GroupHub {
   void complete_join(HubMember& member);
   void send_history_to(HubMember& member);
   void broadcast_to_members(const ByteBuffer& payload, HubMember* skip);
-  /** Удаляет участников с мёртвым keep-alive (roster в group_ не трогает). */
+  /** Drops members with dead keep-alive (roster in group_ is untouched). */
   void drop_stale_members();
   StoredMessage to_stored(const ChatMessage& msg, bool outgoing) const;
   ChatMessage make_owner_message(const std::string& text) const;
@@ -164,7 +163,7 @@ class GroupHub {
   CallFrameCallback on_call_frame_;
   FileTransferService::CompletionCallback on_file_complete_;
   FileTransferService::ProgressCallback on_file_progress_;
-  /** Исходящие owner-сообщения, ждущие Ack хотя бы от одного участника. */
+  /** Outgoing owner messages waiting for an Ack from at least one member. */
   std::unordered_set<uint64_t> pending_member_acks_;
 
   FileIndex* file_index_ = nullptr;

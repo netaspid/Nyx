@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file mux.hpp
- *  Мультиплексор логических потоков внутри одного шифрованного канала.
+ *  Multiplexer of logical streams inside one encrypted channel.
  */
 
 #include "nyx/proto.hpp"
@@ -18,21 +18,20 @@ class Multiplexer {
  public:
   Multiplexer();
 
-  /** Выделяет новый stream_id (с 2, нечётные/чётные по соглашению позже). */
 
-  /** Упаковка: u32 stream_id + payload для шифрования. */
+  /** Packs u32 stream_id + payload for encryption. */
   ByteBuffer send(uint32_t stream_id, const ByteBuffer& data);
 
-  /** Забрать следующее сообщение из очереди потока. */
+  /** Takes the next message from the stream queue. */
   std::optional<ByteBuffer> recv(uint32_t stream_id);
 
-  /** Сформировать Ping для control stream. */
+  /** Builds a Ping for the control stream. */
   ByteBuffer ping();
 
-  /** Обработать control payload; может вернуть Pong и др. */
+  /** Handles a control payload; may return a Pong or similar. */
   std::vector<ByteBuffer> handle_control(const ByteBuffer& payload);
 
-  /** Положить расшифрованные данные в очередь потока (приём). */
+  /** Puts decrypted data into the stream queue (receive side). */
   void push(uint32_t stream_id, ByteBuffer data);
 
  private:

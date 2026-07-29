@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file messaging.hpp
- *  Формат сообщений мессенджера (фаза 3): ChatMessage, Bye, Ack.
+ *  Messenger message formats: ChatMessage, Bye, Ack.
  */
 
 #include "nyx/chat_id.hpp"
@@ -15,17 +15,17 @@
 
 namespace nyx {
 
-/** Тип кадра на kChatStream. */
+/** Frame type on kChatStream. */
 enum class ChatKind : uint8_t {
   Hello = 1,
-  Text = 2,   // legacy: сырой UTF-8 без метаданных
-  Msg = 3,    // ChatMessage без chat_id (legacy)
+  Text = 2,   // legacy: raw UTF-8 without metadata
+  Msg = 3,    // ChatMessage without chat_id (legacy)
   Bye = 4,
   Ack = 5,
-  MsgV2 = 6,  // ChatMessage с chat_id (фаза 3+)
+  MsgV2 = 6,  // ChatMessage with chat_id
 };
 
-/** Текстовое сообщение чата. */
+/** Chat text message. */
 struct ChatMessage {
   uint64_t id = 0;
   uint64_t timestamp_ms = 0;
@@ -38,7 +38,7 @@ struct ChatMessage {
   static std::optional<ChatMessage> decode(const ByteBuffer& data);
 };
 
-/** Уведомление об отключении peer. */
+/** Peer disconnect notification. */
 struct ByeMessage {
   std::string reason;
 
@@ -46,7 +46,7 @@ struct ByeMessage {
   static std::optional<ByeMessage> decode(const ByteBuffer& data);
 };
 
-/** Подтверждение доставки ChatMessage. */
+/** ChatMessage delivery acknowledgement. */
 struct AckMessage {
   uint64_t message_id = 0;
 
@@ -54,10 +54,10 @@ struct AckMessage {
   static std::optional<AckMessage> decode(const ByteBuffer& data);
 };
 
-/** Следующий id сообщения (монотонный, thread-safe enough для CLI). */
+/** Next message id (monotonic). */
 uint64_t next_message_id();
 
-/** Текущее время в миллисекундах UTC. */
+/** Current UTC time in milliseconds. */
 uint64_t now_ms();
 
 }  // namespace nyx

@@ -1,12 +1,12 @@
 #pragma once
 
 /** @file console.hpp
- *  Настройка консоли для корректного вывода UTF-8 (Windows).
+ *  Console setup for correct UTF-8 output (Windows).
  */
 
 namespace nyx {
 
-/** Переключает stdin/stdout на UTF-8. На Windows вызывать до первого вывода. */
+/** Switches stdin/stdout to UTF-8. Call before any output on Windows. */
 void setup_console_utf8();
 
 }  // namespace nyx

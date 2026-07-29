@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file call_session.hpp
- *  Локальная FSM звонка (только сигналинг; медиа подключается отдельно).
+ *  Local call FSM (signaling only; media is attached separately).
  */
 
 #include "nyx/call_proto.hpp"

@@ -1,8 +1,8 @@
 #pragma once
 
 /** @file udp.hpp
- *  Блокирующий UDP-сокет (Windows Winsock / BSD sockets).
- *  Несколько Connection могут разделять один сокет (shared_ptr).
+ *  Blocking UDP socket (Windows Winsock / BSD sockets).
+ *  Several Connections may share one socket (shared_ptr).
  */
 
 #include "nyx/types.hpp"
@@ -24,17 +24,16 @@ class UdpSocket {
   UdpSocket(UdpSocket&& other) noexcept = default;
   UdpSocket& operator=(UdpSocket&& other) noexcept = default;
 
-  /** Привязка к host:port. Порт 0 — выбор OS. @return false при ошибке bind. */
+  /** Binds to host:port. Port 0 lets the OS choose. @return false on bind error. */
   bool bind(const std::string& host, uint16_t port, std::string* err = nullptr);
 
-  /** Отправка datagram на host:port. */
   bool send_to(const ByteBuffer& data, const std::string& host, uint16_t port);
 
-  /** Приём datagram. timeout_ms < 0 — без таймаута; 0 — poll. */
+  /** Receives a datagram. timeout_ms < 0 = no timeout; 0 = poll. */
   std::optional<ByteBuffer> recv_from(std::string& host, uint16_t& port,
                                       int timeout_ms = -1);
 
-  /** Локальный порт после bind. */
+  /** Local port after bind. */
   uint16_t local_port() const;
 
   /** Bind + join multicast group; optional iface IPv4 (empty = auto). */

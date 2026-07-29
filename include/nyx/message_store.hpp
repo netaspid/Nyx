@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file message_store.hpp
- *  Локальная история сообщений (JSON-lines на диске).
+ *  Local message history (JSON lines on disk).
  */
 
 #include "nyx/chat_id.hpp"
@@ -12,7 +12,7 @@
 
 namespace nyx {
 
-/** Запись в истории чата. */
+/** Chat history record. */
 struct StoredMessage {
   uint64_t id = 0;
   uint64_t timestamp_ms = 0;
@@ -23,34 +23,34 @@ struct StoredMessage {
   bool outgoing = false;
 };
 
-/** Хранилище переписки (файл .jsonl). */
+/** Conversation storage (.jsonl file). */
 class MessageStore {
  public:
   explicit MessageStore(std::string path);
 
-  /** Переключает файл истории (после JoinAck, когда GroupId стал известен).
-   *  @param path новый путь .jsonl */
+  /** Switches the history file (after JoinAck, once the GroupId is known).
+   *  @param path new .jsonl path */
   void rebind(std::string path);
 
-  /** Добавляет сообщение и дописывает строку в файл. */
+  /** Appends a message and writes the line to the file. */
   bool append(const StoredMessage& message);
 
-  /** true если сообщение с таким id уже в истории (дедуп после JoinAck). */
+  /** true when a message with this id is already stored (dedup after JoinAck). */
   bool contains_id(uint64_t id) const;
 
-  /** Последние count сообщений из памяти/файла. */
+  /** Last count messages from memory/file. */
   std::vector<StoredMessage> recent(std::size_t count) const;
 
-  /** Поиск по подстроке в text/author (без учёта регистра). */
+  /** Case-insensitive substring search in text/author. */
   std::vector<StoredMessage> search(const std::string& query, std::size_t limit) const;
 
-  /** Путь к файлу истории по ChatId. */
+  /** History file path for a ChatId. */
   static std::string path_for_chat(const ChatId& chat_id);
 
-  /** История группового поля: data_dir()/groups/<group_id_hex>.jsonl. */
+  /** Field group history: data_dir()/groups/<group_id_hex>.jsonl. */
   static std::string path_for_group(const GroupId& group_id);
 
-  /** @deprecated используйте path_for_chat(dm_chat_id(...)). */
+  /** @deprecated use path_for_chat(dm_chat_id(...)). */
   static std::string chat_path(const UserId& peer_id);
 
  private:

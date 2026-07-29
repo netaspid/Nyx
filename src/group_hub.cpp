@@ -104,7 +104,7 @@ std::vector<FileEntry> GroupHub::merged_field_entries_for(const UserId& requeste
   std::vector<FileEntry> filtered;
   filtered.reserve(out.size());
   for (const auto& e : out) {
-    // Маркер корня: ACL по share-root (relative_path у маркера — только подпись для UI).
+    // Root marker: ACL applies to the share root; its relative_path is only a UI label.
     const std::string rel_for_acl = e.is_directory() ? std::string{} : e.relative_path;
     const uint32_t perms =
         file_access_->permissions_for(file_scope_, requester, e.root_path, rel_for_acl);
@@ -404,7 +404,7 @@ bool GroupHub::try_accept(const std::string& host, uint16_t port,
   auto conn = Connection::accept_responder(socket_, host, port, &first_packet);
   if (!conn) return false;
 
-  // push_back может переаллоцировать vector — указатели HubMember* в map становятся висячими.
+  // push_back may reallocate the vector, dangling the HubMember* pointers in the map.
   file_services_.clear();
   active_relay_.reset();
   HubMember member{std::move(*conn), {}, "", false};
@@ -484,7 +484,7 @@ void GroupHub::distribute_call_mesh_intros(const CallId& call_id,
   const std::string owner_host = guess_lan_ipv4();
   for (auto& target : members_) {
     if (!target.joined || !included(target.user_id)) continue;
-    // Owner → member (порт уточнит Endpoint от owner).
+    // Owner -> member; the Endpoint from the owner refines the port.
     if (included(owner_.public_key)) {
       send_intro(target, owner_.public_key, owner_host, socket_.local_port());
     }
@@ -800,7 +800,7 @@ bool GroupHub::send_message(const std::string& text) {
   }
   broadcast_to_members(wire, nullptr);
   if (live_joined == 0) {
-    // Никого в эфире — сообщение в локальной истории (уедет с history при join).
+    // Nobody connected: keep the message in local history (delivered on join).
     if (on_delivery_) on_delivery_(msg.id, DeliveryStatus::Delivered);
   } else {
     pending_member_acks_.insert(msg.id);
@@ -869,7 +869,7 @@ void GroupHub::drop_stale_members() {
     removed = true;
   }
   if (removed) {
-    // Указатели HubMember* в map после erase невалидны.
+    // HubMember* pointers in the map are invalid after erase.
     file_services_.clear();
     rebuild_hash_providers();
   }

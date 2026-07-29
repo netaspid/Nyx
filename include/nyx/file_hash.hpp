@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file file_hash.hpp
- *  SHA-256 хеш файлов и буферов (фаза 4).
+ *  SHA-256 hashing of files and buffers.
  */
 
 #include "nyx/types.hpp"
@@ -13,16 +13,16 @@ namespace nyx {
 
 using FileHash = std::array<uint8_t, 32>;
 
-/** SHA-256 содержимого файла. @return false если файл не читается. */
+/** SHA-256 of file contents. @return false when the file is unreadable. */
 bool hash_file(const std::string& path, FileHash& out);
 
-/** SHA-256 байтового буфера. */
+/** SHA-256 of a byte buffer. */
 FileHash hash_bytes(const uint8_t* data, std::size_t len);
 
-/** Hex-представление хеша (64 символа). */
+/** Hex form of the hash (64 chars). */
 std::string hash_hex(const FileHash& hash);
 
-/** Парсинг hex в FileHash. */
+/** Parses hex into a FileHash. */
 bool hash_from_hex(const std::string& hex, FileHash& out);
 
 }  // namespace nyx

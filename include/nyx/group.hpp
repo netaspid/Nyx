@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file group.hpp
- *  Поля (группы): метаданные, roster, хранение на диске (фаза 5).
+ *  Fields (groups): metadata, roster, on-disk storage.
  */
 
 #include "nyx/chat_id.hpp"
@@ -26,20 +26,20 @@ inline bool can_start_field_call(GroupRole role) {
          role == GroupRole::Member;
 }
 
-/** Участник поля в локальном roster. */
+/** Field member in the local roster. */
 struct GroupMemberRecord {
   UserId user_id{};
   std::string nickname;
   GroupRole role = GroupRole::Member;
 };
 
-/** Режим поля: сейчас только invite+hub; PublicListed — задел на поиск в rendezvous. */
+/** Field mode: currently invite+hub only; PublicListed reserved for rendezvous search. */
 enum class GroupVisibility : uint8_t {
-  Circle = 0,       /**< Свой круг: invite, эфир держит владелец. */
-  PublicListed = 1, /**< Будущее: публичное, поиск на RV (пока локальный флаг). */
+  Circle = 0,       /**< Private circle: invite based, the owner hosts the room. */
+  PublicListed = 1, /**< Future: public, discoverable via rendezvous (local flag for now). */
 };
 
-/** Описание поля на диске. */
+/** Field description on disk. */
 struct GroupRecord {
   GroupId id{};
   std::string name;
@@ -53,7 +53,7 @@ struct GroupRecord {
   GroupVisibility visibility = GroupVisibility::Circle;
 };
 
-/** Локальное хранилище полей: data_dir()/groups.json. */
+/** Local field storage: data_dir()/groups.json. */
 class GroupStore {
  public:
   GroupStore();
@@ -61,11 +61,11 @@ class GroupStore {
   bool load();
   bool save() const;
 
-  /** Создаёт поле с owner в roster. */
+  /** Creates a field with the owner in the roster. */
   GroupRecord create(const std::string& name, const UserId& owner_id,
                      const std::string& owner_nickname);
 
-  /** Обновляет мету существующего поля (описание, теги, …). */
+  /** Updates the meta of an existing field (description, tags, ...). */
   bool update_meta(const GroupId& id, const std::string& description,
                    const std::string& direction, const std::string& tags,
                    GroupVisibility visibility);
@@ -86,11 +86,11 @@ class GroupStore {
   static std::string invite_hex(const InviteToken& token);
   static bool invite_from_hex(const std::string& hex, InviteToken& out);
 
-  /** Добавляет в target участников из live (без удаления уже сохранённых). */
+  /** Adds live members into target without dropping already stored ones. */
   static void merge_member_roster(std::vector<GroupMemberRecord>& target,
                                   const std::vector<GroupMemberRecord>& live);
 
-  /** Гарантирует создателя в members по owner_id. */
+  /** Ensures the creator is present in members by owner_id. */
   static void ensure_roster(GroupRecord& group, const std::string& owner_nickname_fallback = {});
 
  private:

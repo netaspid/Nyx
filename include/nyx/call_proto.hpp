@@ -1,8 +1,8 @@
 #pragma once
 
 /** @file call_proto.hpp
- *  Сигналинг звонков на kChatStream (CallKind 0x60+).
- *  Медиа — отдельно по kRealtimeStream.
+ *  Call signaling on kChatStream (CallKind 0x60+).
+ *  Media flows separately on kRealtimeStream.
  */
 
 #include "nyx/identity.hpp"
@@ -18,7 +18,7 @@ namespace nyx {
 
 constexpr std::size_t kCallIdSize = 16;
 using CallId = std::array<uint8_t, kCallIdSize>;
-/** Верхняя граница участников конференции (mesh). */
+/** Upper bound of mesh conference participants. */
 constexpr std::size_t kMaxCallParticipants = 20;
 
 enum class CallKind : uint8_t {
@@ -59,7 +59,7 @@ struct CallInviteMessage {
   CallId call_id{};
   CallMode mode = CallMode::Audio;
   CallScope scope = CallScope::Direct;
-  /** DM: peer id; Field: group id как 32 байта. */
+  /** DM: peer id; Field: group id as 32 bytes. */
   UserId group_or_peer{};
   std::string sdp_lite;
 
@@ -138,7 +138,7 @@ struct CallPeerGoneMessage {
   static std::optional<CallPeerGoneMessage> decode(const ByteBuffer& data);
 };
 
-/** Локальный UDP endpoint для mesh-медиа. */
+/** Local UDP endpoint for mesh media. */
 struct CallEndpointMessage {
   CallId call_id{};
   CallPeerEndpoint self;

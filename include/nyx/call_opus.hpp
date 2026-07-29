@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file call_opus.hpp
- *  Opus encode/decode для звонков (48 kHz mono, 20 ms).
+ *  Opus encode/decode for calls (48 kHz mono, 20 ms).
  */
 
 #include "nyx/types.hpp"
@@ -41,7 +41,7 @@ class OpusDecoderWrap {
   OpusDecoderWrap& operator=(const OpusDecoderWrap&) = delete;
 
   bool ok() const { return dec_ != nullptr; }
-  /** Opus packet → PCM int16 (samples = kCallAudioFrameSamples при успехе). */
+  /** Opus packet -> PCM int16 (samples = kCallAudioFrameSamples on success). */
   std::optional<std::vector<int16_t>> decode(const uint8_t* data, std::size_t len);
 
  private:

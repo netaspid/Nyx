@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file transport.hpp
- *  Надёжная доставка поверх UDP: selective repeat ARQ, фрагментация.
+ *  Reliable delivery over UDP: selective repeat ARQ, fragmentation.
  */
 
 #include "nyx/types.hpp"
@@ -18,19 +18,19 @@ class ReliableSession {
  public:
   explicit ReliableSession(std::size_t window = 256, std::size_t mtu = kDefaultMtu);
 
-  /** Разбивает data на кадры Data для stream_id. */
+  /** Splits data into Data frames for stream_id. */
   std::vector<ByteBuffer> send(uint32_t stream_id, const ByteBuffer& data);
 
-  /** Принимает сырой UDP-буфер (кадр Nyx). */
+  /** Accepts a raw UDP buffer (a Nyx frame). */
   void recv_wire(const ByteBuffer& wire);
 
-  /** Забирает следующее полностью собранное сообщение из очереди. */
+  /** Takes the next fully reassembled message from the queue. */
   std::optional<ByteBuffer> poll_recv();
 
-  /** Кадры Ack для отправки peer (SACK по out-of-order). */
+  /** Ack frames to send to the peer (SACK for out-of-order). */
   std::vector<ByteBuffer> make_ack_frames(uint32_t stream_id) const;
 
-  /** Досылает фрагменты из очереди, когда в окне ARQ есть место. */
+  /** Flushes queued fragments when the ARQ window has room. */
   std::vector<ByteBuffer> drain_outbound();
 
  private:

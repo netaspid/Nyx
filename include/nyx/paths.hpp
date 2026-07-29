@@ -1,56 +1,56 @@
 #pragma once
 
 /** @file paths.hpp
- *  Пути к профилю и данным приложения (OS-specific).
+ *  Profile and application data paths (OS-specific).
  */
 
 #include <string>
 
 namespace nyx {
 
-/** Корень данных Nyx (%APPDATA%/nyx), без учёта активного аккаунта. */
+/** Nyx data root (%APPDATA%/nyx), independent of the active account. */
 std::string data_root();
 
 /** Override OS default root (e.g. Android AppDataLocation). Empty clears override. */
 void set_base_data_root(const std::string& root);
 
-/** Каталог данных: корень или каталог активного аккаунта. */
+/** Data directory: the root or the active account directory. */
 std::string data_dir();
 
-/** Переключает data_dir() на каталог аккаунта (после unlock). */
+/** Points data_dir() at the account directory (after unlock). */
 void set_account_data_dir(const std::string& account_dir);
 
-/** Сбрасывает scope аккаунта. */
+/** Resets the account scope. */
 void clear_account_data_dir();
 
-/** accounts/ под корнем. */
+/** accounts/ under the root. */
 std::string accounts_root();
 
-/** registry.json — список аккаунтов без секретов. */
+/** registry.json: account list without secrets. */
 std::string registry_path();
 
-/** Старый plaintext profile.json для миграции. */
+/** Legacy plaintext profile.json used for migration. */
 std::string legacy_profile_path();
 
-/** Зашифрованный профиль активного аккаунта: data_dir()/profile.nyx. */
+/** Encrypted profile of the active account: data_dir()/profile.nyx. */
 std::string default_profile_path();
 
-/** Имя файла зашифрованного профиля. */
+/** Encrypted profile file name. */
 constexpr const char* kEncryptedProfileFilename = "profile.nyx";
 
-/** Путь к локальной книге контактов. */
+/** Local contact book path. */
 std::string default_contacts_path();
 
-/** Создаёт data_dir(), если его ещё нет. */
+/** Creates data_dir() when missing. */
 bool ensure_data_dir();
 
-/** Каталог загрузок. */
+/** Downloads directory. */
 std::string default_downloads_dir();
 
-/** Каталог логов. */
+/** Logs directory. */
 std::string default_logs_dir();
 
-/** Путь к основному log-файлу. */
+/** Main log file path. */
 std::string default_log_file_path();
 
 }  // namespace nyx

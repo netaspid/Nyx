@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file crypto.hpp
- *  Noise XX handshake и шифрованная сессия (ChaCha20-Poly1305).
+ *  Noise XX handshake and encrypted session (ChaCha20-Poly1305).
  */
 
 #include "nyx/types.hpp"
@@ -18,10 +18,10 @@ namespace nyx {
 constexpr std::uint64_t kSessionRekeyBytes = 1024ULL * 1024 * 1024;
 constexpr std::chrono::hours kSessionRekeyMaxAge{24};
 
-/** Для тестов: 0 = порог по умолчанию (1 GB). */
+/** For tests: 0 = default threshold (1 GB). */
 void set_session_rekey_byte_limit(std::uint64_t bytes);
 
-/** Драйвер пошагового Noise handshake (один вызов step = read и/или write). */
+/** Stepwise Noise handshake driver (one step call = read and/or write). */
 class HandshakeDriver {
  public:
   explicit HandshakeDriver(HandshakeRole role);
@@ -33,8 +33,8 @@ class HandshakeDriver {
   bool complete() const { return complete_; }
   HandshakeRole role() const { return role_; }
 
-  /** @param inbound кадр handshake от peer или nullptr для первого/исходящего шага.
-   *  @return байты исходящего сообщения или nullopt если ждём ввод/split. */
+  /** @param inbound handshake frame from the peer, or nullptr for the first/outgoing step.
+   *  @return outgoing message bytes, or nullopt while waiting for input/split. */
   std::optional<ByteBuffer> step(const ByteBuffer* inbound = nullptr);
 
  private:
@@ -44,7 +44,7 @@ class HandshakeDriver {
   bool complete_ = false;
 };
 
-/** Симметричное шифрование после успешного handshake. */
+/** Symmetric encryption after a successful handshake. */
 class Session {
  public:
   static std::optional<Session> from_handshake(HandshakeDriver& hs);
@@ -64,16 +64,16 @@ class Session {
   std::optional<ByteBuffer> decrypt_realtime(std::uint64_t nonce, const ByteBuffer& cipher,
                                              std::string* err = nullptr);
 
-  /** Текущий epoch rekey (0 после handshake). */
+  /** Current rekey epoch (0 right after the handshake). */
   std::uint64_t rekey_epoch() const { return rekey_epoch_; }
 
-  /** Суммарный объём шифротекста с последнего rekey. */
+  /** Total ciphertext volume since the last rekey. */
   std::uint64_t bytes_transferred() const { return bytes_transferred_; }
 
-  /** Нужна ротация по protocol.md (1 GB / 24 h). */
+  /** Rotation required per protocol.md (1 GB / 24 h). */
   bool needs_rekey() const;
 
-  /** Детерминированная ротация ключей; epoch должен только расти. */
+  /** Deterministic key rotation; the epoch must only grow. */
   bool perform_rekey(std::uint64_t epoch);
 
  private:
