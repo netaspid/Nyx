@@ -564,6 +564,8 @@ bool FileIndex::load() {
   const std::string json = ss.str();
   if (json.empty())
     return true;
+  if (!json_store_within_limit(json.size()))
+    return false;
 
   (void)json_get_u64(json, "schema_version");
 

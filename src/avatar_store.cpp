@@ -77,12 +77,10 @@ std::optional<AvatarEntry> AvatarStore::current() const {
 
 bool AvatarStore::load() {
   photos_.clear();
-  std::ifstream file(store_json_path(), std::ios::binary);
-  if (!file)
-    return true;
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
+  const auto loaded = json_read_file_limited(store_json_path());
+  if (!loaded)
+    return false;
+  const std::string& json = *loaded;
   std::size_t pos = 0;
   while (true) {
     const auto hpos = json.find("\"hash\":\"", pos);

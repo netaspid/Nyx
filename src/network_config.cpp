@@ -91,14 +91,16 @@ bool NetworkConfig::parse_rendezvous_list(const std::string& csv, NetworkConfig&
 
 bool NetworkConfig::load() {
   rendezvous_servers.clear();
-  std::ifstream file(config_path(), std::ios::binary);
-  if (!file) {
+  const auto loaded = json_read_file_limited(config_path());
+  if (!loaded) {
+    rendezvous_servers.push_back(RendezvousServer {"127.0.0.1", 3478, "local"});
+    return false;
+  }
+  const std::string& json = *loaded;
+  if (json.empty()) {
     rendezvous_servers.push_back(RendezvousServer {"127.0.0.1", 3478, "local"});
     return true;
   }
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
 
   if (auto m = json_get_string(json, "mode")) {
     if (*m == "lan")

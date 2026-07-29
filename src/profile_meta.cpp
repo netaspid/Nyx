@@ -79,12 +79,10 @@ std::string availability_label_ru(Availability a) {
 
 bool load_profile_meta(ProfileMeta& out) {
   out = ProfileMeta {};
-  std::ifstream file(meta_path(), std::ios::binary);
-  if (!file)
-    return true;
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
+  const auto loaded = json_read_file_limited(meta_path());
+  if (!loaded)
+    return false;
+  const std::string& json = *loaded;
   if (auto bio = json_get_string(json, "bio"))
     out.bio = *bio;
   if (auto interests = json_get_string(json, "interests"))
