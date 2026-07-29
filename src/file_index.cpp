@@ -555,17 +555,12 @@ bool FileIndex::load() {
   std::lock_guard lock(mutex_);
   entries_.clear();
   share_roots_.clear();
-  std::ifstream file(path_from_utf8(index_path()), std::ios::binary);
-  if (!file)
-    return true;
-
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
+  const auto loaded = json_read_path_limited(path_from_utf8(index_path()));
+  if (!loaded)
+    return false;
+  const std::string& json = *loaded;
   if (json.empty())
     return true;
-  if (!json_store_within_limit(json.size()))
-    return false;
 
   (void)json_get_u64(json, "schema_version");
 

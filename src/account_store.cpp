@@ -1,6 +1,7 @@
 #include "nyx/account_store.hpp"
 
 #include "nyx/identity.hpp"
+#include "nyx/json_text.hpp"
 #include "nyx/messaging.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/profile_crypto.hpp"
@@ -221,13 +222,10 @@ bool read_remember_token(const std::string& account_id,
 
 bool load_registry(std::vector<AccountMeta>& out) {
   out.clear();
-  std::ifstream file(path_from_utf8(registry_path()));
-  if (!file)
-    return true;
-
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
+  const auto loaded = json_read_path_limited(path_from_utf8(registry_path()));
+  if (!loaded)
+    return false;
+  const std::string& json = *loaded;
   std::size_t pos = 0;
   while ((pos = json.find("\"id\":\"", pos)) != std::string::npos) {
     pos += 6;
@@ -391,12 +389,10 @@ std::vector<AccountMeta> list_accounts() {
 }
 
 std::string last_account_id() {
-  std::ifstream in(path_from_utf8(auth_prefs_path()));
-  if (!in)
+  const auto loaded = json_read_path_limited(path_from_utf8(auth_prefs_path()));
+  if (!loaded || loaded->empty())
     return {};
-  std::ostringstream ss;
-  ss << in.rdbuf();
-  const std::string json = ss.str();
+  const std::string& json = *loaded;
   const auto key = json.find("\"last_account_id\":\"");
   if (key == std::string::npos)
     return {};

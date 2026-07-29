@@ -63,12 +63,10 @@ bool save_profile(const std::string& path, const Profile& profile) {
 }
 
 bool load_profile(const std::string& path, Profile& out) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file)
+  const auto loaded = json_read_file_limited(path);
+  if (!loaded || loaded->empty())
     return false;
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
+  const std::string& json = *loaded;
 
   auto nickname = json_get_string(json, "nickname");
   auto sk = json_get_string(json, "sk");

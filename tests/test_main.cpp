@@ -2591,6 +2591,9 @@ int main() {
     {
       const auto missing = nyx::json_read_file_limited("nyx_missing_json_store_test.json");
       assert(missing && missing->empty());
+      const auto missing_path =
+          nyx::json_read_path_limited(std::filesystem::path("nyx_missing_json_store_test.json"));
+      assert(missing_path && missing_path->empty());
     }
     std::cout << "json text helpers ok\n";
   }

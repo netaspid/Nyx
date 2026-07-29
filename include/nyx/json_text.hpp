@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <optional>
@@ -19,8 +20,7 @@ inline bool json_store_within_limit(std::size_t bytes) {
   return bytes <= kMaxJsonStoreBytes;
 }
 
-inline std::optional<std::string> json_read_file_limited(const std::string& path) {
-  std::ifstream in(path, std::ios::binary);
+inline std::optional<std::string> json_read_stream_limited(std::istream& in) {
   if (!in)
     return std::string {};
   in.seekg(0, std::ios::end);
@@ -37,6 +37,16 @@ inline std::optional<std::string> json_read_file_limited(const std::string& path
   if (!in)
     return std::nullopt;
   return out;
+}
+
+inline std::optional<std::string> json_read_file_limited(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  return json_read_stream_limited(in);
+}
+
+inline std::optional<std::string> json_read_path_limited(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  return json_read_stream_limited(in);
 }
 
 inline std::string json_escape(const std::string& s) {
