@@ -259,10 +259,6 @@ std::string FileIndex::group_id_hex(const GroupId& id) {
   return GroupStore::group_id_hex(id);
 }
 
-bool FileIndex::group_id_from_hex(const std::string& hex, GroupId& out) {
-  return GroupStore::group_id_from_hex(hex, out);
-}
-
 std::string FileIndex::guess_mime(const std::string& path) {
   const auto dot = path.rfind('.');
   if (dot == std::string::npos) return "application/octet-stream";
@@ -534,7 +530,7 @@ bool FileIndex::load() {
           sr.path = normalize_utf8_path(*root);
         }
         if (auto gid = json_get_string(obj, "group")) {
-          group_id_from_hex(*gid, sr.group_id);
+          GroupStore::group_id_from_hex(*gid, sr.group_id);
         }
         std::error_code ec;
         // Stale roots (missing on disk) are dropped; orphan entries follow below.
@@ -579,7 +575,7 @@ bool FileIndex::load() {
         const bool had_group =
             json_get_string(obj, "group").has_value();
         if (auto gid = json_get_string(obj, "group")) {
-          group_id_from_hex(*gid, entry.share_group);
+          GroupStore::group_id_from_hex(*gid, entry.share_group);
         } else {
           for (const auto& sr : share_roots_) {
             if (sr.path == entry.root_path) {

@@ -136,7 +136,6 @@ class FileIndex {
 
   static std::string guess_mime(const std::string& path);
   static std::string group_id_hex(const GroupId& id);
-  static bool group_id_from_hex(const std::string& hex, GroupId& out);
 
   bool load();
   bool save() const;

@@ -1255,7 +1255,7 @@ void NodeController::openChatMediaFolder(const QString& mediaKind) {
   nyx::GroupId scope{};
   if (active_chat_kind_ == 1) {
     scope_id = active_chat_ref_id_.trimmed().toLower();
-    if (!nyx::FileIndex::group_id_from_hex(scope_id.toStdString(), scope)) {
+    if (!nyx::GroupStore::group_id_from_hex(scope_id.toStdString(), scope)) {
       showToast(QStringLiteral("Не удалось определить хранилище чата"));
       return;
     }
@@ -1490,7 +1490,7 @@ std::vector<nyx::FileEntry> NodeController::remoteRootsCatalog(
     const std::vector<nyx::FileEntry>& all) const {
   nyx::GroupId scope{};
   if (!file_scope_group_id_.isEmpty()) {
-    nyx::FileIndex::group_id_from_hex(file_scope_group_id_.toStdString(), scope);
+    nyx::GroupStore::group_id_from_hex(file_scope_group_id_.toStdString(), scope);
   }
 
   std::map<std::string, int> file_counts;
@@ -1849,7 +1849,7 @@ void NodeController::refreshLocalFileModel() {
         nyx::FileIndex::library_root_path([&] {
           nyx::GroupId scope{};
           if (!file_scope_group_id_.isEmpty()) {
-            nyx::FileIndex::group_id_from_hex(file_scope_group_id_.toStdString(),
+            nyx::GroupStore::group_id_from_hex(file_scope_group_id_.toStdString(),
                                              scope);
           }
           return scope;
@@ -2322,7 +2322,7 @@ void NodeController::wireCallbacks() {
       QString scope_hex;
       if (chat_key.startsWith(QLatin1String("group:"))) {
         scope_hex = chat_key.section(QLatin1Char(':'), 1).toLower();
-        nyx::FileIndex::group_id_from_hex(scope_hex.toStdString(), scope_id);
+        nyx::GroupStore::group_id_from_hex(scope_hex.toStdString(), scope_id);
       }
       const QString library_root = QString::fromStdString(
           nyx::FileIndex::library_root_path(scope_id));

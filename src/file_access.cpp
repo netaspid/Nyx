@@ -371,42 +371,8 @@ bool FileAccessStore::save() const {
     if (!out) return false;
     out << "{\"groups\":[";
     for (std::size_t gi = 0; gi < policies_.size(); ++gi) {
-      const auto& p = policies_[gi];
       if (gi) out << ',';
-      out << "{\"group_id\":\"" << GroupStore::group_id_hex(p.group_id)
-          << "\",\"permission_presets\":[";
-      for (std::size_t pi = 0; pi < p.permission_presets.size(); ++pi) {
-        const auto& preset = p.permission_presets[pi];
-        if (pi) out << ',';
-        out << "{\"id\":\"" << json_escape(preset.id) << "\",\"name\":\""
-            << json_escape(preset.name) << "\",\"permissions\":" << preset.permissions << "}";
-      }
-      out << "],\"roles\":[";
-      for (std::size_t ri = 0; ri < p.roles.size(); ++ri) {
-        const auto& r = p.roles[ri];
-        if (ri) out << ',';
-        out << "{\"id\":\"" << json_escape(r.id) << "\",\"name\":\"" << json_escape(r.name)
-            << "\",\"permissions\":" << r.permissions << ",\"builtin\":"
-            << (r.builtin ? "true" : "false") << "}";
-      }
-      out << "],\"assignments\":[";
-      for (std::size_t ai = 0; ai < p.assignments.size(); ++ai) {
-        const auto& a = p.assignments[ai];
-        if (ai) out << ',';
-        out << "{\"user_id\":\"" << user_id_hex(a.user_id) << "\",\"role_id\":\""
-            << json_escape(a.role_id) << "\"}";
-      }
-      out << "],\"root_grants\":[";
-      for (std::size_t gi2 = 0; gi2 < p.root_grants.size(); ++gi2) {
-        const auto& g = p.root_grants[gi2];
-        if (gi2) out << ',';
-        out << "{\"root\":\"" << json_escape(g.root_path) << "\",\"rel\":\""
-            << json_escape(g.relative_path) << "\",\"user_id\":\"" << user_id_hex(g.user_id)
-            << "\",\"role_id\":\"" << json_escape(g.role_id) << "\",\"direct\":"
-            << g.direct_permissions << ",\"direct_only\":" << (g.direct_only ? "true" : "false")
-            << "}";
-      }
-      out << "]}";
+      write_group_policy_json(out, policies_[gi]);
     }
     out << "]}\n";
     if (!out) return false;
