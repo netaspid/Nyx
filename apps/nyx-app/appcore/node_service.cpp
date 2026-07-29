@@ -268,7 +268,7 @@ void NodeService::set_on_transfer_queue_changed(TransferQueueCallback cb) {
   on_transfer_queue_changed_ = std::move(cb);
 }
 
-void NodeService::set_on_mode(std::function<void(NodeMode)> cb) {
+void NodeService::set_on_mode(std::function<void()> cb) {
   std::lock_guard lock(cb_mutex_);
   on_mode_ = std::move(cb);
 }
@@ -406,15 +406,14 @@ void NodeService::emit_chat_ready(const std::shared_ptr<NetSession>& session,
   emit_sessions_changed();
 }
 
-void NodeService::set_mode(NodeMode mode) {
-  mode_.store(mode);
-  std::function<void(NodeMode)> cb;
+void NodeService::notify_mode_changed() {
+  std::function<void()> cb;
   {
     std::lock_guard lock(cb_mutex_);
     cb = on_mode_;
   }
   if (cb)
-    cb(mode);
+    cb();
 }
 
 std::shared_ptr<NodeService::NetSession>
@@ -508,7 +507,7 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
         active_session_id_.clear();
     }
   }
-  set_mode(mode());
+  notify_mode_changed();
   emit_session_ended(session->id);
 
   if (end_call)
@@ -531,41 +530,13 @@ void NodeService::abandon_session_worker(const std::shared_ptr<NetSession>& sess
   }
 }
 
-NodeMode NodeService::mode() const {
+bool NodeService::is_listening() const {
   std::lock_guard lock(sessions_mutex_);
   if (auto inbox = find_session_locked(kDmInboxSessionId)) {
-    if (inbox->state.load() == SessionState::Live ||
-        inbox->state.load() == SessionState::Connecting) {
-      return NodeMode::Listening;
-    }
+    const auto st = inbox->state.load();
+    return st == SessionState::Live || st == SessionState::Connecting;
   }
-  if (auto active = active_session_locked()) {
-    switch (active->kind) {
-    case SessionKind::Direct:
-      return NodeMode::ChatDirect;
-    case SessionKind::GroupHub:
-      return NodeMode::GroupHub;
-    case SessionKind::GroupMember:
-      return NodeMode::GroupMember;
-    case SessionKind::DmInbox:
-      return NodeMode::Listening;
-    default:
-      break;
-    }
-  }
-  for (const auto& [id, s] : sessions_) {
-    if (!s)
-      continue;
-    if (s->state.load() != SessionState::Live)
-      continue;
-    if (s->kind == SessionKind::GroupHub)
-      return NodeMode::GroupHub;
-    if (s->kind == SessionKind::GroupMember)
-      return NodeMode::GroupMember;
-    if (s->kind == SessionKind::Direct)
-      return NodeMode::ChatDirect;
-  }
-  return NodeMode::Idle;
+  return false;
 }
 
 bool NodeService::busy() const {
@@ -650,7 +621,7 @@ void NodeService::stop() {
     }
   }
   if (discovery_thread_.joinable())
-    discovery_thread_.join();
+    discovery_thread_.detach();
   for (int i = 0; i < 50 && (discovery_busy_.load() || dm_reconnect_busy_.load()); ++i)
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   for (auto& s : to_join) {
@@ -668,7 +639,7 @@ void NodeService::stop() {
     std::lock_guard lock(live_group_mutex_);
     live_group_snapshots_.clear();
   }
-  set_mode(NodeMode::Idle);
+  notify_mode_changed();
   emit_sessions_changed();
 }
 
@@ -780,7 +751,7 @@ bool NodeService::start_dm_inbox() {
     session = create_session(kDmInboxSessionId, SessionKind::DmInbox);
   }
   session->worker = std::thread([this, session]() { run_dm_inbox(session); });
-  set_mode(NodeMode::Listening);
+  notify_mode_changed();
   emit_sessions_changed();
   return true;
 }

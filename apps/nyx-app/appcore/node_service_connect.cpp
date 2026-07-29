@@ -18,7 +18,7 @@
 namespace nyx_app {
 
 void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
-  set_mode(NodeMode::Listening);
+  notify_mode_changed();
   const auto profile = load_profile();
 
   nyx::InviteToken token {};
@@ -159,7 +159,7 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
 }
 
 void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_advertise) {
-  set_mode(NodeMode::Listening);
+  notify_mode_changed();
   const auto profile = load_profile();
   emit_status("профиль: " + profile.nickname + " (id: " + nyx::short_user_id(profile.user_id()) +
               ")");
@@ -276,7 +276,7 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
 }
 
 void NodeService::run_connect_token(std::shared_ptr<NetSession> session, std::string token_hex) {
-  set_mode(NodeMode::ChatDirect);
+  notify_mode_changed();
   const auto profile = load_profile();
   emit_status("профиль: " + profile.nickname);
 
@@ -499,7 +499,7 @@ bool NodeService::start_listen(bool lan_advertise) {
   }
   session->worker =
       std::thread([this, session, lan_advertise]() { run_listen(session, lan_advertise); });
-  set_mode(NodeMode::Listening);
+  notify_mode_changed();
   emit_sessions_changed();
   return true;
 }

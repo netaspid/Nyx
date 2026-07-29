@@ -56,14 +56,6 @@ struct UiMessage {
   std::string chat_key;
 };
 
-enum class NodeMode {
-  Idle,
-  Listening,
-  ChatDirect,
-  GroupHub,
-  GroupMember,
-};
-
 class NodeService {
 public:
   using StatusCallback = std::function<void(const std::string&)>;
@@ -134,11 +126,11 @@ public:
   using CallMediaCallback = std::function<void(
       nyx::CallMediaType type, const nyx::ByteBuffer& payload, const nyx::UserId& from)>;
   void set_on_call_media(CallMediaCallback cb);
-  void set_on_mode(std::function<void(NodeMode)> cb);
+  void set_on_mode(std::function<void()> cb);
   void set_on_session_ended(SessionEndedCallback cb);
   void set_on_sessions_changed(SessionsChangedCallback cb);
 
-  NodeMode mode() const;
+  bool is_listening() const;
   bool busy() const;
 
   std::size_t live_session_count() const;
@@ -381,7 +373,7 @@ private:
                        const std::string& peer_host,
                        nyx::ConversationKind kind,
                        const std::string& ref_id_hex);
-  void set_mode(NodeMode mode);
+  void notify_mode_changed();
 
   bool parse_rendezvous(std::string& host, uint16_t& port) const;
   nyx::Profile load_profile() const;
@@ -513,7 +505,7 @@ private:
   SessionsChangedCallback on_avatars_changed_;
   CallChangedCallback on_call_changed_;
   CallMediaCallback on_call_media_;
-  std::function<void(NodeMode)> on_mode_;
+  std::function<void()> on_mode_;
   SessionEndedCallback on_session_ended_;
   SessionsChangedCallback on_sessions_changed_;
 
@@ -559,13 +551,11 @@ private:
   std::string rendezvous_ = "127.0.0.1:3478";
   nyx::NetworkConfig network_config_;
 
-  std::atomic<NodeMode> mode_ {NodeMode::Idle};
   std::thread discovery_thread_;
   std::atomic<bool> discovery_busy_ {false};
   std::atomic<bool> dm_reconnect_busy_ {false};
 
   nyx::FileIndex file_index_;
-  /** Resources catalog cache for the local hub (roots + fetched levels). */
   std::vector<nyx::FileEntry> hub_remote_catalog_;
   mutable nyx::FileAccessStore file_access_;
   nyx::SessionIntentStore intent_store_;

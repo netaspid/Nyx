@@ -195,7 +195,7 @@ public:
   bool autoStartOwnedHub() const { return auto_start_owned_hub_; }
   QString profileUserIdHex() const { return profile_user_id_hex_; }
   bool busy() const { return service_.busy(); }
-  bool listening() const { return service_.mode() == nyx_app::NodeMode::Listening; }
+  bool listening() const { return service_.is_listening(); }
   bool inChat() const { return in_chat_; }
   bool canSendMessage() const;
   bool sessionUnlocked() const { return session_unlocked_; }

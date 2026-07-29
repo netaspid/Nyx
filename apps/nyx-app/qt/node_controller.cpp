@@ -2563,7 +2563,7 @@ void NodeController::wireDiscoveryCallbacks() {
         Qt::QueuedConnection);
   });
 
-  service_.set_on_mode([this](nyx_app::NodeMode) {
+  service_.set_on_mode([this]() {
     QMetaObject::invokeMethod(
         this,
         [this]() {

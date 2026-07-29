@@ -134,6 +134,14 @@ static void test_multi_session_hubs_parallel() {
   std::cout << "multi session hubs parallel ok\n";
 }
 
+static void test_is_listening_idle() {
+  nyx_app::NodeService svc;
+  svc.set_nickname("ListenTest");
+  assert(!svc.is_listening());
+  assert(!svc.busy());
+  std::cout << "is_listening idle ok\n";
+}
+
 int main() {
   const std::string test_data_root = "test_nyx_appcore_data";
   std::filesystem::remove_all(test_data_root);
@@ -144,6 +152,7 @@ int main() {
   test_node_service_callbacks();
   test_chat_media_import_directory();
   test_session_intent_store();
+  test_is_listening_idle();
   test_multi_session_hubs_parallel();
   nyx::set_base_data_root({});
   std::filesystem::remove_all(test_data_root);

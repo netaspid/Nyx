@@ -19,7 +19,7 @@
 namespace nyx_app {
 
 void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string group_id_hex) {
-  set_mode(NodeMode::GroupHub);
+  notify_mode_changed();
   while (!group_id_hex.empty() && std::isspace(static_cast<unsigned char>(group_id_hex.front()))) {
     group_id_hex.erase(group_id_hex.begin());
   }
@@ -186,7 +186,7 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
 }
 
 void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::string invite_hex) {
-  set_mode(NodeMode::GroupMember);
+  notify_mode_changed();
   nyx::InviteToken token {};
   if (!nyx::GroupStore::invite_from_hex(invite_hex, token)) {
     emit_status("неверный invite");

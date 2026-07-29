@@ -103,7 +103,7 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
   session->state.store(SessionState::Connecting);
   session->share_scope = {};
   session->connection = std::move(connection);
-  set_mode(NodeMode::ChatDirect);
+  notify_mode_changed();
 
   const std::string peer_host = session->connection->peer_host();
   const std::string endpoint = peer_host + ':' + std::to_string(session->connection->peer_port());
