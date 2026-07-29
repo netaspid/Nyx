@@ -104,15 +104,10 @@ ContactBook::ContactBook(std::string path) : path_(std::move(path)) {}
 
 bool ContactBook::load() {
   contacts_.clear();
-  std::ifstream file(path_, std::ios::binary);
-  if (!file)
-    return true;
-
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
-  if (!json_store_within_limit(json.size()))
+  const auto loaded = json_read_file_limited(path_);
+  if (!loaded)
     return false;
+  const std::string& json = *loaded;
   std::size_t pos = 0;
   while ((pos = json.find("\"id\":\"", pos)) != std::string::npos) {
     pos += 6;

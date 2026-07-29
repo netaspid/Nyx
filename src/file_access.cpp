@@ -298,16 +298,12 @@ GroupFileAccess FileAccessStore::default_policy(const GroupId& group_id, const G
 
 bool FileAccessStore::load() {
   policies_.clear();
-  std::ifstream in(store_path(), std::ios::binary);
-  if (!in)
-    return true;
-  std::ostringstream ss;
-  ss << in.rdbuf();
-  const std::string json = ss.str();
+  const auto loaded = json_read_file_limited(store_path());
+  if (!loaded)
+    return false;
+  const std::string& json = *loaded;
   if (json.empty())
     return true;
-  if (!json_store_within_limit(json.size()))
-    return false;
 
   const auto arr = json.find("\"groups\":[");
   if (arr == std::string::npos)

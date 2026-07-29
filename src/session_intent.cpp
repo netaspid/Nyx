@@ -49,14 +49,10 @@ SessionIntentStore::SessionIntentStore(std::string path)
 
 bool SessionIntentStore::load() {
   intents_.clear();
-  std::ifstream in(path_, std::ios::binary);
-  if (!in)
-    return true;
-  std::ostringstream ss;
-  ss << in.rdbuf();
-  const std::string json = ss.str();
-  if (!json_store_within_limit(json.size()))
+  const auto loaded = json_read_file_limited(path_);
+  if (!loaded)
     return false;
+  const std::string& json = *loaded;
 
   std::size_t pos = 0;
   while ((pos = json.find("\"key\":\"", pos)) != std::string::npos) {

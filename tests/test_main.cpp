@@ -2588,6 +2588,10 @@ int main() {
     assert(objs.size() == 2);
     assert(nyx::json_store_within_limit(1024));
     assert(!nyx::json_store_within_limit(nyx::kMaxJsonStoreBytes + 1));
+    {
+      const auto missing = nyx::json_read_file_limited("nyx_missing_json_store_test.json");
+      assert(missing && missing->empty());
+    }
     std::cout << "json text helpers ok\n";
   }
   nyx::set_base_data_root({});

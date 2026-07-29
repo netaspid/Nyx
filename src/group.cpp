@@ -294,15 +294,10 @@ bool GroupStore::remove_member(const GroupId& id, const UserId& user_id) {
 
 bool GroupStore::load() {
   groups_.clear();
-  std::ifstream file(store_path(), std::ios::binary);
-  if (!file)
-    return true;
-
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  const std::string json = ss.str();
-  if (!json_store_within_limit(json.size()))
+  const auto loaded = json_read_file_limited(store_path());
+  if (!loaded)
     return false;
+  const std::string& json = *loaded;
 
   const auto arr = json.find("\"groups\":[");
   if (arr == std::string::npos)
