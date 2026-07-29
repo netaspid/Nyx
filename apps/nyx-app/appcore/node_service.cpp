@@ -621,7 +621,7 @@ void NodeService::stop() {
     }
   }
   if (discovery_thread_.joinable())
-    discovery_thread_.detach();
+    discovery_thread_.join();
   for (int i = 0; i < 50 && (discovery_busy_.load() || dm_reconnect_busy_.load()); ++i)
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   for (auto& s : to_join) {
@@ -815,7 +815,7 @@ bool NodeService::scan_lan_peers(int timeout_ms) {
   if (discovery_busy_.exchange(true))
     return false;
   if (discovery_thread_.joinable())
-    discovery_thread_.detach();
+    discovery_thread_.join();
   discovery_thread_ = std::thread([this, timeout_ms]() {
     run_lan_scan(timeout_ms);
     discovery_busy_.store(false);

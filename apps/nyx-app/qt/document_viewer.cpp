@@ -18,6 +18,8 @@
 #include <QUrl>
 #include <QtGlobal>
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <thread>
 
@@ -165,7 +167,22 @@ DocumentViewer::DocumentViewer(QObject* parent) : QObject(parent) {
 }
 
 DocumentViewer::~DocumentViewer() {
+  ++render_gen_;
   killActiveProcess();
+  waitForToolWorkers();
+}
+
+void DocumentViewer::waitForToolWorkers() {
+  for (int i = 0; i < 100 && tool_workers_.load() > 0; ++i)
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+}
+
+void DocumentViewer::runToolAsync(std::function<void()> fn) {
+  tool_workers_.fetch_add(1);
+  std::thread([this, fn = std::move(fn)]() mutable {
+    fn();
+    tool_workers_.fetch_sub(1);
+  }).detach();
 }
 
 bool DocumentViewer::canHandle(const QString& path, const QString& mime) {
@@ -311,6 +328,7 @@ void DocumentViewer::close() {
   if (!open_ && path_.isEmpty())
     return;
   resetState();
+  waitForToolWorkers();
   emitChanged();
 }
 
@@ -477,7 +495,7 @@ void DocumentViewer::queryPageCount() {
   const int gen = ++render_gen_;
   const QString pdf = pdf_path_;
 
-  std::thread([this, program, args, gen, pdf]() {
+  runToolAsync([this, program, args, gen, pdf]() {
     int code = -1;
     const QByteArray out = run_tool_capture(program, args, 15000, &code);
     QMetaObject::invokeMethod(
@@ -509,7 +527,7 @@ void DocumentViewer::queryPageCount() {
           renderCurrentPage();
         },
         Qt::QueuedConnection);
-  }).detach();
+  });
 }
 
 void DocumentViewer::renderCurrentPage() {
@@ -568,7 +586,7 @@ void DocumentViewer::renderCurrentPage() {
             stem};
   }
 
-  std::thread([this, program, args, gen, out, stem, page, pdf, use_mutool = !mutool.isEmpty()]() {
+  runToolAsync([this, program, args, gen, out, stem, page, pdf, use_mutool = !mutool.isEmpty()]() {
     int code = -1;
     run_tool_capture(program, args, 30000, &code);
     QString page_file = out;
@@ -610,7 +628,7 @@ void DocumentViewer::renderCurrentPage() {
           emitChanged();
         },
         Qt::QueuedConnection);
-  }).detach();
+  });
 }
 
 void DocumentViewer::setPage(int page) {

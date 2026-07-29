@@ -4,6 +4,8 @@
 #include <QString>
 #include <QTemporaryDir>
 
+#include <atomic>
+#include <functional>
 #include <memory>
 
 class QProcess;
@@ -77,6 +79,8 @@ private:
   void queryPageCount();
   void renderCurrentPage();
   void killActiveProcess();
+  void waitForToolWorkers();
+  void runToolAsync(std::function<void()> fn);
 
   static QString findTool(const QStringList& names);
   static bool isTextLike(const QString& path, const QString& mime);
@@ -101,4 +105,5 @@ private:
   std::unique_ptr<QTemporaryDir> temp_dir_;
   QProcess* active_ = nullptr;
   int render_gen_ = 0;
+  std::atomic<int> tool_workers_ {0};
 };
