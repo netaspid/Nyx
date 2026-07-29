@@ -11,9 +11,6 @@
 
 namespace nyx {
 
-/** CRC32 (IEEE), используется для опционального флага FLAG_CRC. */
-uint32_t crc32(const uint8_t* data, std::size_t len);
-
 /** Байты в строку hex (нижний регистр). */
 std::string to_hex(const uint8_t* data, std::size_t len);
 

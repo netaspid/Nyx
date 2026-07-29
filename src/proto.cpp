@@ -221,6 +221,4 @@ std::string EndpointHint::host_string() const {
   return buf;
 }
 
-std::string endpoint_hint_host(const EndpointHint& hint) { return hint.host_string(); }
-
 }  // namespace nyx

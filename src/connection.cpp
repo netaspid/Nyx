@@ -140,10 +140,6 @@ void Connection::flush_outbound() {
   }
 }
 
-bool Connection::send_text(uint32_t stream_id, const std::string& text) {
-  return send_payload(stream_id, ByteBuffer(text.begin(), text.end()));
-}
-
 bool Connection::send_payload(uint32_t stream_id, const ByteBuffer& data) {
   return send_stream(stream_id, data);
 }

@@ -137,7 +137,6 @@ class FileAccessStore {
   static std::string role_id_viewer();
   /** user_id из нулей — роль на путь для всех участников. */
   static UserId path_role_user();
-  static bool is_path_role_user(const UserId& user_id);
   static GroupFileAccess default_policy(const GroupId& group_id,
                                         const GroupRecord& group);
 

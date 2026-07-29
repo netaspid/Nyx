@@ -101,20 +101,6 @@ std::size_t CallMesh::established_count() const {
   return n;
 }
 
-std::size_t CallMesh::peer_count() const {
-  std::lock_guard lock(mutex_);
-  return peers_.size();
-}
-
-std::vector<UserId> CallMesh::established_peers() const {
-  std::lock_guard lock(mutex_);
-  std::vector<UserId> out;
-  for (const auto& [id, link] : peers_) {
-    if (link.conn && link.conn->state() == ConnectionState::Established) out.push_back(id);
-  }
-  return out;
-}
-
 void CallMesh::upsert_peer(const CallPeerEndpoint& peer) {
   std::lock_guard lock(mutex_);
   if (!active_ || peer.port == 0 || peer.host.empty()) return;
@@ -188,37 +174,6 @@ void CallMesh::retain_peers(const std::set<UserId>& allowed) {
     else
       ++it;
   }
-}
-
-bool CallMesh::should_send_video_to(const UserId& peer) const {
-  std::lock_guard lock(mutex_);
-  const std::size_t n = peers_.size();
-  if (n <= kVideoFullMeshMax) return true;
-  if (n > kVideoSparseMax) return false;
-
-  std::vector<UserId> ids;
-  ids.reserve(peers_.size());
-  for (const auto& [id, _] : peers_) ids.push_back(id);
-  std::sort(ids.begin(), ids.end());
-  const std::size_t take = std::min(kVideoSparseTargets, ids.size());
-  auto it = std::lower_bound(ids.begin(), ids.end(), self_);
-  std::vector<UserId> pick;
-  pick.reserve(take);
-  for (std::size_t i = 0; i < ids.size() && pick.size() < take; ++i) {
-    const std::size_t idx =
-        static_cast<std::size_t>((it - ids.begin() + static_cast<std::ptrdiff_t>(i)) %
-                                 static_cast<std::ptrdiff_t>(ids.size()));
-    pick.push_back(ids[idx]);
-  }
-  return std::find(pick.begin(), pick.end(), peer) != pick.end();
-}
-
-bool CallMesh::send_realtime_to(const UserId& peer, const ByteBuffer& data) {
-  std::lock_guard lock(mutex_);
-  auto it = peers_.find(peer);
-  if (it == peers_.end() || !it->second.conn) return false;
-  if (it->second.conn->state() != ConnectionState::Established) return false;
-  return it->second.conn->send_realtime(data);
 }
 
 bool CallMesh::send_realtime(const ByteBuffer& data) {

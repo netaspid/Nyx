@@ -305,10 +305,6 @@ std::string FileAccessStore::role_id_viewer() { return "viewer"; }
 
 UserId FileAccessStore::path_role_user() { return UserId{}; }
 
-bool FileAccessStore::is_path_role_user(const UserId& user_id) {
-  return std::all_of(user_id.begin(), user_id.end(), [](uint8_t b) { return b == 0; });
-}
-
 GroupFileAccess FileAccessStore::default_policy(const GroupId& group_id,
                                                 const GroupRecord& group) {
   GroupFileAccess policy;

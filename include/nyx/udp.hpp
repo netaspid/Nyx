@@ -47,9 +47,6 @@ class UdpSocket {
   /** Set multicast TX iface; re-joins membership when group was joined. */
   bool set_multicast_interface(const std::string& ipv4, std::string* err = nullptr);
 
-  /** @deprecated используйте bind_multicast_listener */
-  bool enable_lan_multicast(std::string* err = nullptr);
-
  private:
   struct State {
     uintptr_t sock = static_cast<uintptr_t>(-1);
@@ -60,7 +57,6 @@ class UdpSocket {
 
   std::shared_ptr<State> state_;
   static bool platform_init();
-  static void platform_shutdown();
 };
 
 }  // namespace nyx

@@ -78,7 +78,6 @@ class FileTransferService {
     on_remote_list_ = std::move(cb);
   }
 
-  const std::vector<FileEntry>& remote_list() const { return remote_list_; }
 
   /** Копия remote_list_ (потокобезопасно для UI). */
   std::vector<FileEntry> remote_list_snapshot() const;

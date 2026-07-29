@@ -12,7 +12,6 @@
 
 namespace nyx {
 
-inline constexpr const char* encrypted_profile_filename() { return "profile.nyx"; }
 inline constexpr const char* recovery_vault_filename() { return "recovery.nyx"; }
 
 /** Шифрует профиль паролем или recovery-фразой.

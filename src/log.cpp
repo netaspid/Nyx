@@ -73,7 +73,6 @@ void log_init() {
   rotate_if_needed();
 }
 
-void log_set_level(LogLevel level) { min_level = level; }
 
 LogLevel log_level() { return min_level; }
 

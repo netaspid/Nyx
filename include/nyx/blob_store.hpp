@@ -18,7 +18,6 @@ class BlobReader {
   explicit BlobReader(std::string path);
 
   bool open();
-  bool is_open() const { return file_.is_open(); }
   uint64_t size() const { return size_; }
 
   /** Читает до max_len байт с offset. @return 0 при EOF или ошибке. */

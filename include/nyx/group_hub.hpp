@@ -65,7 +65,6 @@ class GroupHub {
                                    const std::vector<UserId>& participants);
 
   bool send_realtime_all(const ByteBuffer& data);
-  void drain_realtime(const std::function<void(ByteBuffer)>& on_frame);
   /** Relays member realtime to others; on_local(from, raw) for local decode. */
   void relay_realtime(const std::function<void(const UserId& from, ByteBuffer)>& on_local);
 
@@ -137,7 +136,6 @@ class GroupHub {
   bool try_accept(const std::string& host, uint16_t port, const ByteBuffer& first_packet);
   void complete_join(HubMember& member);
   void send_history_to(HubMember& member);
-  void relay_message(const ChatMessage& msg, const UserId* exclude_author);
   void broadcast_to_members(const ByteBuffer& payload, HubMember* skip);
   /** Удаляет участников с мёртвым keep-alive (roster в group_ не трогает). */
   void drop_stale_members();

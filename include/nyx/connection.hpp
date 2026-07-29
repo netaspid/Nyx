@@ -68,7 +68,6 @@ class Connection {
   bool drive();
 
   /** Отправка текста на логический поток (UTF-8 байты). */
-  bool send_text(uint32_t stream_id, const std::string& text);
 
   /** Отправка произвольной нагрузки на логический поток. */
   bool send_payload(uint32_t stream_id, const ByteBuffer& data);

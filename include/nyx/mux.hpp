@@ -19,7 +19,6 @@ class Multiplexer {
   Multiplexer();
 
   /** Выделяет новый stream_id (с 2, нечётные/чётные по соглашению позже). */
-  uint32_t open_stream(StreamType type);
 
   /** Упаковка: u32 stream_id + payload для шифрования. */
   ByteBuffer send(uint32_t stream_id, const ByteBuffer& data);

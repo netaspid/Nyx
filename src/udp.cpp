@@ -104,13 +104,6 @@ bool UdpSocket::platform_init() {
   return true;
 }
 
-void UdpSocket::platform_shutdown() {
-#ifdef _WIN32
-  if (g_net_init) WSACleanup();
-#endif
-  g_net_init = false;
-}
-
 UdpSocket::UdpSocket() : state_(std::make_shared<State>()) {
   platform_init();
   state_->sock = static_cast<uintptr_t>(socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
@@ -308,10 +301,6 @@ bool UdpSocket::set_multicast_interface(const std::string& ipv4, std::string* er
     return false;
   }
   return true;
-}
-
-bool UdpSocket::enable_lan_multicast(std::string* err) {
-  return bind_multicast_listener("224.0.0.251", 5353, err);
 }
 
 }  // namespace nyx

@@ -24,7 +24,6 @@ struct FrameHeader {
 struct Frame {
   FrameHeader header;
   ByteBuffer payload;
-  std::optional<uint32_t> crc;
 
   /** Собирает кадр с заполненным payload_length. */
   static Frame make(PacketType type, uint32_t stream_id, uint32_t seq,
@@ -92,8 +91,5 @@ bool is_handshake_datagram(const ByteBuffer& data);
 
 /** Datagram hole-punch probe (NYX-PUNCH). */
 bool is_punch_datagram(const ByteBuffer& data);
-
-/** IPv4-строка из поля ip подсказки rendezvous. */
-std::string endpoint_hint_host(const EndpointHint& hint);
 
 }  // namespace nyx

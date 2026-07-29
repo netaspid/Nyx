@@ -8,13 +8,6 @@ Multiplexer::Multiplexer() {
   streams_[kControlStream] = Stream{StreamType::Control, {}, true};
 }
 
-uint32_t Multiplexer::open_stream(StreamType type) {
-  const uint32_t id = next_stream_id_;
-  next_stream_id_ += 2;
-  streams_[id] = Stream{type, {}, true};
-  return id;
-}
-
 ByteBuffer Multiplexer::send(uint32_t stream_id, const ByteBuffer& data) {
   ByteBuffer out;
   write_u32_le(out, stream_id);

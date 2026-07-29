@@ -504,15 +504,6 @@ bool GroupHub::send_realtime_all(const ByteBuffer& data) {
   return any;
 }
 
-void GroupHub::drain_realtime(const std::function<void(ByteBuffer)>& on_frame) {
-  if (!on_frame) return;
-  for (auto& m : members_) {
-    if (!m.joined) continue;
-    ByteBuffer raw;
-    while (m.connection.recv_realtime(raw)) on_frame(std::move(raw));
-  }
-}
-
 void GroupHub::relay_realtime(const std::function<void(const UserId& from, ByteBuffer)>& on_local) {
   for (auto& m : members_) {
     if (!m.joined) continue;
@@ -525,21 +516,6 @@ void GroupHub::relay_realtime(const std::function<void(const UserId& from, ByteB
         o.connection.send_realtime(raw);
       }
     }
-  }
-}
-
-void GroupHub::relay_message(const ChatMessage& msg, const UserId* exclude_author) {
-  (void)exclude_author;
-  store_.append(to_stored(msg, msg.author_id == owner_.public_key));
-  if (on_message_) {
-    on_message_(msg, msg.author_id == owner_.public_key);
-  }
-  const ByteBuffer wire = msg.encode();
-  for (auto& m : members_) {
-    if (!m.joined) continue;
-    if (m.user_id == msg.author_id) continue;
-    if (m.connection.state() != ConnectionState::Established) continue;
-    m.connection.send_payload(kChatStream, wire);
   }
 }
 

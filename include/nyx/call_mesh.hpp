@@ -50,16 +50,12 @@ class CallMesh {
 
   bool send_realtime(const ByteBuffer& data);
   bool send_realtime_video(const ByteBuffer& data);
-  bool send_realtime_to(const UserId& peer, const ByteBuffer& data);
   bool send_realtime_except(const UserId& skip, const ByteBuffer& data);
   void retain_peers(const std::set<UserId>& allowed);
-  std::vector<UserId> established_peers() const;
 
   void set_on_realtime(RealtimeCallback cb);
 
   std::size_t established_count() const;
-  std::size_t peer_count() const;
-  bool should_send_video_to(const UserId& peer) const;
   std::string local_host_guess() const;
 
  private:
