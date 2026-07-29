@@ -212,7 +212,7 @@ Popup {
         const actual = recorder.actualLocation
                 ? recorder.actualLocation.toString() : ""
         if (actual.indexOf("file:") === 0) {
-            let p = decodeURIComponent(actual.replace(/^file:\/\
+            let p = decodeURIComponent(actual.replace(/^file:\/\//, ""))
             if (Qt.platform.os === "windows" && p.charAt(0) === "/")
                 p = p.substring(1)
             if (p.length)
