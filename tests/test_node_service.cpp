@@ -119,7 +119,7 @@ static void test_multi_session_hubs_parallel() {
   assert(svc.start_group_hub(a));
   assert(svc.start_group_hub(b));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  // Without a local rendezvous the hub may go Offline right away, but both ids stay registered.
+
   bool has_a = false;
   bool has_b = false;
   for (const auto& s : svc.list_sessions()) {

@@ -51,7 +51,6 @@
 #include <thread>
 #include <vector>
 
-// Release (NDEBUG) would drop the assert, crashing on nullptr.
 #undef NDEBUG
 #include <cassert>
 
@@ -107,7 +106,7 @@ static void test_noise_handshake() {
   auto rt11 = sa->encrypt_realtime(11, {0x11});
   auto rt12 = sa->encrypt_realtime(12, {0x12});
   assert(rt10 && rt11 && rt12);
-  // UDP loss and reordering must not desynchronize subsequent media packets.
+
   auto pt12 = sb->decrypt_realtime(12, *rt12);
   auto pt10 = sb->decrypt_realtime(10, *rt10);
   assert(pt12 && *pt12 == nyx::ByteBuffer {0x12});
@@ -732,14 +731,14 @@ static void test_file_index_three() {
   }
   assert(has_sub);
 
-  // Level cache from a peer: folder markers + leaf file names (as after the old ListResp).
-  // A repeated listing_level must drop neither folders nor files.
+
+
   {
     std::vector<nyx::FileEntry> wire_level;
     for (const auto& e : level) {
       nyx::FileEntry w = e;
       if (!w.is_directory()) {
-        // Simulates the old wire bug: leaf only.
+
         w.relative_path = w.leaf_name();
       }
       wire_level.push_back(std::move(w));
@@ -756,7 +755,7 @@ static void test_file_index_three() {
     assert(has_sub_again);
     assert(files_again >= 3);
 
-    // Level inside sub: the leaf file nested.txt must not vanish.
+
     std::vector<nyx::FileEntry> nested_wire;
     for (const auto& e : index.entries_for_session({})) {
       if (e.relative_path.find("sub/") == 0) {
@@ -784,7 +783,7 @@ static void test_file_index_three() {
   assert(index.share_roots().empty());
   assert(index.listing_for_session({}).empty());
 
-  // Re-adding after removal must not break.
+
   assert(index.add_root(dir));
   assert(index.entries().size() == 4);
   assert(index.remove_root(dir));
@@ -816,7 +815,7 @@ static void test_list_response_size_cap() {
   assert(decoded);
   assert(!decoded->empty());
   assert(decoded->size() < entries.size());
-  // Folders encode before files, so a trimmed reply must keep the directory markers.
+
   bool has_dir = false;
   for (const auto& e : *decoded) {
     if (e.is_directory()) {
@@ -915,7 +914,7 @@ static void test_file_index_migration_and_objects() {
   std::filesystem::create_directories(dir);
   std::ofstream(dir + "/legacy.txt") << "legacy payload";
 
-  // Legacy index without group / schema_version.
+
   {
     std::ofstream out(nyx::FileIndex::index_path(), std::ios::binary | std::ios::trunc);
     out << "{\"roots\":[{\"root\":\"" << dir << "\"}],"
@@ -937,14 +936,14 @@ static void test_file_index_migration_and_objects() {
     assert(index.share_roots().size() == 1);
     assert(index.entries().size() == 1);
     assert(index.count_in_root(dir, {}) == 1);
-    // Rewritten with schema_version + group.
+
     std::ifstream rewritten(nyx::FileIndex::index_path(), std::ios::binary);
     std::string json((std::istreambuf_iterator<char>(rewritten)), std::istreambuf_iterator<char>());
     assert(json.find("\"schema_version\":2") != std::string::npos);
     assert(json.find("\"group\"") != std::string::npos);
   }
 
-  // Stale root disappears on load.
+
   std::filesystem::remove_all(dir);
   {
     nyx::FileIndex index;
@@ -953,7 +952,7 @@ static void test_file_index_migration_and_objects() {
     assert(index.entries().empty());
   }
 
-  // Content-addressed adopt + scoped listing isolation.
+
   std::filesystem::create_directories(dir);
   std::ofstream(dir + "/obj.bin") << "object-bytes";
   assert(nyx::hash_file(dir + "/obj.bin", hash));
@@ -983,7 +982,7 @@ static void test_file_index_migration_and_objects() {
     assert(owned->relative_path.find(nyx::to_hex(owner.data(), owner.size())) == 0);
     assert(owned->owner_id == owner);
     const auto owner_level = index.listing_at_root(owned->root_path, {}, &group);
-    // Flat + owner dir marker(s).
+
     assert(owner_level.size() >= 2);
 
     auto voice = index.adopt_file(dir + "/owned.bin",
@@ -1021,7 +1020,7 @@ static void test_file_index_migration_and_objects() {
 }
 
 static void test_file_catalog_snapshot_semantics() {
-  // Level snapshot replaces children; other roots stay.
+
   std::vector<nyx::FileEntry> catalog;
   nyx::FileEntry root_a;
   root_a.root_path = "/share/a";
@@ -1078,12 +1077,12 @@ static void test_file_catalog_snapshot_semantics() {
   }
   assert(!saw_gone && saw_new && saw_b);
 
-  // v1 Request remains independently decodable (fallback path).
+
   nyx::FileRequest req;
   req.hash = fresh.hash;
   const auto decoded = nyx::FileRequest::decode(req.encode());
   assert(decoded && decoded->hash == req.hash);
-  // Unknown peer without Capabilities still accepts Request frames.
+
   assert(static_cast<nyx::FileKind>(req.encode()[0]) == nyx::FileKind::Request);
 
   std::cout << "file catalog snapshot and v1 request ok\n";
@@ -1311,7 +1310,7 @@ static void test_group_three_members() {
   assert(test_exchange_hello(*charlie_conn, charlie));
 
   nyx::GroupId zero {};
-  // Each member gets its own data_dir, or a shared groups/*.jsonl breaks id dedup.
+
   nyx::set_account_data_dir(bob_dir);
   nyx::GroupMemberService bob_svc(*bob_conn, bob, zero, "");
   nyx::set_account_data_dir(charlie_dir);
@@ -1390,7 +1389,7 @@ static void test_mdns_beacon_roundtrip() {
   const std::string id_short = nyx::short_user_id(profile.user_id());
   nyx::write_u16_le(wire, static_cast<uint16_t>(instance.size()));
   nyx::write_u16_le(wire, static_cast<uint16_t>(id_short.size()));
-  nyx::write_u32_le(wire, 0x2a01a8c0); // 192.168.1.42 LE
+  nyx::write_u32_le(wire, 0x2a01a8c0);
   wire.insert(wire.end(), instance.begin(), instance.end());
   wire.insert(wire.end(), id_short.begin(), id_short.end());
 
@@ -1429,7 +1428,7 @@ static void test_mdns_browse_receives_beacon() {
   sender.join();
 
   if (peers.empty()) {
-    // Often blocked by a firewall / loopback without multicast.
+
     std::cout << "mdns browse skipped (no peers — multicast unavailable)\n";
     return;
   }
@@ -1513,7 +1512,7 @@ static void test_profile_meta_photos_wire() {
   assert(out.photo_hashes.size() == 1);
   assert(out.photo_hashes[0] == h);
 
-  // Old frame without the photo tail.
+
   nyx::ByteBuffer legacy;
   nyx::write_u16_le(legacy, 2);
   legacy.push_back('o');
@@ -1786,7 +1785,7 @@ static void test_group_meta_message() {
   assert(decoded->tags == "a, b");
   assert(decoded->visibility == nyx::GroupVisibility::PublicListed);
 
-  // Empty meta must not parse as Bye either.
+
   nyx::GroupMetaMessage empty;
   const auto empty_wire = empty.encode();
   assert(!nyx::ByeMessage::decode(empty_wire));
@@ -1931,7 +1930,7 @@ static void test_call_session_fsm() {
 
   nyx::CallSession busy;
   assert(busy.start_outgoing(nyx::CallMode::Audio, nyx::CallScope::Direct, peer));
-  assert(!busy.on_invite(inv)); // already in a call
+  assert(!busy.on_invite(inv));
   std::cout << "call session fsm ok\n";
 }
 
@@ -1950,7 +1949,7 @@ static void test_call_media_and_opus() {
   assert(d && d->origin == f.origin && d->hop_count == 1 && d->audio_level == 99 &&
          d->payload == f.payload);
 
-  // Realtime budget in Connection::send_realtime is 1100 plain bytes.
+
   nyx::CallMediaFrame fat;
   fat.type = nyx::CallMediaType::Opus;
   fat.seq = 1;
@@ -1995,7 +1994,7 @@ static void test_call_av1_fragment() {
   assert(full->keyframe);
   assert(std::equal(full->data.begin(), full->data.end(), big.begin()));
 
-  // Parity fragment recovers one missing data datagram.
+
   nyx::CallVideoReassembler fec_reasm;
   full.reset();
   for (std::size_t i = 0; i < frags.size(); ++i) {
@@ -2034,7 +2033,7 @@ static void test_call_mesh_loopback() {
   nyx::UserId a {};
   nyx::UserId b {};
   a[0] = 1;
-  b[0] = 2; // a < b → a initiator
+  b[0] = 2;
   const nyx::CallId id = nyx::generate_call_id();
 
   nyx::CallMesh ma;
@@ -2550,7 +2549,7 @@ int main() {
   test_call_session_fsm();
   test_call_mesh_loopback();
   test_call_relay_topology_20();
-  // Field room: open → Active without Accept; peer Accept doesn't hang host.
+
   {
     nyx::CallSession host;
     nyx::UserId gid {};
