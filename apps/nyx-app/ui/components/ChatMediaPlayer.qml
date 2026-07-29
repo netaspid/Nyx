@@ -101,7 +101,7 @@ Item {
                 asynchronous: true
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: { /* swallow so backdrop does not close mid-view */ }
+                    onClicked: {  }
                 }
             }
 

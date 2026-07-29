@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Compact emoji picker for the composer. */
 Popup {
     id: root
     required property var theme

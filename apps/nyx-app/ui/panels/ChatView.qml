@@ -14,14 +14,13 @@ Item {
     required property var formatMsgTimeFn
 
     property bool composerPreview: false
-    /** Formatting toolbar visible (inside the layout flow, not an Overlay). */
+
     property bool markdownToolsOpen: false
-    /** Keep the toolbar/preview when clicking composer buttons (Aa, emoji, ...). */
+
     property bool composerToolsSticky: false
     property string composerChatKey: ""
     property string contextMessageText: ""
     readonly property bool narrowHeader: width < 600 || Qt.platform.os === "android"
-
 
     function openChatMeta() {
         if (node.activeChatKind === 1)
@@ -72,7 +71,7 @@ Item {
         root.markdownToolsOpen = false
     }
 
-    /** Default input: no Aa preview and no formatting toolbar. */
+
     function resetComposerTools() {
         composerResetTimer.stop()
         root.composerToolsSticky = false
@@ -332,7 +331,7 @@ Item {
                 anchors.rightMargin: theme.spacing
                 spacing: 6
 
-                // In the flow above the input; never overlaps the preview/text
+
                 MarkdownToolbar {
                     id: mdToolbar
                     Layout.alignment: Qt.AlignLeft
@@ -356,7 +355,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                // One shell: preview ("as seen") on top, input below
+
                 Rectangle {
                     id: composerShell
                     Layout.fillWidth: true
@@ -367,7 +366,7 @@ Item {
                         const bubbleH = Math.min(
                             160,
                             Math.max(36, composerPreviewBody.implicitHeight + 16 + 18))
-                        const previewH = 14 + bubbleH // caption + bubble
+                        const previewH = 14 + bubbleH
                         return Math.min(420, 12 + previewH + 9 + editorH)
                     }
                     radius: 18
@@ -652,12 +651,12 @@ Item {
                         onClicked: sendMsg()
                     }
                 }
-                } // RowLayout shell+send
-            } // ColumnLayout composerCol
+                }
+            }
         }
     }
 
-    } // ColumnLayout
+    }
 
     Timer {
         id: mdIdleTimer
@@ -697,7 +696,7 @@ Item {
     Connections {
         target: node
         function onChatChanged() {
-            // chatChanged is noisy; reset only when the chat actually changes
+
             const key = node.activeChatKey
             if (key === root.composerChatKey)
                 return
@@ -1088,7 +1087,7 @@ Item {
     }
 
     function openMediaCapture() {
-        // Lazy: Camera/MediaRecorder crash on Android if created at ChatView load.
+
         captureDestroyTimer.stop()
         mediaCaptureLoader.active = true
         Qt.callLater(function() {

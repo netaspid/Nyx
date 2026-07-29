@@ -3,7 +3,6 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "."
 
-/** Modal header: title + SVG close (no Segoe fonts). */
 Item {
     id: root
     required property var theme

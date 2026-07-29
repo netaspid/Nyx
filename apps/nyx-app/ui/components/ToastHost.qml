@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Bottom-right toast (Overlay), styled like the app. */
 Item {
     id: root
     required property var theme
@@ -13,7 +12,7 @@ Item {
     readonly property bool hasMessage: message.length > 0
     readonly property int toastMaxWidth: 400
 
-    // The Overlay parent anchors the position; only the card size lives here.
+
     width: Math.min(toastMaxWidth, Math.max(260, (parent ? parent.width : 400) - 40))
     height: hasMessage ? card.implicitHeight : 0
     visible: hasMessage

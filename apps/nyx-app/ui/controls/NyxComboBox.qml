@@ -17,7 +17,7 @@ ComboBox {
     palette.window: theme.bgSidebar
     palette.windowText: theme.textPrimary
 
-    /** Model row by index (ListModel or QVariantList/array). */
+
     function rowAt(index) {
         if (!model || index < 0)
             return null
@@ -28,7 +28,7 @@ ComboBox {
         return null
     }
 
-    /** Item label by index and textRole. */
+
     function itemTextAt(index) {
         const row = rowAt(index)
         if (!row)
@@ -38,7 +38,7 @@ ComboBox {
         return String(row)
     }
 
-    /** Selected item text; displayText does not work with a C++ QVariantList. */
+
     readonly property string labelText: {
         if (displayText.length > 0)
             return displayText

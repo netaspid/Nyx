@@ -6,7 +6,6 @@ import QtMultimedia
 import "."
 import "../js/MarkdownFormat.js" as Md
 
-/** Message bubble: paragraph/table/formula/media/action blocks. */
 Item {
     id: bubbleRoot
     required property string author
@@ -86,7 +85,7 @@ Item {
         return Md.toHtml(b.text, bubbleRoot.revealedSpoilers)
     }
 
-    // —— /me ——
+
     Rectangle {
         id: actionBubble
         visible: bubbleRoot.isAction
@@ -170,7 +169,7 @@ Item {
         color: bubbleRoot.outgoing
                ? (theme ? theme.bubbleOut : "#2b5278")
                : (theme ? theme.bubbleIn : "#2a3949")
-        // Uniform radius: per-corner *Radius needs Qt 6.7+; Android kit is 6.5.3.
+
         radius: theme ? theme.radiusBubble : 16
 
         TapHandler {
@@ -609,7 +608,7 @@ Item {
                         }
                     }
 
-                    // media
+
                     Item {
                         width: parent.width
                         height: mediaCol.visible ? mediaCol.implicitHeight : 0
@@ -720,7 +719,7 @@ Item {
                         }
                     }
 
-                    // paragraph with Telegram-spoilers
+
                     Flow {
                         visible: modelData.type === "paragraph"
                         width: parent.width
@@ -783,7 +782,7 @@ Item {
                         }
                     }
 
-                    // table / formula
+
                     Text {
                         visible: modelData.type === "table" || modelData.type === "formula"
                         width: parent.width

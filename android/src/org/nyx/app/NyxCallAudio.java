@@ -19,12 +19,6 @@ import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.util.Log;
 
-/**
- * VoIP playback + ringtone. Qt QAudioSink uses STREAM_MUSIC which is silent
- * under AudioManager.MODE_IN_COMMUNICATION — AudioTrack VOICE_COMMUNICATION works
- * for earpiece; speaker uses USAGE_MEDIA (OEM VOICE_COMMUNICATION+speaker is often mute).
- * Ringtone must run on the main looper (JNI often arrives on Qt's thread).
- */
 public final class NyxCallAudio {
     private static final String TAG = "NyxCallAudio";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -60,10 +54,10 @@ public final class NyxCallAudio {
                                          : AudioFormat.CHANNEL_OUT_MONO;
         int minBuf = AudioTrack.getMinBufferSize(sampleRate, chMask, AudioFormat.ENCODING_PCM_16BIT);
         if (minBuf <= 0) minBuf = sampleRate * channels * 2 / 5;
-        // Larger buffer: low-latency mode dropped writes under load / camera.
+
         final int buf = Math.max(minBuf * 4, sampleRate * channels * 2 / 5);
         try {
-            // Speaker: MEDIA — audible with setSpeakerphoneOn. Earpiece: VOICE_COMMUNICATION.
+
             final int usage = speaker ? AudioAttributes.USAGE_MEDIA
                                       : AudioAttributes.USAGE_VOICE_COMMUNICATION;
             final int content = speaker ? AudioAttributes.CONTENT_TYPE_MUSIC
@@ -92,7 +86,7 @@ public final class NyxCallAudio {
                 sTrack.setVolume(1.0f);
             } catch (Throwable ignored) {}
             sTrack.play();
-            // Prime the track so the first Opus frames are not swallowed as underrun silence.
+
             byte[] silence = new byte[Math.min(buf / 4, sampleRate * channels * 2 / 25)];
             sTrack.write(silence, 0, silence.length);
             Log.i(TAG, "voice playback started sr=" + sampleRate + " ch=" + channels
@@ -104,7 +98,7 @@ public final class NyxCallAudio {
         }
     }
 
-    /** Recreate track when speaker/earpiece toggles (usage must match route). */
+
     public static synchronized void restartVoicePlaybackForRoute(Context ctx, boolean speaker) {
         if (sTrack == null) {
             sSpeaker = speaker;
@@ -123,7 +117,7 @@ public final class NyxCallAudio {
     public static synchronized int writeVoicePlayback(byte[] pcm, int offset, int len) {
         if (sTrack == null || pcm == null || len <= 0) return 0;
         try {
-            // Soft gain (~1.6×) — desktop capture often lands too quiet on phone speaker.
+
             final int end = Math.min(offset + len, pcm.length);
             for (int i = offset; i + 1 < end; i += 2) {
                 short s = (short) ((pcm[i] & 0xff) | ((pcm[i + 1] & 0xff) << 8));
@@ -146,7 +140,7 @@ public final class NyxCallAudio {
         }
     }
 
-    /** Prefer speaker or earpiece for the active AudioTrack (API 23+). */
+
     public static synchronized void applyPlaybackRoute(Context ctx, boolean speaker) {
         if (sTrack == null || ctx == null) return;
         try {
@@ -183,10 +177,7 @@ public final class NyxCallAudio {
         Log.i(TAG, "voice playback stopped");
     }
 
-    /**
-     * Mic capture via AudioRecord (VOICE_COMMUNICATION). Qt QAudioSource often
-     * returns silence under MODE_IN_COMMUNICATION on OEM builds.
-     */
+
     public static synchronized boolean startVoiceCapture(int sampleRate, int channels) {
         stopVoiceCapture();
         if (sampleRate <= 0) sampleRate = 48000;
@@ -242,7 +233,7 @@ public final class NyxCallAudio {
             if (n > 0) {
                 sReadBytes += n;
                 if ((++sReadLogCounter % 50) == 0) {
-                    // Rough RMS of first 64 samples for sanity logs.
+
                     int lim = Math.min(n, 128);
                     long sum = 0;
                     for (int i = offset; i + 1 < offset + lim; i += 2) {
@@ -284,7 +275,7 @@ public final class NyxCallAudio {
         try {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             if (am != null) {
-                // Leave MODE_NORMAL while ringing — IN_COMMUNICATION mutes ringtone streams.
+
                 if (am.getMode() == AudioManager.MODE_IN_COMMUNICATION
                         || am.getMode() == AudioManager.MODE_IN_CALL) {
                     am.setMode(AudioManager.MODE_NORMAL);
@@ -365,7 +356,7 @@ public final class NyxCallAudio {
         }
     }
 
-    /** Raise call + music volumes so both AudioTrack and any Qt path are audible. */
+
     public static void boostCallVolumes(Context ctx) {
         try {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
@@ -386,7 +377,7 @@ public final class NyxCallAudio {
         }
     }
 
-    /** Play a short 440 Hz beep for the settings speaker test (MEDIA stream). */
+
     public static synchronized void playTestTone(Context ctx, int sampleRate, int durationMs) {
         if (ctx == null) return;
         if (sampleRate <= 0) sampleRate = 48000;

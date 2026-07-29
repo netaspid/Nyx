@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Colored tag chip. */
 Rectangle {
     id: root
     required property var theme

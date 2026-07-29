@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import "../js/MarkdownFormat.js" as Md
 
-/** Compact "as seen" composer preview: blocks + Telegram spoilers. */
 Item {
     id: root
     required property var theme

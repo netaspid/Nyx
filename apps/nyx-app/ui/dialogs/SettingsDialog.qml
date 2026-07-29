@@ -471,8 +471,8 @@ Dialog {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
-                } // settingsCol
-        } // Flickable
+                }
+        }
     }
 
     footer: Item { implicitHeight: 4 }

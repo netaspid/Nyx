@@ -4,11 +4,6 @@ import QtQuick.Layouts
 import "../controls"
 import "../components"
 
-/**
- * Call overlay.
- * DM video → fullscreen; Field → compact first, expand for fullscreen.
- * Tool chrome uses fixed dark colors so light theme never washes icons out.
- */
 Item {
     id: root
     required property var theme
@@ -41,7 +36,7 @@ Item {
         if (!isVideoActive) expanded = false
     }
 
-    // Telegram-like: icon stays ~40% of circle; AbstractButton must NOT stretch the Image.
+
     component CallTool: AbstractButton {
         id: btn
         property string iconName: "settings"
@@ -60,7 +55,7 @@ Item {
             border.width: btn.solid ? 0 : 1
         }
         contentItem: Item {
-            // Fill button box so layout is stable; icon is centered and small.
+
             implicitWidth: btn.size
             implicitHeight: btn.size
             NyxIcon {
@@ -77,7 +72,7 @@ Item {
         anchors.fill: parent
         color: root.preferFullscreen ? "#e0080a0c" : "#99000000"
         visible: root.visibleCall
-        // Leave bottom chrome free for taps (Android / SurfaceView edge cases).
+
         MouseArea {
             anchors.left: parent.left
             anchors.right: parent.right
@@ -88,7 +83,7 @@ Item {
         }
     }
 
-    // —— Fullscreen ——
+
     Item {
         id: stage
         anchors.fill: parent
@@ -107,7 +102,7 @@ Item {
             asynchronous: false
         }
 
-        // Name stub when there is no remote video yet / peer camera off (black → still Image).
+
         Rectangle {
             anchors.fill: parent
             visible: !remoteFs.visible
@@ -237,7 +232,7 @@ Item {
             spacing: 14
             z: 5
 
-            // Telegram-style: one row of circular icon buttons (hangup is red circle).
+
             Row {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: root.narrow ? 14 : 16
@@ -282,7 +277,7 @@ Item {
         }
     }
 
-    // —— Compact card ——
+
     Rectangle {
         anchors.centerIn: parent
         width: root.narrow ? Math.min(parent.width - 24, parent.width) : Math.min(400, parent.width - 48)
@@ -418,7 +413,7 @@ Item {
                 visible: node.callState !== "active" || !node.callVideo
             }
 
-            // Incoming — Telegram: green Answer + red Decline with captions
+
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: incomingRow.implicitHeight
@@ -474,7 +469,7 @@ Item {
                 }
             }
 
-            // Active / ringing tools — circular row including hangup
+
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: activeTools.implicitHeight

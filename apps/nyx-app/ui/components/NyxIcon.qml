@@ -1,6 +1,5 @@
 import QtQuick
 
-/** SVG icon from resources/icons/ (24px). */
 Image {
     id: root
     property string name: "send"

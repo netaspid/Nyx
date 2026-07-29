@@ -17,7 +17,6 @@ import android.util.Log;
 
 import java.util.List;
 
-/** Local high-priority notification for incoming Nyx calls (process must be alive). */
 public final class NyxCallNotify {
     private static final String TAG = "NyxCallNotify";
     private static final String CHANNEL_ID = "nyx_calls_v4";
@@ -36,14 +35,14 @@ public final class NyxCallNotify {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm == null) return;
-        // Channel settings are immutable — bump id when sound/importance must change.
+
         try { nm.deleteNotificationChannel("nyx_calls"); } catch (Exception ignored) {}
         try { nm.deleteNotificationChannel("nyx_calls_v2"); } catch (Exception ignored) {}
         try { nm.deleteNotificationChannel("nyx_calls_v3"); } catch (Exception ignored) {}
         NotificationChannel ch = new NotificationChannel(
                 CHANNEL_ID, "Звонки Nyx", NotificationManager.IMPORTANCE_HIGH);
         ch.setDescription("Входящие и активные звонки");
-        // Sound/vibration come from NyxCallAudio only — avoid doubling with the channel.
+
         ch.enableVibration(false);
         ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         ch.setBypassDnd(true);
@@ -134,7 +133,7 @@ public final class NyxCallNotify {
                 am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 am.setMicrophoneMute(false);
                 NyxCallAudio.boostCallVolumes(ctx);
-                // Route is applied by setSpeakerphone() from Qt after this.
+
             } else {
                 NyxCallAudio.stopVoicePlayback();
                 NyxCallAudio.stopVoiceCapture();
@@ -249,15 +248,15 @@ public final class NyxCallNotify {
     public static void cancelAll(Context ctx) {
         releaseWakeLock();
         NyxCallAudio.stopRingtone();
-        // Do not stop voice playback here — Qt CallAudioIo owns the AudioTrack
-        // lifecycle. Stopping it from notification cancel raced with re-invite.
+
+
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         nm.cancel(NOTIF_INCOMING);
         nm.cancel(NOTIF_ACTIVE);
     }
 
-    /** No-op stub kept for JNI signature stability if an older binary calls it. */
+
     public static void setHangupOverlayVisible(boolean show) {
         Log.i(TAG, "setHangupOverlayVisible ignored show=" + show);
     }

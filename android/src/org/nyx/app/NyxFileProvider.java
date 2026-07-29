@@ -14,7 +14,6 @@ import android.webkit.MimeTypeMap;
 import java.io.File;
 import java.io.FileNotFoundException;
 
-/** Minimal FileProvider for ACTION_VIEW without androidx dependency. */
 public final class NyxFileProvider extends ContentProvider {
     private static final String AUTHORITY = "org.nyx.app.fileprovider";
 

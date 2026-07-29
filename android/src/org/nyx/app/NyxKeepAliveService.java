@@ -12,10 +12,6 @@ import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
-/**
- * Quiet foreground service so the process (and UDP discovery / call invites)
- * survives when the activity is backgrounded or the screen is off.
- */
 public final class NyxKeepAliveService extends Service {
     private static final String TAG = "NyxKeepAlive";
     private static final String CHANNEL_ID = "nyx_keepalive_v1";

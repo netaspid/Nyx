@@ -4,13 +4,12 @@ import QtQuick.Layouts
 import "../controls"
 import "."
 
-/** Permissions dialog: object role plus per-member overrides. */
 Popup {
     id: root
     required property var theme
     required property var node
 
-    /** "path" = folder/file; "field" = member roles of the field. */
+
     property string mode: "path"
     property string objectTitle: ""
     property int grantSyncKey: 0
@@ -36,7 +35,7 @@ Popup {
         open()
     }
 
-    /** Rights on the share root (empty relative path). */
+
     function openForShareRoot(rootPath, title) {
         openForPath(rootPath, "", title)
     }
@@ -101,7 +100,7 @@ Popup {
             }
         }
 
-        // Object role (no members required)
+
         Rectangle {
             Layout.fillWidth: true
             visible: mode === "path"

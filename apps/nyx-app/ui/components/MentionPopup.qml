@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** @mention autocomplete above the input. */
 Popup {
     id: root
     required property var theme

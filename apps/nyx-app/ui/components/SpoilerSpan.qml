@@ -1,6 +1,5 @@
 import QtQuick
 
-/** Telegram-style spoiler: dots over the bubble color, click to reveal. */
 Item {
     id: root
     property string body: ""
@@ -36,7 +35,7 @@ Item {
         visible: root.revealed
     }
 
-    // Hidden width measurement
+
     Text {
         id: measure
         visible: false

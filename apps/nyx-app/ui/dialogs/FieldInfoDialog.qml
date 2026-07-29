@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import "../controls"
 import "../components"
 
-/** Field info and members, app-styled; click opens the profile. */
 Dialog {
     id: root
     required property var theme
@@ -56,7 +55,7 @@ Dialog {
     function openMemberProfile(userId) {
         const uid = String(userId || "").trim().toLowerCase()
         if (uid.length !== 64) return
-        // PeerInfo above the field modal
+
         node.openPeerInfo(uid)
     }
 
@@ -160,7 +159,7 @@ Dialog {
             }
         }
 
-        // Scrollable body (scrollbar gutter avoids overlapping the fields)
+
         Flickable {
             id: bodyFlick
             Layout.fillWidth: true
@@ -206,7 +205,7 @@ Dialog {
                         font.pixelSize: 11
                     }
 
-                    // Meta view (member)
+
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -273,7 +272,7 @@ Dialog {
                         }
                     }
 
-                    // Meta editing (owner)
+
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -345,7 +344,7 @@ Dialog {
 
                         delegate: Rectangle {
                             id: memberRow
-                            // QVariantMap from fieldInfoMembers comes via modelData
+
                             required property var modelData
 
                             readonly property string userId: String(modelData.userId || "")
@@ -461,7 +460,7 @@ Dialog {
                                 }
                             }
 
-                            // covers the row except the kick button
+
                             MouseArea {
                                 id: memberMa
                                 anchors.fill: parent

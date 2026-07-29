@@ -4,7 +4,6 @@ import QtQuick.Layouts
 import "controls"
 import "components"
 
-/** Login screen: local accounts, recovery, remember-me. */
 Rectangle {
     id: root
     required property var theme
@@ -15,7 +14,7 @@ Rectangle {
     visible: !node.sessionUnlocked || node.needsRecoveryConfirm
     z: 100
 
-    /** 0 = list, 1 = create, 2 = show recovery, 3 = password reset */
+
     property int mode: node.needsRecoveryConfirm ? 2
                        : (node.accountList.length > 0 ? 0 : 1)
     property string selectedAccountId: ""
@@ -35,7 +34,7 @@ Rectangle {
         if (root.selectedAccountId.length > 0) return
         const last = node.lastAccountId || ""
         if (last.length === 0) {
-            // Auto-select the only available account
+
             if (node.accountList.length === 1 && !node.accountList[0].locked) {
                 root.selectedAccountId = node.accountList[0].id
                 root.selectedNickname = node.accountList[0].nickname
@@ -119,7 +118,7 @@ Rectangle {
             font.pixelSize: 11
         }
 
-        // --- Login ---
+
         ColumnLayout {
             visible: root.mode === 0 && node.accountList.length > 0 && !node.needsRecoveryConfirm
             Layout.fillWidth: true
@@ -267,7 +266,7 @@ Rectangle {
             }
         }
 
-        // --- Create ---
+
         ColumnLayout {
             visible: (root.mode === 1 || node.accountList.length === 0) && !node.needsRecoveryConfirm
             Layout.fillWidth: true
@@ -331,7 +330,7 @@ Rectangle {
             }
         }
 
-        // --- Recovery confirm ---
+
         ColumnLayout {
             visible: root.mode === 2 || node.needsRecoveryConfirm
             Layout.fillWidth: true
@@ -394,7 +393,7 @@ Rectangle {
             }
         }
 
-        // --- Reset password ---
+
         ColumnLayout {
             visible: root.mode === 3 && !node.needsRecoveryConfirm
             Layout.fillWidth: true

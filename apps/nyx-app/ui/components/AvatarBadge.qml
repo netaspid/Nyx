@@ -1,6 +1,5 @@
 import QtQuick
 
-/** Round avatar: photo or initial (Telegram-style). */
 Item {
     id: av
     property string label: "?"

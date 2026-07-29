@@ -17,7 +17,6 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-/** SAF helpers: describe/copy content:// URIs and export to Downloads. */
 public final class NyxStorageBridge {
     private NyxStorageBridge() {}
 
@@ -105,7 +104,7 @@ public final class NyxStorageBridge {
         }
     }
 
-    /** Open a local file via FileProvider + ACTION_VIEW (no Downloads hunt). */
+
     public static boolean openFile(Context context, String sourcePath, String mime) {
         try {
             File file = new File(sourcePath);

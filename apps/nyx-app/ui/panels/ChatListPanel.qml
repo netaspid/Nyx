@@ -10,7 +10,7 @@ Rectangle {
     required property var theme
     required property var node
     required property var avatarColorFn
-    /** When true, icon nav moves to MobileNavBar (narrow / Android). */
+
     property bool useBottomNav: false
 
     signal settingsRequested()

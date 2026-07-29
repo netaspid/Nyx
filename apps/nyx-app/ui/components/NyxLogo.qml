@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 
-/** Nyx brand: constellation + "Nyx" caption (single lockup, pure QML). */
 Item {
     id: root
 

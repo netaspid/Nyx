@@ -149,7 +149,7 @@ ColumnLayout {
         }
     }
 
-    // Tabs: an explicit Row, no hidden TabButtons
+
     Rectangle {
         Layout.fillWidth: true
         Layout.leftMargin: theme.spacing
@@ -308,7 +308,7 @@ ColumnLayout {
         }
     }
 
-    // Content: a single page via Loader
+
     Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -666,8 +666,8 @@ ColumnLayout {
                                         fileRow.fileRootPath, fileRow.fileFullRelPath)
                                 }
                                 NyxButtonSecondary {
-                                    // DM only: send the file to the peer over the exchange channel.
-                                    // In a field the catalog is already shared via Resources; the button confuses.
+
+
                                     visible: node.fileScopeGroupId.length === 0
                                              && node.fileExchangeReady
                                              && node.canFileUpload

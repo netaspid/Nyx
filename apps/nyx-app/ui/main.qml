@@ -72,7 +72,7 @@ ApplicationWindow {
     }
 
     function handleBack() {
-        // Active call: Back = hangup (also the escape hatch when camera steals taps).
+
         if (app.documentViewer && app.documentViewer.open) {
             app.documentViewer.close()
             return true
