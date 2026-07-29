@@ -23,13 +23,13 @@ enum class AvatarKind : uint8_t {
 constexpr std::size_t kAvatarChunkSize = 8192;
 
 struct AvatarRequest {
-  FileHash hash{};
+  FileHash hash {};
   ByteBuffer encode() const;
   static std::optional<AvatarRequest> decode(const ByteBuffer& data);
 };
 
 struct AvatarOffer {
-  FileHash hash{};
+  FileHash hash {};
   uint64_t size = 0;
   std::string mime = "image/jpeg";
   ByteBuffer encode() const;
@@ -37,7 +37,7 @@ struct AvatarOffer {
 };
 
 struct AvatarChunk {
-  FileHash hash{};
+  FileHash hash {};
   uint32_t index = 0;
   ByteBuffer data;
   ByteBuffer encode() const;
@@ -45,13 +45,13 @@ struct AvatarChunk {
 };
 
 struct AvatarDone {
-  FileHash hash{};
+  FileHash hash {};
   ByteBuffer encode() const;
   static std::optional<AvatarDone> decode(const ByteBuffer& data);
 };
 
 struct AvatarDeny {
-  FileHash hash{};
+  FileHash hash {};
   std::string reason;
   ByteBuffer encode() const;
   static std::optional<AvatarDeny> decode(const ByteBuffer& data);
@@ -59,4 +59,4 @@ struct AvatarDeny {
 
 bool is_avatar_frame(const ByteBuffer& data);
 
-}  // namespace nyx
+} // namespace nyx

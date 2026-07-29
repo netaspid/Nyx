@@ -25,4 +25,4 @@ int run_connect_peer(const NodeConfig& config);
 /** LAN node discovery. */
 int run_browse(int timeout_ms);
 
-}  // namespace nyx_node
+} // namespace nyx_node

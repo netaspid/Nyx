@@ -15,9 +15,8 @@
 namespace nyx {
 
 class Multiplexer {
- public:
+public:
   Multiplexer();
-
 
   /** Packs u32 stream_id + payload for encryption. */
   ByteBuffer send(uint32_t stream_id, const ByteBuffer& data);
@@ -34,7 +33,7 @@ class Multiplexer {
   /** Puts decrypted data into the stream queue (receive side). */
   void push(uint32_t stream_id, ByteBuffer data);
 
- private:
+private:
   struct Stream {
     StreamType type = StreamType::Data;
     std::deque<ByteBuffer> queue;
@@ -45,4 +44,4 @@ class Multiplexer {
   uint32_t next_stream_id_ = 2;
 };
 
-}  // namespace nyx
+} // namespace nyx

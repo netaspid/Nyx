@@ -10,13 +10,12 @@
 
 namespace nyx {
 
-GroupMemberService::GroupMemberService(Connection& connection, Profile profile,
-                                       GroupId group_id, std::string group_name)
-    : connection_(connection),
-      profile_(std::move(profile)),
-      group_id_(group_id),
-      group_name_(std::move(group_name)),
-      chat_id_(group_chat_id(group_id_)),
+GroupMemberService::GroupMemberService(Connection& connection,
+                                       Profile profile,
+                                       GroupId group_id,
+                                       std::string group_name)
+    : connection_(connection), profile_(std::move(profile)), group_id_(group_id),
+      group_name_(std::move(group_name)), chat_id_(group_chat_id(group_id_)),
       store_(MessageStore::path_for_group(group_id_)) {
   view_.id = group_id_;
   view_.name = group_name_;
@@ -48,19 +47,21 @@ StoredMessage GroupMemberService::to_stored(const ChatMessage& msg, bool outgoin
 bool GroupMemberService::join(int timeout_ms) {
   GroupJoinMessage join;
   join.group_id = group_id_;
-  if (!connection_.send_payload(kChatStream, join.encode())) return false;
+  if (!connection_.send_payload(kChatStream, join.encode()))
+    return false;
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
     connection_.drive();
     ByteBuffer payload;
     uint32_t stream_id = 0;
     while (connection_.recv_stream(stream_id, payload)) {
-      if (stream_id != kChatStream) continue;
+      if (stream_id != kChatStream)
+        continue;
       if (auto ack = GroupJoinAckMessage::decode(payload)) {
         if (!ack->accepted) {
-          if (on_event_) on_event_("отказ: " + ack->reason);
+          if (on_event_)
+            on_event_("отказ: " + ack->reason);
           return false;
         }
         joined_ = true;
@@ -73,8 +74,8 @@ bool GroupMemberService::join(int timeout_ms) {
         // Before JoinAck group_id may be empty and history would go to the wrong file.
         store_.rebind(MessageStore::path_for_group(group_id_));
         if (on_event_) {
-          on_event_("в поле «" + view_.name + "» (" +
-                    std::to_string(view_.members.size()) + " участников)");
+          on_event_("в поле «" + view_.name + "» (" + std::to_string(view_.members.size()) +
+                    " участников)");
         }
 
         const auto history_deadline =
@@ -84,7 +85,8 @@ bool GroupMemberService::join(int timeout_ms) {
           ByteBuffer payload;
           uint32_t stream_id = 0;
           while (connection_.recv_stream(stream_id, payload)) {
-            if (stream_id != kChatStream) continue;
+            if (stream_id != kChatStream)
+              continue;
             handle_payload(payload);
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -95,7 +97,8 @@ bool GroupMemberService::join(int timeout_ms) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
-  if (on_event_) on_event_("таймаут GroupJoin");
+  if (on_event_)
+    on_event_("таймаут GroupJoin");
   return false;
 }
 
@@ -107,7 +110,8 @@ void GroupMemberService::deliver_incoming(ChatMessage msg) {
     return;
   }
   store_.append(to_stored(msg, false));
-  if (on_message_) on_message_(msg, false);
+  if (on_message_)
+    on_message_(msg, false);
 
   AckMessage ack;
   ack.message_id = msg.id;
@@ -115,7 +119,8 @@ void GroupMemberService::deliver_incoming(ChatMessage msg) {
 }
 
 bool GroupMemberService::send_message(const std::string& text, uint64_t* out_id) {
-  if (!joined_) return false;
+  if (!joined_)
+    return false;
   if (connection_.state() != ConnectionState::Established || !connection_.peer_alive()) {
     joined_ = false;
     return false;
@@ -127,22 +132,25 @@ bool GroupMemberService::send_message(const std::string& text, uint64_t* out_id)
   }
   store_.append(to_stored(msg, true));
   pending_acks_.insert(msg.id);
-  if (on_message_) on_message_(msg, true);
-  if (out_id) *out_id = msg.id;
+  if (on_message_)
+    on_message_(msg, true);
+  if (out_id)
+    *out_id = msg.id;
   return true;
 }
 
 bool GroupMemberService::send_call_frame(const ByteBuffer& frame) {
-  if (!joined_ || !is_call_frame(frame)) return false;
+  if (!joined_ || !is_call_frame(frame))
+    return false;
   return connection_.send_payload(kChatStream, frame);
 }
 
 void GroupMemberService::handle_payload(const ByteBuffer& payload) {
   if (auto bye = ByeMessage::decode(payload)) {
     joined_ = false;
-    const std::string reason =
-        bye->reason.empty() ? "владелец остановил поле" : bye->reason;
-    if (on_event_) on_event_(reason);
+    const std::string reason = bye->reason.empty() ? "владелец остановил поле" : bye->reason;
+    if (on_event_)
+      on_event_(reason);
     return;
   }
 
@@ -164,21 +172,26 @@ void GroupMemberService::handle_payload(const ByteBuffer& payload) {
       } else if (on_event_ && notice->member.role == GroupRole::Host) {
         on_event_(notice->member.nickname + " — ведущий звонков");
       }
-      if (on_meta_) on_meta_();
+      if (on_meta_)
+        on_meta_();
       return;
     }
     if (auto meta = GroupMetaMessage::decode(payload)) {
       apply_meta(*meta);
       return;
     }
-    if (GroupJoinAckMessage::decode(payload)) return;
-    if (GroupJoinMessage::decode(payload)) return;
+    if (GroupJoinAckMessage::decode(payload))
+      return;
+    if (GroupJoinMessage::decode(payload))
+      return;
   }
 
-  if (decode_hello_message(payload)) return;
+  if (decode_hello_message(payload))
+    return;
 
   if (is_call_frame(payload)) {
-    if (on_call_frame_) on_call_frame_(payload);
+    if (on_call_frame_)
+      on_call_frame_(payload);
     return;
   }
 
@@ -190,13 +203,15 @@ void GroupMemberService::handle_payload(const ByteBuffer& payload) {
   }
 
   if (auto msg = ChatMessage::decode(payload)) {
-    if (msg->chat_id != chat_id_) return;
+    if (msg->chat_id != chat_id_)
+      return;
     deliver_incoming(std::move(*msg));
   }
 }
 
 void GroupMemberService::tick() {
-  if (!joined_) return;
+  if (!joined_)
+    return;
   if (!connection_.drive()) {
     joined_ = false;
     if (on_delivery_) {
@@ -236,14 +251,16 @@ void GroupMemberService::apply_meta(const GroupMetaMessage& meta) {
   rec.direction = meta.direction;
   rec.tags = meta.tags;
   rec.visibility = meta.visibility;
-  if (!view_.name.empty()) rec.name = view_.name;
+  if (!view_.name.empty())
+    rec.name = view_.name;
   if (!view_.members.empty()) {
     GroupStore::merge_member_roster(rec.members, view_.members);
   }
   store.upsert(rec);
   store.save();
 
-  if (on_meta_) on_meta_();
+  if (on_meta_)
+    on_meta_();
 }
 
-}  // namespace nyx
+} // namespace nyx

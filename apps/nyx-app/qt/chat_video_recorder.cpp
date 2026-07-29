@@ -13,25 +13,27 @@
 namespace {
 
 QImage uprightPreview(QImage image, bool front) {
-  if (image.isNull()) return image;
+  if (image.isNull())
+    return image;
 #if defined(Q_OS_ANDROID)
   if (image.width() > image.height()) {
-    image = image.transformed(
-        QTransform().rotate(front ? 270 : 90), Qt::FastTransformation);
+    image = image.transformed(QTransform().rotate(front ? 270 : 90), Qt::FastTransformation);
   }
-  if (front) image = image.mirrored(true, false);
+  if (front)
+    image = image.mirrored(true, false);
 #else
   Q_UNUSED(front);
 #endif
   return image;
 }
 
-}  // namespace
+} // namespace
 
 ChatVideoRecorder::ChatVideoRecorder(QObject* parent) : QObject(parent) {
   elapsed_timer_.setInterval(100);
   connect(&elapsed_timer_, &QTimer::timeout, this, [this]() {
-    if (started_at_ms_ <= 0) return;
+    if (started_at_ms_ <= 0)
+      return;
     elapsed_ms_ = QDateTime::currentMSecsSinceEpoch() - started_at_ms_;
     emit elapsedChanged();
     if (elapsed_ms_ >= 60000 && state_ == QLatin1String("recording"))
@@ -59,18 +61,16 @@ void ChatVideoRecorder::openPreview() {
   reset(true);
   setState(QStringLiteral("starting"));
   operation_timeout_.start(10000);
-  nyx_android::request_call_permissions(true,
-                                        &ChatVideoRecorder::permissionResult,
-                                        this);
+  nyx_android::request_call_permissions(true, &ChatVideoRecorder::permissionResult, this);
 #else
-  setState(QStringLiteral("failed"),
-           QStringLiteral("Native camera is available only on Android"));
+  setState(QStringLiteral("failed"), QStringLiteral("Native camera is available only on Android"));
 #endif
 }
 
 void ChatVideoRecorder::startRecording(const QString& outputPath) {
 #if defined(Q_OS_ANDROID)
-  if (state_ != QLatin1String("idle") || outputPath.trimmed().isEmpty()) return;
+  if (state_ != QLatin1String("idle") || outputPath.trimmed().isEmpty())
+    return;
   output_path_ = outputPath.trimmed();
   QFile::remove(output_path_);
   elapsed_ms_ = 0;
@@ -85,7 +85,8 @@ void ChatVideoRecorder::startRecording(const QString& outputPath) {
 
 void ChatVideoRecorder::stopRecording() {
 #if defined(Q_OS_ANDROID)
-  if (state_ != QLatin1String("recording")) return;
+  if (state_ != QLatin1String("recording"))
+    return;
   elapsed_timer_.stop();
   setState(QStringLiteral("stopping"));
   operation_timeout_.start(15000);
@@ -94,7 +95,8 @@ void ChatVideoRecorder::stopRecording() {
 }
 
 void ChatVideoRecorder::discardRecording() {
-  if (state_ != QLatin1String("preview")) return;
+  if (state_ != QLatin1String("preview"))
+    return;
   QFile::remove(output_path_);
   output_path_.clear();
   elapsed_ms_ = 0;
@@ -104,11 +106,13 @@ void ChatVideoRecorder::discardRecording() {
 }
 
 void ChatVideoRecorder::finish(bool send) {
-  if (state_ != QLatin1String("preview")) return;
+  if (state_ != QLatin1String("preview"))
+    return;
   const QString path = output_path_;
   if (send && QFileInfo(path).isFile() && QFileInfo(path).size() > 0) {
     output_path_.clear();
-    emit ready(path, QStringLiteral("video/mp4"),
+    emit ready(path,
+               QStringLiteral("video/mp4"),
                QStringLiteral("circle-message.mp4"),
                QStringLiteral("circle"));
   } else {
@@ -139,7 +143,8 @@ void ChatVideoRecorder::close() {
 
 void ChatVideoRecorder::switchCamera() {
 #if defined(Q_OS_ANDROID)
-  if (state_ != QLatin1String("idle") || !can_switch_camera_) return;
+  if (state_ != QLatin1String("idle") || !can_switch_camera_)
+    return;
   setState(QStringLiteral("starting"));
   operation_timeout_.start(10000);
   nyx_android::native_camera_switch_facing();
@@ -148,16 +153,17 @@ void ChatVideoRecorder::switchCamera() {
 
 void ChatVideoRecorder::permissionResult(bool micOk, bool cameraOk, void* ctx) {
   auto* self = static_cast<ChatVideoRecorder*>(ctx);
-  if (!self) return;
+  if (!self)
+    return;
   QMetaObject::invokeMethod(
-      self, [self, micOk, cameraOk]() {
-        self->beginAfterPermission(micOk && cameraOk);
-      },
+      self,
+      [self, micOk, cameraOk]() { self->beginAfterPermission(micOk && cameraOk); },
       Qt::QueuedConnection);
 }
 
 void ChatVideoRecorder::beginAfterPermission(bool granted) {
-  if (state_ != QLatin1String("starting")) return;
+  if (state_ != QLatin1String("starting"))
+    return;
   if (!granted) {
     operation_timeout_.stop();
     setState(QStringLiteral("failed"),
@@ -193,11 +199,14 @@ void ChatVideoRecorder::beginAfterPermission(bool granted) {
 }
 
 void ChatVideoRecorder::onJpeg(const QByteArray& jpeg, bool front) {
-  if (!frame_provider_ || jpeg.isEmpty()) return;
+  if (!frame_provider_ || jpeg.isEmpty())
+    return;
   QImage image;
-  if (!image.loadFromData(jpeg, "JPG")) return;
+  if (!image.loadFromData(jpeg, "JPG"))
+    return;
   image = uprightPreview(std::move(image), front);
-  if (image.isNull()) return;
+  if (image.isNull())
+    return;
   frame_provider_->setLocal(image);
   ++frame_epoch_;
   emit frameChanged();
@@ -206,21 +215,23 @@ void ChatVideoRecorder::onJpeg(const QByteArray& jpeg, bool front) {
 void ChatVideoRecorder::onCameraError(const QString& message) {
   operation_timeout_.stop();
   elapsed_timer_.stop();
-  setState(QStringLiteral("failed"),
-           message.isEmpty() ? QStringLiteral("Camera failed") : message);
+  setState(QStringLiteral("failed"), message.isEmpty() ? QStringLiteral("Camera failed") : message);
 }
 
 void ChatVideoRecorder::onCameraStarted(bool front, const QString&) {
-  if (state_ != QLatin1String("starting")) return;
+  if (state_ != QLatin1String("starting"))
+    return;
   operation_timeout_.stop();
   front_camera_ = front;
   setState(QStringLiteral("idle"));
 }
 
 void ChatVideoRecorder::onRecordingStarted(const QString& path) {
-  if (state_ != QLatin1String("starting-recording")) return;
+  if (state_ != QLatin1String("starting-recording"))
+    return;
   operation_timeout_.stop();
-  if (!path.isEmpty()) output_path_ = path;
+  if (!path.isEmpty())
+    output_path_ = path;
   started_at_ms_ = QDateTime::currentMSecsSinceEpoch();
   elapsed_ms_ = 0;
   setState(QStringLiteral("recording"));
@@ -230,9 +241,9 @@ void ChatVideoRecorder::onRecordingStarted(const QString& path) {
 void ChatVideoRecorder::onRecordingStopped(const QString& path, bool success) {
   operation_timeout_.stop();
   elapsed_timer_.stop();
-  if (!path.isEmpty()) output_path_ = path;
-  const bool valid = success && elapsed_ms_ >= 700 &&
-                     QFileInfo(output_path_).isFile() &&
+  if (!path.isEmpty())
+    output_path_ = path;
+  const bool valid = success && elapsed_ms_ >= 700 && QFileInfo(output_path_).isFile() &&
                      QFileInfo(output_path_).size() > 0;
   if (!valid) {
     QFile::remove(output_path_);
@@ -258,22 +269,24 @@ void ChatVideoRecorder::onRecordingError(const QString& message) {
   QFile::remove(output_path_);
   output_path_.clear();
   setState(QStringLiteral("failed"),
-           message.isEmpty() ? QStringLiteral("Video recording failed")
-                             : message);
+           message.isEmpty() ? QStringLiteral("Video recording failed") : message);
 }
 
 void ChatVideoRecorder::setState(const QString& state, const QString& error) {
-  if (state_ == state && error_ == error) return;
+  if (state_ == state && error_ == error)
+    return;
   state_ = state;
   error_ = error;
   emit stateChanged();
 }
 
 void ChatVideoRecorder::reset(bool removeFile) {
-  if (removeFile && !output_path_.isEmpty()) QFile::remove(output_path_);
+  if (removeFile && !output_path_.isEmpty())
+    QFile::remove(output_path_);
   operation_timeout_.stop();
   elapsed_timer_.stop();
-  if (frame_provider_) frame_provider_->clear();
+  if (frame_provider_)
+    frame_provider_->clear();
   output_path_.clear();
   error_.clear();
   close_on_stop_ = false;

@@ -14,7 +14,7 @@ class ChatVideoRecorder : public QObject {
   Q_PROPERTY(int frameEpoch READ frameEpoch NOTIFY frameChanged)
   Q_PROPERTY(bool canSwitchCamera READ canSwitchCamera NOTIFY stateChanged)
 
- public:
+public:
   explicit ChatVideoRecorder(QObject* parent = nullptr);
   ~ChatVideoRecorder() override;
 
@@ -35,14 +35,16 @@ class ChatVideoRecorder : public QObject {
   Q_INVOKABLE void close();
   Q_INVOKABLE void switchCamera();
 
- signals:
+signals:
   void stateChanged();
   void elapsedChanged();
   void frameChanged();
-  void ready(const QString& path, const QString& mime,
-             const QString& displayName, const QString& mediaKind);
+  void ready(const QString& path,
+             const QString& mime,
+             const QString& displayName,
+             const QString& mediaKind);
 
- private:
+private:
   static void permissionResult(bool micOk, bool cameraOk, void* ctx);
   void beginAfterPermission(bool granted);
   void onJpeg(const QByteArray& jpeg, bool front);

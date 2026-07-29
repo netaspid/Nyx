@@ -34,27 +34,28 @@ std::vector<std::string> g_unicast_targets;
 std::string sanitize_instance(const std::string& nickname) {
   std::string out;
   for (char c : nickname) {
-    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-        c == '-') {
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
       out.push_back(c);
     } else if (c == ' ' || c == '_') {
       out.push_back('-');
     }
   }
-  if (out.empty()) out = "nyx-peer";
+  if (out.empty())
+    out = "nyx-peer";
   return out;
 }
 
 uint32_t ipv4_to_u32(const std::string& host) {
-  in_addr addr{};
-  if (inet_pton(AF_INET, host.c_str(), &addr) != 1) return 0;
+  in_addr addr {};
+  if (inet_pton(AF_INET, host.c_str(), &addr) != 1)
+    return 0;
   uint32_t v = 0;
   std::memcpy(&v, &addr, 4);
   return v;
 }
 
 std::string u32_to_ipv4(uint32_t v) {
-  in_addr addr{};
+  in_addr addr {};
   std::memcpy(&addr, &v, 4);
   char buf[64] = {};
   inet_ntop(AF_INET, &addr, buf, sizeof(buf));
@@ -78,8 +79,10 @@ ByteBuffer encode_beacon(const Profile& profile, uint16_t port, const std::strin
 }
 
 std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& from_host) {
-  if (data.size() < kMagicLen + 2 + 2 + 2 + 4) return std::nullopt;
-  if (std::memcmp(data.data(), kMagic, kMagicLen) != 0) return std::nullopt;
+  if (data.size() < kMagicLen + 2 + 2 + 2 + 4)
+    return std::nullopt;
+  if (std::memcmp(data.data(), kMagic, kMagicLen) != 0)
+    return std::nullopt;
 
   std::size_t off = kMagicLen;
   const uint16_t port = read_u16_le(data.data() + off);
@@ -90,7 +93,8 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
   off += 2;
   const uint32_t ip = read_u32_le(data.data() + off);
   off += 4;
-  if (off + inst_len + id_len > data.size()) return std::nullopt;
+  if (off + inst_len + id_len > data.size())
+    return std::nullopt;
 
   LanPeer peer;
   peer.instance.assign(reinterpret_cast<const char*>(data.data() + off), inst_len);
@@ -101,10 +105,11 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
   return peer;
 }
 
-}  // namespace
+} // namespace
 
 void add_discovery_unicast_target(const std::string& ipv4) {
-  if (ipv4.empty() || ipv4 == "0.0.0.0" || ipv4 == "127.0.0.1") return;
+  if (ipv4.empty() || ipv4 == "0.0.0.0" || ipv4 == "127.0.0.1")
+    return;
   std::lock_guard lock(g_unicast_mu);
   if (std::find(g_unicast_targets.begin(), g_unicast_targets.end(), ipv4) !=
       g_unicast_targets.end()) {
@@ -119,21 +124,23 @@ std::vector<std::string> discovery_unicast_targets() {
 }
 
 bool MdnsLan::setup_socket(UdpSocket& socket, std::string* err) {
-  return socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err,
-                                        lan_ipv4_override());
+  return socket.bind_multicast_listener(kDiscoveryGroup, kDiscoveryPort, err, lan_ipv4_override());
 }
 
-bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint16_t port,
+bool MdnsLan::send_announcement(UdpSocket& socket,
+                                const Profile& profile,
+                                uint16_t port,
                                 const std::string& host_ip,
                                 const std::vector<std::string>& unicast_hosts) {
   const auto wire = encode_beacon(profile, port, host_ip);
   socket.enable_broadcast(nullptr);
   const std::string iface = host_ip.empty() ? lan_ipv4_override() : host_ip;
-  if (!iface.empty()) socket.set_multicast_interface(iface, nullptr);
+  if (!iface.empty())
+    socket.set_multicast_interface(iface, nullptr);
   bool ok = socket.send_to(wire, kDiscoveryGroup, kDiscoveryPort);
   ok = socket.send_to(wire, "255.255.255.255", kDiscoveryPort) || ok;
   if (!iface.empty()) {
-    in_addr addr{};
+    in_addr addr {};
     if (inet_pton(AF_INET, iface.c_str(), &addr) == 1) {
       auto* b = reinterpret_cast<uint8_t*>(&addr.s_addr);
       b[3] = 255;
@@ -144,54 +151,61 @@ bool MdnsLan::send_announcement(UdpSocket& socket, const Profile& profile, uint1
   }
   // Wi‑Fi clients often miss multicast sourced from a wired host; unicast reaches them.
   for (const auto& h : unicast_hosts) {
-    if (h.empty() || h == "0.0.0.0" || h == "127.0.0.1") continue;
-    if (!iface.empty() && h == iface) continue;
+    if (h.empty() || h == "0.0.0.0" || h == "127.0.0.1")
+      continue;
+    if (!iface.empty() && h == iface)
+      continue;
     ok = socket.send_to(wire, h, kDiscoveryPort) || ok;
   }
   return ok;
 }
 
-std::optional<LanPeer> MdnsLan::parse_beacon(const ByteBuffer& data,
-                                             const std::string& from_host) {
+std::optional<LanPeer> MdnsLan::parse_beacon(const ByteBuffer& data, const std::string& from_host) {
   return decode_beacon(data, from_host);
 }
 
-MdnsLan::~MdnsLan() { stop_advertising(); }
+MdnsLan::~MdnsLan() {
+  stop_advertising();
+}
 
-void MdnsLan::start_advertising(UdpSocket socket, Profile profile, uint16_t port,
+void MdnsLan::start_advertising(UdpSocket socket,
+                                Profile profile,
+                                uint16_t port,
                                 std::string host_ip) {
   stop_advertising();
   advert_socket_ = std::move(socket);
   running_.store(true);
-  thread_ = std::thread([this, profile = std::move(profile), port,
-                         host_ip = std::move(host_ip)]() mutable {
-    while (running_.load()) {
-      std::string ip = guess_lan_ipv4();
-      if (ip.empty() || ip == "127.0.0.1" || ip == "0.0.0.0") ip = host_ip;
+  thread_ = std::thread(
+      [this, profile = std::move(profile), port, host_ip = std::move(host_ip)]() mutable {
+        while (running_.load()) {
+          std::string ip = guess_lan_ipv4();
+          if (ip.empty() || ip == "127.0.0.1" || ip == "0.0.0.0")
+            ip = host_ip;
 
-      send_announcement(advert_socket_, profile, port, ip, discovery_unicast_targets());
-      for (int i = 0; i < 10 && running_.load(); ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-    }
-  });
+          send_announcement(advert_socket_, profile, port, ip, discovery_unicast_targets());
+          for (int i = 0; i < 10 && running_.load(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          }
+        }
+      });
 }
 
 void MdnsLan::stop_advertising() {
   running_.store(false);
-  if (thread_.joinable()) thread_.join();
+  if (thread_.joinable())
+    thread_.join();
 }
 
 std::vector<LanPeer> MdnsLan::browse(UdpSocket& socket, int timeout_ms) {
   std::map<std::string, LanPeer> seen;
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
     std::string host;
     uint16_t port = 0;
     auto pkt = socket.recv_from(host, port, 200);
-    if (!pkt) continue;
+    if (!pkt)
+      continue;
     if (auto peer = decode_beacon(*pkt, host)) {
       const std::string key = peer->host + ':' + std::to_string(peer->port);
       seen[key] = *peer;
@@ -200,10 +214,12 @@ std::vector<LanPeer> MdnsLan::browse(UdpSocket& socket, int timeout_ms) {
 
   std::vector<LanPeer> out;
   out.reserve(seen.size());
-  for (auto& [_, p] : seen) out.push_back(std::move(p));
-  std::sort(out.begin(), out.end(),
-            [](const LanPeer& a, const LanPeer& b) { return a.instance < b.instance; });
+  for (auto& [_, p] : seen)
+    out.push_back(std::move(p));
+  std::sort(out.begin(), out.end(), [](const LanPeer& a, const LanPeer& b) {
+    return a.instance < b.instance;
+  });
   return out;
 }
 
-}  // namespace nyx
+} // namespace nyx

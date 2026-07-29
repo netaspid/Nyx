@@ -38,7 +38,7 @@ enum class FileKind : uint8_t {
 constexpr std::size_t kFileChunkSize = 8192;
 
 struct FileOffer {
-  FileHash hash{};
+  FileHash hash {};
   uint64_t size = 0;
   std::string name;
   std::string mime;
@@ -48,7 +48,7 @@ struct FileOffer {
 };
 
 struct FileRequest {
-  FileHash hash{};
+  FileHash hash {};
 
   ByteBuffer encode() const;
   static std::optional<FileRequest> decode(const ByteBuffer& data);
@@ -68,7 +68,7 @@ struct FileCapabilities {
 };
 
 struct FileRangeRequest {
-  FileHash hash{};
+  FileHash hash {};
   uint64_t offset = 0;
 
   ByteBuffer encode() const;
@@ -76,14 +76,14 @@ struct FileRangeRequest {
 };
 
 struct FileCancel {
-  FileHash hash{};
+  FileHash hash {};
 
   ByteBuffer encode() const;
   static std::optional<FileCancel> decode(const ByteBuffer& data);
 };
 
 struct FileChunk {
-  FileHash hash{};
+  FileHash hash {};
   uint64_t offset = 0;
   ByteBuffer data;
 
@@ -92,7 +92,7 @@ struct FileChunk {
 };
 
 struct FileComplete {
-  FileHash hash{};
+  FileHash hash {};
   uint64_t size = 0;
 
   ByteBuffer encode() const;
@@ -100,7 +100,7 @@ struct FileComplete {
 };
 
 struct FileDeny {
-  FileHash hash{};
+  FileHash hash {};
   std::string reason;
 
   ByteBuffer encode() const;
@@ -138,4 +138,4 @@ std::optional<GroupFileAccess> decode_policy_push(const ByteBuffer& data);
 
 ByteBuffer encode_policy_request();
 
-}  // namespace nyx
+} // namespace nyx

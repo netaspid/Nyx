@@ -18,19 +18,19 @@ namespace nyx {
 /** Frame type on kChatStream. */
 enum class ChatKind : uint8_t {
   Hello = 1,
-  Text = 2,   // legacy: raw UTF-8 without metadata
-  Msg = 3,    // ChatMessage without chat_id (legacy)
+  Text = 2, // legacy: raw UTF-8 without metadata
+  Msg = 3,  // ChatMessage without chat_id (legacy)
   Bye = 4,
   Ack = 5,
-  MsgV2 = 6,  // ChatMessage with chat_id
+  MsgV2 = 6, // ChatMessage with chat_id
 };
 
 /** Chat text message. */
 struct ChatMessage {
   uint64_t id = 0;
   uint64_t timestamp_ms = 0;
-  ChatId chat_id{};
-  UserId author_id{};
+  ChatId chat_id {};
+  UserId author_id {};
   std::string author;
   std::string text;
 
@@ -60,4 +60,4 @@ uint64_t next_message_id();
 /** Current UTC time in milliseconds. */
 uint64_t now_ms();
 
-}  // namespace nyx
+} // namespace nyx

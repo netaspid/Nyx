@@ -47,4 +47,4 @@ void append_profile_meta_wire(ByteBuffer& out, const ProfileMeta& meta);
 /** Parses meta at offset and advances it. */
 bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, ProfileMeta& out);
 
-}  // namespace nyx
+} // namespace nyx

@@ -7,18 +7,20 @@
 #include <QWindow>
 
 #ifdef Q_OS_WIN
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
-#  include <windows.h>
-#  include <dwmapi.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <dwmapi.h>
+#include <windows.h>
 #endif
 
 void nyxApplyNativeChromeDark(QWindow* window, bool dark) {
 #ifdef Q_OS_WIN
-  if (!window) return;
+  if (!window)
+    return;
   const HWND hwnd = reinterpret_cast<HWND>(window->winId());
-  if (!hwnd) return;
+  if (!hwnd)
+    return;
   BOOL use_dark = dark ? TRUE : FALSE;
   // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 20H1+), 19 = pre-20H1
   ::DwmSetWindowAttribute(hwnd, 20, &use_dark, sizeof(use_dark));

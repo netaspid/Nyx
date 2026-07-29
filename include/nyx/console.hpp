@@ -9,4 +9,4 @@ namespace nyx {
 /** Switches stdin/stdout to UTF-8. Call before any output on Windows. */
 void setup_console_utf8();
 
-}  // namespace nyx
+} // namespace nyx

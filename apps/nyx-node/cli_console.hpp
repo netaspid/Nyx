@@ -21,7 +21,7 @@ struct HistoryLine {
 
 /** Formatted terminal output without clashes between the network thread and stdin. */
 class CliConsole {
- public:
+public:
   explicit CliConsole(std::string self_nickname);
 
   /** Session header after connect. */
@@ -31,8 +31,10 @@ class CliConsole {
   void print_event(const std::string& text);
 
   /** Chat line. outgoing=true marks own messages. */
-  void print_message(uint64_t timestamp_ms, const std::string& author,
-                     const std::string& text, bool outgoing);
+  void print_message(uint64_t timestamp_ms,
+                     const std::string& author,
+                     const std::string& text,
+                     bool outgoing);
 
   /** Prints stored history. */
   void print_history(const std::vector<HistoryLine>& lines);
@@ -44,12 +46,13 @@ class CliConsole {
   void print_help() const;
 
   /** Connection and peer status. */
-  void print_status(const std::string& peer_nickname, const std::string& peer_endpoint,
+  void print_status(const std::string& peer_nickname,
+                    const std::string& peer_endpoint,
                     bool connected) const;
 
   const std::string& self_nickname() const { return self_nickname_; }
 
- private:
+private:
   static std::string format_time(uint64_t timestamp_ms);
   void write_line(const std::string& line);
 
@@ -57,4 +60,4 @@ class CliConsole {
   std::string self_nickname_;
 };
 
-}  // namespace nyx_node
+} // namespace nyx_node

@@ -27,14 +27,14 @@ struct PendingMessage {
   ByteBuffer wire;
   DeliveryStatus status = DeliveryStatus::Pending;
   int retries = 0;
-  std::chrono::steady_clock::time_point sent_at{};
+  std::chrono::steady_clock::time_point sent_at {};
 };
 
 /** Tracks outgoing messages and resends on Ack timeout. */
 class Outbox {
- public:
+public:
   static constexpr int kMaxRetries = 3;
-  static constexpr std::chrono::milliseconds kAckTimeout{3000};
+  static constexpr std::chrono::milliseconds kAckTimeout {3000};
 
   void track(PendingMessage pending);
 
@@ -52,8 +52,8 @@ class Outbox {
 
   std::size_t pending_count() const;
 
- private:
+private:
   std::map<uint64_t, PendingMessage> pending_;
 };
 
-}  // namespace nyx
+} // namespace nyx

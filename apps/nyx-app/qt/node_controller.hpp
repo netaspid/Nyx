@@ -1,15 +1,15 @@
 #pragma once
 
+#include "../appcore/node_service.hpp"
 #include "call_audio_io.hpp"
-#include "call_video_io.hpp"
 #include "call_frame_provider.hpp"
+#include "call_video_io.hpp"
+#include "chat_list_model.hpp"
 #include "chat_media_recorder.hpp"
 #include "chat_video_recorder.hpp"
-#include "chat_list_model.hpp"
 #include "document_viewer.hpp"
 #include "lan_peer_model.hpp"
 #include "message_model.hpp"
-#include "../appcore/node_service.hpp"
 
 #include "nyx/file_access.hpp"
 #include "nyx/file_index.hpp"
@@ -41,8 +41,8 @@ class NodeController : public QObject {
   Q_PROPERTY(int activeChatKind READ activeChatKind NOTIFY chatChanged)
   Q_PROPERTY(QString activeChatRefId READ activeChatRefId NOTIFY chatChanged)
   Q_PROPERTY(bool activeFieldIsOwner READ activeFieldIsOwner NOTIFY chatChanged)
-  Q_PROPERTY(bool autoStartOwnedHub READ autoStartOwnedHub WRITE setAutoStartOwnedHub
-                 NOTIFY networkSettingsChanged)
+  Q_PROPERTY(bool autoStartOwnedHub READ autoStartOwnedHub WRITE setAutoStartOwnedHub NOTIFY
+                 networkSettingsChanged)
   Q_PROPERTY(QString profileUserId READ profileUserIdHex NOTIFY profileChanged)
   Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
   Q_PROPERTY(bool inChat READ inChat NOTIFY chatChanged)
@@ -60,8 +60,10 @@ class NodeController : public QObject {
   Q_PROPERTY(QVariantList groupList READ groupList NOTIFY groupListChanged)
   Q_PROPERTY(QVariantList contactList READ contactList NOTIFY contactListChanged)
   Q_PROPERTY(QString rendezvous READ rendezvous WRITE setRendezvous NOTIFY rendezvousChanged)
-  Q_PROPERTY(QString rendezvousList READ rendezvousList WRITE setRendezvousList NOTIFY rendezvousChanged)
-  Q_PROPERTY(int discoveryMode READ discoveryMode WRITE setDiscoveryMode NOTIFY networkSettingsChanged)
+  Q_PROPERTY(
+      QString rendezvousList READ rendezvousList WRITE setRendezvousList NOTIFY rendezvousChanged)
+  Q_PROPERTY(
+      int discoveryMode READ discoveryMode WRITE setDiscoveryMode NOTIFY networkSettingsChanged)
   Q_PROPERTY(QString networkStatus READ networkStatus NOTIFY networkSettingsChanged)
   Q_PROPERTY(QString toast READ toast NOTIFY toastChanged)
   Q_PROPERTY(QString callState READ callState NOTIFY callChanged)
@@ -71,7 +73,8 @@ class NodeController : public QObject {
   Q_PROPERTY(bool callIsFieldRoom READ callIsFieldRoom NOTIFY callChanged)
   Q_PROPERTY(bool callMicMuted READ callMicMuted WRITE setCallMicMuted NOTIFY callChanged)
   Q_PROPERTY(bool callCameraOn READ callCameraOn WRITE setCallCameraOn NOTIFY callChanged)
-  Q_PROPERTY(bool callSpeakerphone READ callSpeakerphone WRITE setCallSpeakerphone NOTIFY callChanged)
+  Q_PROPERTY(
+      bool callSpeakerphone READ callSpeakerphone WRITE setCallSpeakerphone NOTIFY callChanged)
   Q_PROPERTY(float audioTestLevel READ audioTestLevel NOTIFY audioTestLevelChanged)
   Q_PROPERTY(bool audioTestActive READ audioTestActive NOTIFY audioTestChanged)
   Q_PROPERTY(QUrl callRemoteFrameUrl READ callRemoteFrameUrl NOTIFY callRemoteFrameChanged)
@@ -81,9 +84,10 @@ class NodeController : public QObject {
   Q_PROPERTY(QVariantList callRosterPeers READ callRosterPeers NOTIFY callVideoPeersChanged)
   Q_PROPERTY(QVariantList cameraDeviceList READ cameraDeviceList NOTIFY mediaDevicesChanged)
   Q_PROPERTY(QVariantList audioInputDeviceList READ audioInputDeviceList NOTIFY mediaDevicesChanged)
-  Q_PROPERTY(QVariantList audioOutputDeviceList READ audioOutputDeviceList NOTIFY mediaDevicesChanged)
-  Q_PROPERTY(QString selectedCameraId READ selectedCameraId WRITE setSelectedCameraId
-                 NOTIFY mediaDevicesChanged)
+  Q_PROPERTY(
+      QVariantList audioOutputDeviceList READ audioOutputDeviceList NOTIFY mediaDevicesChanged)
+  Q_PROPERTY(QString selectedCameraId READ selectedCameraId WRITE setSelectedCameraId NOTIFY
+                 mediaDevicesChanged)
   Q_PROPERTY(QString selectedAudioInputId READ selectedAudioInputId WRITE setSelectedAudioInputId
                  NOTIFY mediaDevicesChanged)
   Q_PROPERTY(QString selectedAudioOutputId READ selectedAudioOutputId WRITE setSelectedAudioOutputId
@@ -111,21 +115,26 @@ class NodeController : public QObject {
   Q_PROPERTY(QVariantList fileRemoteBrowseCrumbs READ fileRemoteBrowseCrumbs NOTIFY filesChanged)
   Q_PROPERTY(int filesSection READ filesSection WRITE setFilesSection NOTIFY filesChanged)
   Q_PROPERTY(bool canFileList READ canFileList NOTIFY fileAccessChanged)
-  Q_PROPERTY(QString fileScopeGroupId READ fileScopeGroupId WRITE setFileScopeGroupId
-                 NOTIFY filesChanged)
+  Q_PROPERTY(
+      QString fileScopeGroupId READ fileScopeGroupId WRITE setFileScopeGroupId NOTIFY filesChanged)
   Q_PROPERTY(QString fileScopeLabel READ fileScopeLabel NOTIFY filesChanged)
   Q_PROPERTY(bool fileExchangeReady READ fileExchangeReady NOTIFY filesChanged)
   Q_PROPERTY(QString fileExchangeHint READ fileExchangeHint NOTIFY filesChanged)
-  Q_PROPERTY(bool fileIndexProgressVisible READ fileIndexProgressVisible NOTIFY fileIndexProgressChanged)
-  Q_PROPERTY(int fileIndexProgressPercent READ fileIndexProgressPercent NOTIFY fileIndexProgressChanged)
-  Q_PROPERTY(QString fileIndexProgressLabel READ fileIndexProgressLabel NOTIFY fileIndexProgressChanged)
+  Q_PROPERTY(
+      bool fileIndexProgressVisible READ fileIndexProgressVisible NOTIFY fileIndexProgressChanged)
+  Q_PROPERTY(
+      int fileIndexProgressPercent READ fileIndexProgressPercent NOTIFY fileIndexProgressChanged)
+  Q_PROPERTY(
+      QString fileIndexProgressLabel READ fileIndexProgressLabel NOTIFY fileIndexProgressChanged)
   Q_PROPERTY(int mainViewMode READ mainViewMode WRITE setMainViewMode NOTIFY mainViewModeChanged)
   Q_PROPERTY(QVariantList fileRoleList READ fileRoleList NOTIFY fileAccessChanged)
-  Q_PROPERTY(QVariantList filePermissionPresetList READ filePermissionPresetList NOTIFY fileAccessChanged)
+  Q_PROPERTY(
+      QVariantList filePermissionPresetList READ filePermissionPresetList NOTIFY fileAccessChanged)
   Q_PROPERTY(QVariantList fileMemberAccess READ fileMemberAccess NOTIFY fileAccessChanged)
   Q_PROPERTY(QVariantList filePathMemberAccess READ filePathMemberAccess NOTIFY fileAccessChanged)
   Q_PROPERTY(QString filePathRoleId READ filePathRoleId NOTIFY fileAccessChanged)
-  Q_PROPERTY(QString filePathRoleInheritedFrom READ filePathRoleInheritedFrom NOTIFY fileAccessChanged)
+  Q_PROPERTY(
+      QString filePathRoleInheritedFrom READ filePathRoleInheritedFrom NOTIFY fileAccessChanged)
   Q_PROPERTY(QString fileAccessTargetLabel READ fileAccessTargetLabel NOTIFY fileAccessChanged)
   Q_PROPERTY(QString fileAccessTargetRoot READ fileAccessTargetRoot NOTIFY fileAccessChanged)
   Q_PROPERTY(QString fileAccessTargetRel READ fileAccessTargetRel NOTIFY fileAccessChanged)
@@ -143,10 +152,10 @@ class NodeController : public QObject {
   Q_PROPERTY(int permFileOpenRemote READ permFileOpenRemote CONSTANT)
   Q_PROPERTY(int permFileManageShares READ permFileManageShares CONSTANT)
   Q_PROPERTY(int permFileManageRoles READ permFileManageRoles CONSTANT)
-  Q_PROPERTY(bool connectionPanelOpen READ connectionPanelOpen WRITE setConnectionPanelOpen
-                 NOTIFY connectionPanelOpenChanged)
-  Q_PROPERTY(bool fieldInfoOpen READ fieldInfoOpen WRITE setFieldInfoOpen
-                 NOTIFY fieldInfoOpenChanged)
+  Q_PROPERTY(bool connectionPanelOpen READ connectionPanelOpen WRITE setConnectionPanelOpen NOTIFY
+                 connectionPanelOpenChanged)
+  Q_PROPERTY(
+      bool fieldInfoOpen READ fieldInfoOpen WRITE setFieldInfoOpen NOTIFY fieldInfoOpenChanged)
   Q_PROPERTY(QString fieldInfoGroupId READ fieldInfoGroupId NOTIFY fieldInfoOpenChanged)
   Q_PROPERTY(QString fieldInfoInvite READ fieldInfoInvite NOTIFY fieldInfoOpenChanged)
   Q_PROPERTY(bool fieldInfoIsOwner READ fieldInfoIsOwner NOTIFY fieldInfoOpenChanged)
@@ -155,8 +164,7 @@ class NodeController : public QObject {
   Q_PROPERTY(QString fieldInfoTags READ fieldInfoTags NOTIFY fieldInfoOpenChanged)
   Q_PROPERTY(bool fieldInfoPublicListed READ fieldInfoPublicListed NOTIFY fieldInfoOpenChanged)
   Q_PROPERTY(QVariantList fieldInfoMembers READ fieldInfoMembers NOTIFY fieldInfoOpenChanged)
-  Q_PROPERTY(bool peerInfoOpen READ peerInfoOpen WRITE setPeerInfoOpen
-                 NOTIFY peerInfoOpenChanged)
+  Q_PROPERTY(bool peerInfoOpen READ peerInfoOpen WRITE setPeerInfoOpen NOTIFY peerInfoOpenChanged)
   Q_PROPERTY(QString peerInfoUserId READ peerInfoUserId NOTIFY peerInfoOpenChanged)
   Q_PROPERTY(QString activeChatKey READ activeChatKey NOTIFY chatChanged)
   Q_PROPERTY(QString sessionSummary READ sessionSummary NOTIFY sessionsChanged)
@@ -164,15 +172,15 @@ class NodeController : public QObject {
   /** Left list mode: 0=chats, 1=friends, 2=fields. */
   Q_PROPERTY(int sidebarMode READ sidebarMode WRITE setSidebarMode NOTIFY sidebarModeChanged)
   Q_PROPERTY(QString profileBio READ profileBio WRITE setProfileBio NOTIFY profileMetaChanged)
-  Q_PROPERTY(QString profileInterests READ profileInterests WRITE setProfileInterests
-                 NOTIFY profileMetaChanged)
+  Q_PROPERTY(QString profileInterests READ profileInterests WRITE setProfileInterests NOTIFY
+                 profileMetaChanged)
   /** available | away | busy | invisible */
   Q_PROPERTY(QString profileAvailability READ profileAvailability WRITE setProfileAvailability
                  NOTIFY profileMetaChanged)
   Q_PROPERTY(QString profileAvatarPath READ profileAvatarPath NOTIFY profilePhotosChanged)
   Q_PROPERTY(QVariantList profilePhotoList READ profilePhotoList NOTIFY profilePhotosChanged)
 
- public:
+public:
   explicit NodeController(QObject* parent = nullptr);
   ~NodeController() override;
 
@@ -263,8 +271,7 @@ class NodeController : public QObject {
   bool canFileUpload() const;
   bool canFileDownload() const;
   bool canFileDownloadAt(const QString& rootPath, const QString& relativePath) const;
-  Q_INVOKABLE bool canDownloadFolderAt(const QString& rootPath,
-                                       const QString& relativePath) const;
+  Q_INVOKABLE bool canDownloadFolderAt(const QString& rootPath, const QString& relativePath) const;
   bool canFileOpenRemote() const;
   bool canFileOpenRemoteAt(const QString& rootPath, const QString& relativePath) const;
   bool canManageFileShares() const;
@@ -309,10 +316,12 @@ class NodeController : public QObject {
   void setNickname(const QString& v);
 
   Q_INVOKABLE void refreshAccountList();
-  Q_INVOKABLE bool createAccount(const QString& nickname, const QString& password,
-                                 const QString& confirmPassword, bool rememberMe = false);
-  Q_INVOKABLE bool unlockAccount(const QString& accountId, const QString& password,
+  Q_INVOKABLE bool createAccount(const QString& nickname,
+                                 const QString& password,
+                                 const QString& confirmPassword,
                                  bool rememberMe = false);
+  Q_INVOKABLE bool
+  unlockAccount(const QString& accountId, const QString& password, bool rememberMe = false);
   Q_INVOKABLE bool tryUnlockRemembered(const QString& accountId);
   Q_INVOKABLE bool resetPasswordWithRecovery(const QString& accountId,
                                              const QString& recoveryPhrase,
@@ -354,7 +363,8 @@ class NodeController : public QObject {
   Q_INVOKABLE void createFileRole(const QString& name, int permissions);
   Q_INVOKABLE void updateFileRole(const QString& roleId, const QString& name, int permissions);
   Q_INVOKABLE void deleteFileRole(const QString& roleId);
-  Q_INVOKABLE void openRemoteFile(const QString& hashHex, const QString& fileName = {},
+  Q_INVOKABLE void openRemoteFile(const QString& hashHex,
+                                  const QString& fileName = {},
                                   const QString& rootPath = {},
                                   const QString& relativePath = {});
   Q_INVOKABLE void addIndexedFolder(const QString& path);
@@ -380,13 +390,17 @@ class NodeController : public QObject {
   Q_INVOKABLE void removeIndexedFolder(const QString& path);
   Q_INVOKABLE void rescanIndexedFolder(const QString& path);
   Q_INVOKABLE void refreshRemoteFileList();
-  Q_INVOKABLE void downloadFile(const QString& hashHex, const QString& fileName = {},
+  Q_INVOKABLE void downloadFile(const QString& hashHex,
+                                const QString& fileName = {},
                                 const QString& rootPath = {},
                                 const QString& relativePath = {});
   Q_INVOKABLE void downloadRemoteFolder(const QString& rootPath, const QString& relativePath);
   Q_INVOKABLE void sendFileByHash(const QString& hashHex);
-  Q_INVOKABLE void openConversation(const QString& key, int kind, const QString& refId,
-                                    const QString& title, const QString& lastSeen);
+  Q_INVOKABLE void openConversation(const QString& key,
+                                    int kind,
+                                    const QString& refId,
+                                    const QString& title,
+                                    const QString& lastSeen);
   Q_INVOKABLE void searchMessages(const QString& query);
   Q_INVOKABLE void showWindow();
   Q_INVOKABLE void connectToken(const QString& tokenHex);
@@ -456,15 +470,14 @@ class NodeController : public QObject {
   /** Resolve nickname for a user id hex (self / contact / field member). */
   Q_INVOKABLE QString userDisplayName(const QString& userIdHex) const;
   /** Open built-in in-app media player overlay. */
-  Q_INVOKABLE void openInAppMedia(const QString& path, const QString& mime = {},
-                                  const QString& title = {});
+  Q_INVOKABLE void
+  openInAppMedia(const QString& path, const QString& mime = {}, const QString& title = {});
   Q_INVOKABLE void closeInAppMedia();
   Q_INVOKABLE QString mediaLocalPath(const QString& hashHex) const;
   Q_INVOKABLE void ensureMediaAvailable(const QString& hashHex);
   Q_INVOKABLE bool isImageMedia(const QString& hashHex) const;
   Q_INVOKABLE QString fileLocalPath(const QString& hashHex) const;
-  Q_INVOKABLE void ensureFileAvailable(const QString& hashHex,
-                                       const QString& fileName);
+  Q_INVOKABLE void ensureFileAvailable(const QString& hashHex, const QString& fileName);
   Q_INVOKABLE QString fileTextPreview(const QString& hashHex) const;
   /** Open local path with system viewer (FileProvider on Android). */
   Q_INVOKABLE bool openLocalFile(const QString& path, const QString& mime = {});
@@ -494,22 +507,24 @@ class NodeController : public QObject {
   Q_INVOKABLE void retryFileTransfer(const QString& hashHex);
   Q_INVOKABLE void moveFileTransfer(const QString& hashHex, int delta);
   Q_INVOKABLE void importFiles();
-  Q_INVOKABLE void exportFile(const QString& hashHex,
-                              const QString& fileName,
-                              const QString& mime);
-  Q_INVOKABLE void createGroup(const QString& name, const QString& description = {},
-                               const QString& direction = {}, const QString& tags = {},
+  Q_INVOKABLE void exportFile(const QString& hashHex, const QString& fileName, const QString& mime);
+  Q_INVOKABLE void createGroup(const QString& name,
+                               const QString& description = {},
+                               const QString& direction = {},
+                               const QString& tags = {},
                                bool publicListed = false);
-  Q_INVOKABLE void updateGroupMeta(const QString& groupIdHex, const QString& description,
-                                   const QString& direction, const QString& tags,
+  Q_INVOKABLE void updateGroupMeta(const QString& groupIdHex,
+                                   const QString& description,
+                                   const QString& direction,
+                                   const QString& tags,
                                    bool publicListed);
   Q_INVOKABLE QVariantMap contactInfo(const QString& userIdHex) const;
   /** Removes a chat or field from the local list (dm:/group:/chat: key). */
   Q_INVOKABLE void removeConversation(const QString& key);
   Q_INVOKABLE void removeFieldMember(const QString& groupIdHex, const QString& userIdHex);
   /** role: "host" | "member" — assigns the field call host. */
-  Q_INVOKABLE void setFieldMemberRole(const QString& groupIdHex, const QString& userIdHex,
-                                      const QString& role);
+  Q_INVOKABLE void
+  setFieldMemberRole(const QString& groupIdHex, const QString& userIdHex, const QString& role);
   Q_INVOKABLE void startFieldHub(const QString& groupIdHex);
   Q_INVOKABLE void joinField(const QString& inviteHex);
   Q_INVOKABLE void connectActiveField();
@@ -518,7 +533,7 @@ class NodeController : public QObject {
   /** Syncs the system title bar (Windows) with the UI theme. */
   Q_INVOKABLE void setNativeChromeDark(bool dark);
 
- signals:
+signals:
   void sessionUnlockedChanged();
   void accountGateChanged();
   void profileChanged();
@@ -559,15 +574,16 @@ class NodeController : public QObject {
   void requestCloseToTray();
   void showMainWindow();
 
- private:
-  static void chatCapturePermissionCallback(bool micOk, bool cameraOk,
-                                            void* ctx);
+private:
+  static void chatCapturePermissionCallback(bool micOk, bool cameraOk, void* ctx);
   void wireCallbacks();
   void setStatus(const QString& text);
   void showToast(const QString& text, bool isError = false);
   QString normalizeInviteHex(const QString& hex) const;
-  void enterChat(const QString& peerName, const QString& connectionLabel = {},
-                 int kind = 0, const QString& refId = {});
+  void enterChat(const QString& peerName,
+                 const QString& connectionLabel = {},
+                 int kind = 0,
+                 const QString& refId = {});
   void endLiveSession();
   void showGroupInView(const QString& groupIdHex);
   void loadStoredHistory(int kind, const QString& refId, const QString& convKey);
@@ -619,7 +635,7 @@ class NodeController : public QObject {
   // Encode/decode off the GUI thread — Camera2 HAL already runs on nyx-camera2.
   QThread call_video_thread_;
   CallVideoIo call_video_;
-  CallFrameProvider* call_frames_ = nullptr;  // owned by QQmlEngine
+  CallFrameProvider* call_frames_ = nullptr; // owned by QQmlEngine
   bool call_video_slots_wired_ = false;
   QUrl call_remote_frame_url_;
   QUrl call_local_frame_url_;
@@ -719,7 +735,7 @@ class NodeController : public QObject {
   int file_index_progress_percent_ = 0;
   QString file_index_progress_label_;
   int file_index_files_scanned_ = 0;
-  std::atomic<bool> file_index_busy_{false};
+  std::atomic<bool> file_index_busy_ {false};
   QVariantList file_role_list_;
   QVariantList file_permission_preset_list_;
   QVariantList file_member_access_;

@@ -24,7 +24,7 @@ EndpointHint make_hint(const std::string& host, uint16_t port);
 
 /** Bootstrap server client: register and lookup of an invite token. */
 class RendezvousClient {
- public:
+public:
   RendezvousClient(UdpSocket socket, std::string server_host, uint16_t server_port);
 
   /** Publishes the token and the current node UDP address. */
@@ -35,7 +35,7 @@ class RendezvousClient {
 
   UdpSocket& socket() { return socket_; }
 
- private:
+private:
   bool send_msg(PacketType type, const ByteBuffer& payload);
 
   UdpSocket socket_;
@@ -45,7 +45,7 @@ class RendezvousClient {
 
 /** Full P2P connection to one peer. */
 class Connection {
- public:
+public:
   Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port);
 
   /** Outgoing connection: handshake initiator. */
@@ -55,9 +55,11 @@ class Connection {
                                                      int timeout_ms = 15000);
 
   /** Incoming: responder; first_packet is the already received HandshakeInit. */
-  static std::optional<Connection> accept_responder(
-      UdpSocket socket, const std::string& peer_host, uint16_t peer_port,
-      const ByteBuffer* first_packet, int timeout_ms = 15000);
+  static std::optional<Connection> accept_responder(UdpSocket socket,
+                                                    const std::string& peer_host,
+                                                    uint16_t peer_port,
+                                                    const ByteBuffer* first_packet,
+                                                    int timeout_ms = 15000);
 
   ConnectionState state() const { return state_; }
 
@@ -66,7 +68,6 @@ class Connection {
 
   /** Polls the network, keep-alive ping, peer timeout check. @return false when the peer is dead. */
   bool drive();
-
 
   /** Sends an arbitrary payload on a logical stream. */
   bool send_payload(uint32_t stream_id, const ByteBuffer& data);
@@ -101,7 +102,7 @@ class Connection {
   /** Keep-alive without reading the socket (the hub dispatches recv itself). */
   bool drive_without_recv();
 
- private:
+private:
   friend class PendingConnection;
   Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port, Session session);
 
@@ -125,8 +126,8 @@ class Connection {
   std::optional<Session> session_;
   ReliableSession reliable_;
   Multiplexer mux_;
-  std::chrono::steady_clock::time_point last_peer_activity_{};
-  std::chrono::steady_clock::time_point last_ping_sent_{};
+  std::chrono::steady_clock::time_point last_peer_activity_ {};
+  std::chrono::steady_clock::time_point last_ping_sent_ {};
   bool peer_alive_ = true;
   std::deque<ByteBuffer> outbound_wires_;
   std::deque<ByteBuffer> realtime_inbox_;
@@ -138,8 +139,10 @@ class Connection {
  * Never calls recv_from; the socket owner feeds packets via feed_wire.
  */
 class PendingConnection {
- public:
-  PendingConnection(UdpSocket socket, std::string peer_host, uint16_t peer_port,
+public:
+  PendingConnection(UdpSocket socket,
+                    std::string peer_host,
+                    uint16_t peer_port,
                     HandshakeRole role);
   ~PendingConnection() = default;
 
@@ -160,7 +163,7 @@ class PendingConnection {
   /** Takes the Established Connection (only after completion). */
   std::optional<Connection> take();
 
- private:
+private:
   bool send_hs(PacketType type, const ByteBuffer& payload);
   bool apply_payload(const ByteBuffer& hs_payload);
 
@@ -173,4 +176,4 @@ class PendingConnection {
   bool started_ = false;
 };
 
-}  // namespace nyx
+} // namespace nyx

@@ -13,14 +13,13 @@ class ChatMediaRecorder : public QObject {
   Q_PROPERTY(qint64 elapsedMs READ elapsedMs NOTIFY elapsedChanged)
   Q_PROPERTY(QString error READ error NOTIFY stateChanged)
 
- public:
+public:
   explicit ChatMediaRecorder(QObject* parent = nullptr);
   ~ChatMediaRecorder() override;
 
   QString state() const { return state_; }
   bool recording() const {
-    return state_ == QLatin1String("starting") ||
-           state_ == QLatin1String("recording") ||
+    return state_ == QLatin1String("starting") || state_ == QLatin1String("recording") ||
            state_ == QLatin1String("stopping");
   }
   qint64 elapsedMs() const { return elapsed_ms_; }
@@ -30,20 +29,22 @@ class ChatMediaRecorder : public QObject {
   Q_INVOKABLE void stopVoice(bool send);
   Q_INVOKABLE void cancel();
 
- signals:
+signals:
   void stateChanged();
   void elapsedChanged();
-  void ready(const QString& path, const QString& mime,
-             const QString& displayName, const QString& mediaKind);
+  void ready(const QString& path,
+             const QString& mime,
+             const QString& displayName,
+             const QString& mediaKind);
   void startWorker(const QString& outputPath);
   void stopWorker();
 
- private slots:
+private slots:
   void onWorkerStarted();
   void onWorkerStopped(const QString& actualPath);
   void onWorkerFailed(const QString& message);
 
- private:
+private:
   static void permissionResult(bool micOk, bool cameraOk, void* ctx);
   void beginAfterPermission(bool granted);
   void setState(const QString& state, const QString& error = {});

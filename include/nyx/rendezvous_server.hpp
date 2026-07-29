@@ -17,14 +17,14 @@ namespace nyx {
 struct RendezvousServerConfig {
   std::string bind_host = "0.0.0.0";
   uint16_t bind_port = 3478;
-  std::chrono::minutes entry_ttl{5};
+  std::chrono::minutes entry_ttl {5};
   /** Max register+lookup per minute per IP (0 = unlimited). */
   std::uint32_t rate_limit_per_minute = 120;
 };
 
 /** In-memory registry with TTL and rate limiting. */
 class RendezvousRegistry {
- public:
+public:
   explicit RendezvousRegistry(RendezvousServerConfig config);
 
   /** Handles one client UDP payload; returns the wire reply or empty. */
@@ -33,7 +33,7 @@ class RendezvousRegistry {
 
   std::size_t entry_count() const { return registry_.size(); }
 
- private:
+private:
   struct Entry {
     EndpointHint hint;
     std::chrono::steady_clock::time_point expires;
@@ -47,4 +47,4 @@ class RendezvousRegistry {
       rate_buckets_;
 };
 
-}  // namespace nyx
+} // namespace nyx

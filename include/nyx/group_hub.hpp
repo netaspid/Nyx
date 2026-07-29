@@ -6,11 +6,11 @@
 
 #include "nyx/call_proto.hpp"
 #include "nyx/connection.hpp"
-#include "nyx/group.hpp"
-#include "nyx/identity.hpp"
 #include "nyx/file_access.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_transfer.hpp"
+#include "nyx/group.hpp"
+#include "nyx/identity.hpp"
 #include "nyx/message_store.hpp"
 #include "nyx/messaging.hpp"
 #include "nyx/outbox.hpp"
@@ -29,7 +29,8 @@ namespace nyx {
 struct UserIdHash {
   std::size_t operator()(const UserId& id) const {
     std::size_t h = 0;
-    for (uint8_t b : id) h = h * 31 + b;
+    for (uint8_t b : id)
+      h = h * 31 + b;
     return h;
   }
 };
@@ -37,20 +38,18 @@ struct UserIdHash {
 /** Member session on the hub. */
 struct HubMember {
   Connection connection;
-  UserId user_id{};
+  UserId user_id {};
   std::string nickname;
   bool joined = false;
 };
 
 /** Central field node: relays MsgV2 to all members. */
 class GroupHub {
- public:
+public:
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
-  using DeliveryCallback =
-      std::function<void(uint64_t message_id, DeliveryStatus status)>;
+  using DeliveryCallback = std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
-  using CallFrameCallback =
-      std::function<void(const UserId& from, const ByteBuffer& frame)>;
+  using CallFrameCallback = std::function<void(const UserId& from, const ByteBuffer& frame)>;
 
   GroupHub(UdpSocket socket, Profile owner, GroupRecord group);
 
@@ -60,8 +59,7 @@ class GroupHub {
   bool send_message(const std::string& text);
 
   bool send_call_frame(const ByteBuffer& frame, const UserId* skip_user = nullptr);
-  void distribute_call_mesh_intros(const CallId& call_id,
-                                   const std::vector<UserId>& participants);
+  void distribute_call_mesh_intros(const CallId& call_id, const std::vector<UserId>& participants);
 
   bool send_realtime_all(const ByteBuffer& data);
   /** Relays member realtime to others; on_local(from, raw) for local decode. */
@@ -75,8 +73,8 @@ class GroupHub {
   void set_on_call_frame(CallFrameCallback cb) { on_call_frame_ = std::move(cb); }
 
   /** Index, scope and ACL for kBulkStream on member connections. */
-  void attach_files(FileIndex& index, const GroupId& share_scope,
-                    FileAccessStore* access = nullptr);
+  void
+  attach_files(FileIndex& index, const GroupId& share_scope, FileAccessStore* access = nullptr);
 
   /** Updates a non-owner member role and broadcasts MemberJoined with it. */
   bool set_member_role(const UserId& user_id, GroupRole role);
@@ -100,8 +98,10 @@ class GroupHub {
   void broadcast_file_access_policy();
 
   /** Updates meta in group_, persists it and sends GroupMeta to all joined. */
-  bool publish_meta(const std::string& description, const std::string& direction,
-                    const std::string& tags, GroupVisibility visibility);
+  bool publish_meta(const std::string& description,
+                    const std::string& direction,
+                    const std::string& tags,
+                    GroupVisibility visibility);
   /** Sends the current meta to one member (after JoinAck). */
   void send_meta_to(HubMember& member);
   void broadcast_meta();
@@ -109,11 +109,13 @@ class GroupHub {
   /** Field share-root catalog filtered by ACL (no recursive file dump). */
   std::vector<FileEntry> catalog_for(const UserId& requester) const;
   /** One level inside a share root (subfolder markers + files). */
-  std::vector<FileEntry> catalog_level_for(const UserId& requester, const std::string& root_path,
-                                          const std::string& parent_rel) const;
+  std::vector<FileEntry> catalog_level_for(const UserId& requester,
+                                           const std::string& root_path,
+                                           const std::string& parent_rel) const;
 
   /** Copies a file from the local hub index to dest_path, verifying the hash. */
-  bool download_local_file(const FileHash& hash, const std::string& dest_path,
+  bool download_local_file(const FileHash& hash,
+                           const std::string& dest_path,
                            std::string* saved_path = nullptr) const;
 
   /** Asks a live member provider for a file (hub owner download via member link). */
@@ -129,7 +131,7 @@ class GroupHub {
     on_file_progress_ = std::move(cb);
   }
 
- private:
+private:
   void send_file_access_policy(HubMember& member);
   HubMember* find_member(const std::string& host, uint16_t port);
   bool try_accept(const std::string& host, uint16_t port, const ByteBuffer& first_packet);
@@ -147,13 +149,15 @@ class GroupHub {
   std::vector<FileEntry> merged_field_entries_for(const UserId& requester) const;
   HubMember* find_hash_provider(const FileHash& hash);
   void rebuild_hash_providers();
-  void relay_file_request(HubMember& provider, HubMember& requester,
-                          const FileHash& hash, const ByteBuffer& request);
+  void relay_file_request(HubMember& provider,
+                          HubMember& requester,
+                          const FileHash& hash,
+                          const ByteBuffer& request);
 
   UdpSocket socket_;
   Profile owner_;
   GroupRecord group_;
-  ChatId chat_id_{};
+  ChatId chat_id_ {};
   MessageStore store_;
   std::vector<HubMember> members_;
 
@@ -168,7 +172,7 @@ class GroupHub {
 
   FileIndex* file_index_ = nullptr;
   FileAccessStore* file_access_ = nullptr;
-  GroupId file_scope_{};
+  GroupId file_scope_ {};
   std::unordered_map<HubMember*, std::unique_ptr<FileTransferService>> file_services_;
   std::unordered_map<UserId, std::vector<FileEntry>, UserIdHash> member_catalog_;
   std::unordered_map<UserId, std::vector<std::string>, UserIdHash> member_roots_;
@@ -178,9 +182,9 @@ class GroupHub {
   struct FileRelay {
     HubMember* requester = nullptr;
     HubMember* provider = nullptr;
-    FileHash hash{};
+    FileHash hash {};
   };
   std::optional<FileRelay> active_relay_;
 };
 
-}  // namespace nyx
+} // namespace nyx

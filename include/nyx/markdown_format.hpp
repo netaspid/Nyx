@@ -63,7 +63,6 @@ std::string table_to_html(const std::string& table_src);
  * fence, code, spoiler, links (http + nyx-user:), **bold**, __u__, ~~s~~, *i*,
  * > quote, # headings, lists, ---, $inline math$.
  */
-std::string markdown_to_html(const std::string& src,
-                             const std::set<int>& revealed_spoilers = {});
+std::string markdown_to_html(const std::string& src, const std::set<int>& revealed_spoilers = {});
 
-}  // namespace nyx
+} // namespace nyx

@@ -11,26 +11,28 @@ void Outbox::track(PendingMessage pending) {
 
 bool Outbox::on_ack(uint64_t message_id) {
   const auto it = pending_.find(message_id);
-  if (it == pending_.end()) return false;
+  if (it == pending_.end())
+    return false;
   it->second.status = DeliveryStatus::Delivered;
   pending_.erase(it);
   return true;
 }
 
-std::vector<uint64_t> Outbox::due_for_retry(
-    std::chrono::steady_clock::time_point now) const {
+std::vector<uint64_t> Outbox::due_for_retry(std::chrono::steady_clock::time_point now) const {
   std::vector<uint64_t> ids;
   for (const auto& [id, msg] : pending_) {
-    if (msg.status != DeliveryStatus::Pending) continue;
-    if (now - msg.sent_at >= kAckTimeout) ids.push_back(id);
+    if (msg.status != DeliveryStatus::Pending)
+      continue;
+    if (now - msg.sent_at >= kAckTimeout)
+      ids.push_back(id);
   }
   return ids;
 }
 
-bool Outbox::mark_retried(uint64_t message_id,
-                          std::chrono::steady_clock::time_point now) {
+bool Outbox::mark_retried(uint64_t message_id, std::chrono::steady_clock::time_point now) {
   const auto it = pending_.find(message_id);
-  if (it == pending_.end()) return false;
+  if (it == pending_.end())
+    return false;
   ++it->second.retries;
   it->second.sent_at = now;
   if (it->second.retries >= kMaxRetries) {
@@ -43,7 +45,8 @@ bool Outbox::mark_retried(uint64_t message_id,
 
 std::optional<DeliveryStatus> Outbox::status(uint64_t message_id) const {
   const auto it = pending_.find(message_id);
-  if (it == pending_.end()) return std::nullopt;
+  if (it == pending_.end())
+    return std::nullopt;
   return it->second.status;
 }
 
@@ -52,6 +55,8 @@ const PendingMessage* Outbox::find(uint64_t message_id) const {
   return it == pending_.end() ? nullptr : &it->second;
 }
 
-std::size_t Outbox::pending_count() const { return pending_.size(); }
+std::size_t Outbox::pending_count() const {
+  return pending_.size();
+}
 
-}  // namespace nyx
+} // namespace nyx

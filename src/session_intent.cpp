@@ -17,24 +17,28 @@ namespace {
 
 std::string kind_to_str(SessionIntentKind k) {
   switch (k) {
-    case SessionIntentKind::GroupHub:
-      return "hub";
-    case SessionIntentKind::GroupJoin:
-      return "join";
-    default:
-      return "dm";
+  case SessionIntentKind::GroupHub:
+    return "hub";
+  case SessionIntentKind::GroupJoin:
+    return "join";
+  default:
+    return "dm";
   }
 }
 
 SessionIntentKind kind_from_str(const std::string& s) {
-  if (s == "hub") return SessionIntentKind::GroupHub;
-  if (s == "join") return SessionIntentKind::GroupJoin;
+  if (s == "hub")
+    return SessionIntentKind::GroupHub;
+  if (s == "join")
+    return SessionIntentKind::GroupJoin;
   return SessionIntentKind::Direct;
 }
 
-std::string dm_inbox_path() { return data_dir() + "/dm_inbox.token"; }
+std::string dm_inbox_path() {
+  return data_dir() + "/dm_inbox.token";
+}
 
-}  // namespace
+} // namespace
 
 std::string default_session_intents_path() {
   return data_dir() + "/session_intents.json";
@@ -46,7 +50,8 @@ SessionIntentStore::SessionIntentStore(std::string path)
 bool SessionIntentStore::load() {
   intents_.clear();
   std::ifstream in(path_, std::ios::binary);
-  if (!in) return true;
+  if (!in)
+    return true;
   std::ostringstream ss;
   ss << in.rdbuf();
   const std::string json = ss.str();
@@ -55,16 +60,22 @@ bool SessionIntentStore::load() {
   while ((pos = json.find("\"key\":\"", pos)) != std::string::npos) {
     const auto obj_start = json.rfind('{', pos);
     const auto obj_end = json.find('}', pos);
-    if (obj_start == std::string::npos || obj_end == std::string::npos) break;
+    if (obj_start == std::string::npos || obj_end == std::string::npos)
+      break;
     const std::string obj = json.substr(obj_start, obj_end - obj_start + 1);
     SessionIntent intent;
-    if (auto k = json_get_string(obj, "key")) intent.key = *k;
-    if (auto r = json_get_string(obj, "ref")) intent.ref_id_hex = *r;
-    if (auto inv = json_get_string(obj, "invite")) intent.invite_hex = *inv;
-    if (auto kind = json_get_string(obj, "kind")) intent.kind = kind_from_str(*kind);
+    if (auto k = json_get_string(obj, "key"))
+      intent.key = *k;
+    if (auto r = json_get_string(obj, "ref"))
+      intent.ref_id_hex = *r;
+    if (auto inv = json_get_string(obj, "invite"))
+      intent.invite_hex = *inv;
+    if (auto kind = json_get_string(obj, "kind"))
+      intent.kind = kind_from_str(*kind);
     intent.enabled = json_get_bool(obj, "enabled").value_or(true);
     intent.updated_ms = json_get_u64(obj, "updated");
-    if (!intent.key.empty()) intents_.push_back(std::move(intent));
+    if (!intent.key.empty())
+      intents_.push_back(std::move(intent));
     pos = obj_end;
   }
   return true;
@@ -73,10 +84,12 @@ bool SessionIntentStore::load() {
 bool SessionIntentStore::save() const {
   ensure_data_dir();
   std::ofstream out(path_, std::ios::binary | std::ios::trunc);
-  if (!out) return false;
+  if (!out)
+    return false;
   out << "{\"v\":1,\"intents\":[";
   for (std::size_t i = 0; i < intents_.size(); ++i) {
-    if (i > 0) out << ',';
+    if (i > 0)
+      out << ',';
     const auto& it = intents_[i];
     out << "{\"key\":\"" << json_escape(it.key) << "\",\"kind\":\"" << kind_to_str(it.kind)
         << "\",\"ref\":\"" << json_escape(it.ref_id_hex) << "\",\"invite\":\""
@@ -120,7 +133,8 @@ void SessionIntentStore::enable(SessionIntent intent) {
 
 bool SessionIntentStore::is_enabled(const std::string& key) const {
   for (const auto& it : intents_) {
-    if (it.key == key) return it.enabled;
+    if (it.key == key)
+      return it.enabled;
   }
   // No record: never auto-start the session (only after an explicit join/enable).
   return false;
@@ -128,7 +142,8 @@ bool SessionIntentStore::is_enabled(const std::string& key) const {
 
 const SessionIntent* SessionIntentStore::find(const std::string& key) const {
   for (const auto& it : intents_) {
-    if (it.key == key) return &it;
+    if (it.key == key)
+      return &it;
   }
   return nullptr;
 }
@@ -149,15 +164,17 @@ bool load_or_create_dm_inbox_token(InviteToken& out) {
   }
   random_bytes(out.data(), out.size());
   std::ofstream file(path, std::ios::trunc);
-  if (!file) return false;
+  if (!file)
+    return false;
   file << to_hex(out.data(), out.size()) << '\n';
   return static_cast<bool>(file);
 }
 
 std::string dm_inbox_token_hex() {
-  InviteToken token{};
-  if (!load_or_create_dm_inbox_token(token)) return {};
+  InviteToken token {};
+  if (!load_or_create_dm_inbox_token(token))
+    return {};
   return to_hex(token.data(), token.size());
 }
 
-}  // namespace nyx
+} // namespace nyx

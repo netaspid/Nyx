@@ -33,13 +33,14 @@ struct CallVideoFragHeader {
 };
 
 /** Splits an AV1 OBU buffer into fragments <= max_payload (with header). */
-std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id, bool keyframe,
+std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id,
+                                           bool keyframe,
                                            const ByteBuffer& encoded,
                                            std::size_t max_payload);
 
 /** Reassembles fragments of one frame_id. */
 class CallVideoReassembler {
- public:
+public:
   struct Assembled {
     ByteBuffer data;
     bool keyframe = false;
@@ -48,7 +49,7 @@ class CallVideoReassembler {
   /** @return the full frame once all fragments arrived. */
   std::optional<Assembled> push(const ByteBuffer& frag_payload);
 
- private:
+private:
   uint16_t cur_id_ = 0;
   uint8_t expected_ = 0;
   bool keyframe_ = false;
@@ -57,11 +58,11 @@ class CallVideoReassembler {
   ByteBuffer parity_;
   std::size_t total_size_ = 0;
   bool active_ = false;
-  std::chrono::steady_clock::time_point started_{};
+  std::chrono::steady_clock::time_point started_ {};
 };
 
 class Av1Encoder {
- public:
+public:
   Av1Encoder();
   ~Av1Encoder();
   Av1Encoder(const Av1Encoder&) = delete;
@@ -69,11 +70,11 @@ class Av1Encoder {
 
   bool ok() const { return ok_; }
   /** I420 (width*height*3/2) → AV1 OBU bytes. */
-  std::optional<ByteBuffer> encode_i420(const uint8_t* i420, int width, int height,
-                                        bool force_keyframe = false);
+  std::optional<ByteBuffer>
+  encode_i420(const uint8_t* i420, int width, int height, bool force_keyframe = false);
 
- private:
-  void* codec_ = nullptr;  // aom_codec_ctx_t*
+private:
+  void* codec_ = nullptr; // aom_codec_ctx_t*
   bool ok_ = false;
   int width_ = 0;
   int height_ = 0;
@@ -81,7 +82,7 @@ class Av1Encoder {
 };
 
 class Av1Decoder {
- public:
+public:
   Av1Decoder();
   ~Av1Decoder();
   Av1Decoder(const Av1Decoder&) = delete;
@@ -96,9 +97,9 @@ class Av1Decoder {
   };
   std::optional<Frame> decode(const uint8_t* data, std::size_t len);
 
- private:
+private:
   void* codec_ = nullptr;
   bool ok_ = false;
 };
 
-}  // namespace nyx
+} // namespace nyx

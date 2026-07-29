@@ -1,8 +1,8 @@
 #include "node_service.hpp"
 
-#include "nyx/identity.hpp"
-#include "nyx/group.hpp"
 #include "nyx/file_index.hpp"
+#include "nyx/group.hpp"
+#include "nyx/identity.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/session_intent.hpp"
 
@@ -42,7 +42,8 @@ static void test_node_service_create_group() {
   assert(!groups.empty());
   bool found = false;
   for (const auto& g : groups) {
-    if (nyx::GroupStore::group_id_hex(g.id) == got_id) found = true;
+    if (nyx::GroupStore::group_id_hex(g.id) == got_id)
+      found = true;
   }
   assert(found);
   std::cout << "node service create group ok\n";
@@ -62,9 +63,12 @@ static void test_chat_media_import_directory() {
     std::ofstream out(source, std::ios::binary | std::ios::trunc);
     out << "voice-payload";
   }
-  auto entry = svc.import_file_object(
-      source, "voice-message.m4a", "audio/mp4", {}, {},
-      "Медиа/Test Chat (12345678)/Голосовые сообщения");
+  auto entry = svc.import_file_object(source,
+                                      "voice-message.m4a",
+                                      "audio/mp4",
+                                      {},
+                                      {},
+                                      "Медиа/Test Chat (12345678)/Голосовые сообщения");
   assert(entry);
   assert(entry->relative_path.find("Медиа/") == 0);
   assert(entry->mime == "audio/mp4");
@@ -119,8 +123,10 @@ static void test_multi_session_hubs_parallel() {
   bool has_a = false;
   bool has_b = false;
   for (const auto& s : svc.list_sessions()) {
-    if (s.id == nyx_app::make_group_session_id(a)) has_a = true;
-    if (s.id == nyx_app::make_group_session_id(b)) has_b = true;
+    if (s.id == nyx_app::make_group_session_id(a))
+      has_a = true;
+    if (s.id == nyx_app::make_group_session_id(b))
+      has_b = true;
   }
   assert(has_a && has_b);
   svc.stop_session(nyx_app::make_group_session_id(a));

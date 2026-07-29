@@ -15,20 +15,18 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <string>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace nyx {
 
-std::vector<UserId> select_call_relays(
-    std::vector<std::pair<UserId, uint16_t>> candidates,
-    std::size_t participant_count);
-std::vector<UserId> call_relay_targets(const UserId& leaf,
-                                       const std::vector<UserId>& relays);
+std::vector<UserId> select_call_relays(std::vector<std::pair<UserId, uint16_t>> candidates,
+                                       std::size_t participant_count);
+std::vector<UserId> call_relay_targets(const UserId& leaf, const std::vector<UserId>& relays);
 
 class CallMesh {
- public:
+public:
   using RealtimeCallback = std::function<void(const UserId& from, ByteBuffer frame)>;
 
   CallMesh() = default;
@@ -58,15 +56,15 @@ class CallMesh {
   std::size_t established_count() const;
   std::string local_host_guess() const;
 
- private:
+private:
   struct PeerLink {
     CallPeerEndpoint ep;
     std::unique_ptr<PendingConnection> pending;
     std::unique_ptr<Connection> conn;
     bool initiator_attempted = false;
-    std::chrono::steady_clock::time_point pending_since{};
-    std::chrono::steady_clock::time_point last_punch{};
-    std::chrono::steady_clock::time_point last_connect_try{};
+    std::chrono::steady_clock::time_point pending_since {};
+    std::chrono::steady_clock::time_point last_punch {};
+    std::chrono::steady_clock::time_point last_connect_try {};
   };
 
   static bool self_is_initiator(const UserId& self, const UserId& peer);
@@ -76,11 +74,11 @@ class CallMesh {
 
   mutable std::mutex mutex_;
   bool active_ = false;
-  CallId call_id_{};
-  UserId self_{};
+  CallId call_id_ {};
+  UserId self_ {};
   UdpSocket socket_;
   std::map<UserId, PeerLink> peers_;
   RealtimeCallback on_realtime_;
 };
 
-}  // namespace nyx
+} // namespace nyx

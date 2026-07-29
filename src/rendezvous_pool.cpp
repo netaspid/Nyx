@@ -9,13 +9,15 @@ namespace nyx {
 
 namespace {
 
-bool send_rendezvous_to(UdpSocket& socket, const RendezvousServer& server, PacketType type,
+bool send_rendezvous_to(UdpSocket& socket,
+                        const RendezvousServer& server,
+                        PacketType type,
                         const ByteBuffer& payload) {
   auto wire = Frame::make(type, 0, 0, payload).encode();
   return socket.send_to(wire, server.host, server.port);
 }
 
-}  // namespace
+} // namespace
 
 RendezvousPool::RendezvousPool(UdpSocket socket) : socket_(std::move(socket)) {}
 
@@ -23,7 +25,8 @@ void RendezvousPool::set_servers(const std::vector<RendezvousServer>& servers) {
   servers_ = servers;
 }
 
-bool RendezvousPool::send_to_server(const RendezvousServer& server, PacketType type,
+bool RendezvousPool::send_to_server(const RendezvousServer& server,
+                                    PacketType type,
                                     const ByteBuffer& payload) {
   auto wire = Frame::make(type, 0, 0, payload).encode();
   return socket_.send_to(wire, server.host, server.port);
@@ -37,9 +40,11 @@ bool RendezvousPool::unregister_token(const InviteToken& token) {
   return unregister_token_on(socket_, servers_, token);
 }
 
-bool register_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
+bool register_token_on(UdpSocket& socket,
+                       const std::vector<RendezvousServer>& servers,
                        const InviteToken& token) {
-  if (servers.empty()) return false;
+  if (servers.empty())
+    return false;
   RendezvousMessage msg;
   msg.kind = RendezvousKind::Register;
   msg.token = token;
@@ -47,21 +52,25 @@ bool register_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& s
   const auto payload = msg.encode();
   bool any = false;
   for (const auto& srv : servers) {
-    if (send_rendezvous_to(socket, srv, PacketType::RendezvousRegister, payload)) any = true;
+    if (send_rendezvous_to(socket, srv, PacketType::RendezvousRegister, payload))
+      any = true;
   }
   return any;
 }
 
-bool unregister_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
-                          const InviteToken& token) {
-  if (servers.empty()) return false;
+bool unregister_token_on(UdpSocket& socket,
+                         const std::vector<RendezvousServer>& servers,
+                         const InviteToken& token) {
+  if (servers.empty())
+    return false;
   RendezvousMessage msg;
   msg.kind = RendezvousKind::Unregister;
   msg.token = token;
   const auto payload = msg.encode();
   bool any = false;
   for (const auto& srv : servers) {
-    if (send_rendezvous_to(socket, srv, PacketType::RendezvousRegister, payload)) any = true;
+    if (send_rendezvous_to(socket, srv, PacketType::RendezvousRegister, payload))
+      any = true;
   }
   return any;
 }
@@ -76,21 +85,24 @@ std::optional<EndpointHint> RendezvousPool::lookup_on(const RendezvousServer& se
     return std::nullopt;
   }
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
     std::string host;
     uint16_t port = 0;
     auto data = socket_.recv_from(host, port, 200);
-    if (!data) continue;
-    if (!endpoint_matches(host, port, server.host, server.port)) continue;
+    if (!data)
+      continue;
+    if (!endpoint_matches(host, port, server.host, server.port))
+      continue;
 
     auto frame = Frame::decode(data->data(), data->size());
-    if (!frame || frame->header.packet_type != PacketType::RendezvousResponse) continue;
-    auto resp =
-        RendezvousMessage::decode(frame->payload.data(), frame->payload.size());
-    if (!resp || resp->kind != RendezvousKind::Response) continue;
-    if (resp->hint.port == 0) continue;
+    if (!frame || frame->header.packet_type != PacketType::RendezvousResponse)
+      continue;
+    auto resp = RendezvousMessage::decode(frame->payload.data(), frame->payload.size());
+    if (!resp || resp->kind != RendezvousKind::Response)
+      continue;
+    if (resp->hint.port == 0)
+      continue;
     return resp->hint;
   }
   return std::nullopt;
@@ -98,32 +110,36 @@ std::optional<EndpointHint> RendezvousPool::lookup_on(const RendezvousServer& se
 
 std::optional<EndpointHint> RendezvousPool::lookup(const InviteToken& token) {
   for (const auto& srv : servers_) {
-    if (auto hint = lookup_on(srv, token, 4000)) return hint;
+    if (auto hint = lookup_on(srv, token, 4000))
+      return hint;
   }
   return std::nullopt;
 }
 
 bool RendezvousPool::probe_server(const RendezvousServer& server, int timeout_ms) {
-  InviteToken dummy{};
+  InviteToken dummy {};
   random_bytes(dummy.data(), dummy.size());
   RendezvousMessage msg;
   msg.kind = RendezvousKind::Lookup;
   msg.token = dummy;
-  if (!send_to_server(server, PacketType::RendezvousLookup, msg.encode())) return false;
+  if (!send_to_server(server, PacketType::RendezvousLookup, msg.encode()))
+    return false;
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
     std::string host;
     uint16_t port = 0;
     auto data = socket_.recv_from(host, port, 200);
-    if (!data) continue;
-    if (!endpoint_matches(host, port, server.host, server.port)) continue;
+    if (!data)
+      continue;
+    if (!endpoint_matches(host, port, server.host, server.port))
+      continue;
     auto frame = Frame::decode(data->data(), data->size());
-    if (!frame || frame->header.packet_type != PacketType::RendezvousResponse) continue;
+    if (!frame || frame->header.packet_type != PacketType::RendezvousResponse)
+      continue;
     return true;
   }
   return false;
 }
 
-}  // namespace nyx
+} // namespace nyx

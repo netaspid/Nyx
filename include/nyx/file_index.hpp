@@ -20,7 +20,7 @@ namespace nyx {
 /** Index root with a visibility scope. group_id = 0 -> DM only. */
 struct ShareRoot {
   std::string path;
-  GroupId group_id{};
+  GroupId group_id {};
 
   bool is_personal() const {
     return std::all_of(group_id.begin(), group_id.end(), [](uint8_t b) { return b == 0; });
@@ -29,15 +29,15 @@ struct ShareRoot {
 
 /** Index entry. */
 struct FileEntry {
-  FileHash hash{};
+  FileHash hash {};
   uint64_t size = 0;
   uint64_t mtime_ms = 0;
   std::string root_path;
   std::string relative_path;
   std::string mime;
-  GroupId share_group{};
+  GroupId share_group {};
   /** Owner of chat-imported / captured media (zero = unknown / legacy flat). */
-  UserId owner_id{};
+  UserId owner_id {};
 
   std::string absolute_path() const;
   std::string display_name() const { return relative_path; }
@@ -49,7 +49,7 @@ struct FileEntry {
 
 /** Scans and stores file metadata. */
 class FileIndex {
- public:
+public:
   /** progress(path, files_scanned, finished). */
   using ScanProgressFn =
       std::function<void(const std::string& path, int files_scanned, bool finished)>;
@@ -60,7 +60,8 @@ class FileIndex {
   void clear();
 
   /** Adds a root and scans files (thread-safe). group_id nullptr/zero -> DM scope. */
-  bool add_root(const std::string& root_path, const GroupId* group_id = nullptr,
+  bool add_root(const std::string& root_path,
+                const GroupId* group_id = nullptr,
                 ScanProgressFn progress = nullptr);
 
   /** Removes a root and its files; re-adding the same path later is allowed. */
@@ -98,10 +99,12 @@ class FileIndex {
   int count_in_root(const std::string& root_path, const GroupId& scope_group) const;
 
   /** Rescans an existing root. */
-  bool rescan_root(const std::string& root_path, const GroupId* group_id = nullptr,
+  bool rescan_root(const std::string& root_path,
+                   const GroupId* group_id = nullptr,
                    ScanProgressFn progress = nullptr);
 
-  static FileEntry make_directory_marker(const ShareRoot& root, int file_count,
+  static FileEntry make_directory_marker(const ShareRoot& root,
+                                         int file_count,
                                          const std::string& label_prefix = {});
 
   std::optional<FileEntry> find_by_hash(const FileHash& hash) const;
@@ -125,8 +128,7 @@ class FileIndex {
   /** App-managed library root for scope (imports + adopted downloads). */
   static std::string library_root_path(const GroupId& scope_group);
   /** Per-owner directory under the library ShareRoot (empty owner → library root). */
-  static std::string library_owner_dir(const GroupId& scope_group,
-                                       const UserId& owner_id);
+  static std::string library_owner_dir(const GroupId& scope_group, const UserId& owner_id);
   /** Ensures ShareRoot exists so library files appear in Field resources. */
   bool ensure_library_root(const GroupId& scope_group);
 
@@ -145,7 +147,7 @@ class FileIndex {
 
   static std::string index_path();
 
- private:
+private:
   bool scan_directory(const ShareRoot& root, ScanProgressFn progress = nullptr);
 
   mutable std::recursive_mutex mutex_;
@@ -153,4 +155,4 @@ class FileIndex {
   std::vector<FileEntry> entries_;
 };
 
-}  // namespace nyx
+} // namespace nyx

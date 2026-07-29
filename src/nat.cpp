@@ -45,50 +45,73 @@ void write_u32_be_to(ByteBuffer& buf, uint32_t v, std::size_t off) {
 
 #if !defined(_WIN32) && !defined(__ANDROID__)
 bool is_virtual_interface(const std::string& name) {
-  constexpr const char* prefixes[] = {
-      "br-",      "docker", "veth",    "virbr", "podman", "cni",
-      "flannel",  "zt",     "tailscale", "tun",  "tap",   "wg",
-      "outline",  "vpn",    "nordlynx", "ipsec"};
+  constexpr const char* prefixes[] = {"br-",
+                                      "docker",
+                                      "veth",
+                                      "virbr",
+                                      "podman",
+                                      "cni",
+                                      "flannel",
+                                      "zt",
+                                      "tailscale",
+                                      "tun",
+                                      "tap",
+                                      "wg",
+                                      "outline",
+                                      "vpn",
+                                      "nordlynx",
+                                      "ipsec"};
   for (const char* prefix : prefixes) {
-    if (name.rfind(prefix, 0) == 0) return true;
+    if (name.rfind(prefix, 0) == 0)
+      return true;
   }
   return false;
 }
 
 std::string physical_lan_ipv4(const std::string& routed_ip) {
   ifaddrs* interfaces = nullptr;
-  if (getifaddrs(&interfaces) != 0) return routed_ip;
+  if (getifaddrs(&interfaces) != 0)
+    return routed_ip;
 
   std::string best;
   int best_score = -1;
   for (const ifaddrs* it = interfaces; it; it = it->ifa_next) {
-    if (!it->ifa_addr || it->ifa_addr->sa_family != AF_INET || !it->ifa_name) continue;
+    if (!it->ifa_addr || it->ifa_addr->sa_family != AF_INET || !it->ifa_name)
+      continue;
     const unsigned int flags = it->ifa_flags;
     if ((flags & IFF_UP) == 0 || (flags & (IFF_LOOPBACK | IFF_POINTOPOINT)) != 0) {
       continue;
     }
 #if defined(IFF_RUNNING)
-    if ((flags & IFF_RUNNING) == 0) continue;
+    if ((flags & IFF_RUNNING) == 0)
+      continue;
 #endif
     const std::string name = it->ifa_name;
-    if (is_virtual_interface(name)) continue;
+    if (is_virtual_interface(name))
+      continue;
 
     char address[INET_ADDRSTRLEN] = {};
     const auto* ipv4 = reinterpret_cast<const sockaddr_in*>(it->ifa_addr);
-    if (!inet_ntop(AF_INET, &ipv4->sin_addr, address, sizeof(address))) continue;
+    if (!inet_ntop(AF_INET, &ipv4->sin_addr, address, sizeof(address)))
+      continue;
     const std::string candidate = address;
-    if (candidate == "0.0.0.0" || candidate.rfind("169.254.", 0) == 0) continue;
+    if (candidate == "0.0.0.0" || candidate.rfind("169.254.", 0) == 0)
+      continue;
 
     int score = candidate == routed_ip ? 1000 : 0;
-    if ((flags & IFF_BROADCAST) != 0) score += 100;
-    if ((flags & IFF_MULTICAST) != 0) score += 50;
-    if (name.rfind("en", 0) == 0 || name.rfind("eth", 0) == 0 ||
-        name.rfind("wl", 0) == 0) {
+    if ((flags & IFF_BROADCAST) != 0)
+      score += 100;
+    if ((flags & IFF_MULTICAST) != 0)
+      score += 50;
+    if (name.rfind("en", 0) == 0 || name.rfind("eth", 0) == 0 || name.rfind("wl", 0) == 0) {
       score += 100;
     }
-    if (candidate.rfind("192.168.", 0) == 0) score += 40;
-    else if (candidate.rfind("10.", 0) == 0) score += 20;
-    else if (candidate.rfind("172.", 0) == 0) score -= 40;
+    if (candidate.rfind("192.168.", 0) == 0)
+      score += 40;
+    else if (candidate.rfind("10.", 0) == 0)
+      score += 20;
+    else if (candidate.rfind("172.", 0) == 0)
+      score -= 40;
     if (score > best_score) {
       best_score = score;
       best = candidate;
@@ -99,12 +122,12 @@ std::string physical_lan_ipv4(const std::string& routed_ip) {
 }
 #endif
 
-}  // namespace
+} // namespace
 
 namespace {
 std::string g_lan_ipv4_override;
 std::mutex g_lan_ipv4_mutex;
-}  // namespace
+} // namespace
 
 void set_lan_ipv4_override(const std::string& ipv4) {
   std::lock_guard lock(g_lan_ipv4_mutex);
@@ -119,12 +142,14 @@ std::string lan_ipv4_override() {
 std::string guess_lan_ipv4() {
   {
     const std::string over = lan_ipv4_override();
-    if (!over.empty() && over != "0.0.0.0" && over != "127.0.0.1") return over;
+    if (!over.empty() && over != "0.0.0.0" && over != "127.0.0.1")
+      return over;
   }
 #ifdef _WIN32
   SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if (s == INVALID_SOCKET) return "127.0.0.1";
-  sockaddr_in remote{};
+  if (s == INVALID_SOCKET)
+    return "127.0.0.1";
+  sockaddr_in remote {};
   remote.sin_family = AF_INET;
   remote.sin_port = htons(53);
   inet_pton(AF_INET, "8.8.8.8", &remote.sin_addr);
@@ -132,7 +157,7 @@ std::string guess_lan_ipv4() {
     closesocket(s);
     return "127.0.0.1";
   }
-  sockaddr_in local{};
+  sockaddr_in local {};
   int len = sizeof(local);
   getsockname(s, reinterpret_cast<sockaddr*>(&local), &len);
   closesocket(s);
@@ -141,8 +166,9 @@ std::string guess_lan_ipv4() {
   return buf;
 #else
   int s = socket(AF_INET, SOCK_DGRAM, 0);
-  if (s < 0) return "127.0.0.1";
-  sockaddr_in remote{};
+  if (s < 0)
+    return "127.0.0.1";
+  sockaddr_in remote {};
   remote.sin_family = AF_INET;
   remote.sin_port = htons(53);
   inet_pton(AF_INET, "8.8.8.8", &remote.sin_addr);
@@ -150,7 +176,7 @@ std::string guess_lan_ipv4() {
     close(s);
     return "127.0.0.1";
   }
-  sockaddr_in local{};
+  sockaddr_in local {};
   socklen_t len = sizeof(local);
   getsockname(s, reinterpret_cast<sockaddr*>(&local), &len);
   close(s);
@@ -167,9 +193,10 @@ std::string guess_lan_ipv4() {
 void hole_punch_burst(UdpSocket& sock, const EndpointHint& hint, int packets) {
   const ByteBuffer probe = {'D', 'N', 'E', 'T', '-', 'P', 'U', 'N', 'C', 'H'};
   char host[64] = {};
-  std::snprintf(host, sizeof(host), "%u.%u.%u.%u", hint.ip[12], hint.ip[13],
-                hint.ip[14], hint.ip[15]);
-  if (packets < 1) packets = 1;
+  std::snprintf(
+      host, sizeof(host), "%u.%u.%u.%u", hint.ip[12], hint.ip[13], hint.ip[14], hint.ip[15]);
+  if (packets < 1)
+    packets = 1;
   for (int i = 0; i < packets; ++i) {
     sock.send_to(probe, host, hint.port);
   }
@@ -192,24 +219,28 @@ std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,
   write_u32_be_to(req, 0x2112A442, 4);
   random_bytes(req.data() + 8, 12);
 
-  if (!sock.send_to(req, stun_host, stun_port)) return std::nullopt;
+  if (!sock.send_to(req, stun_host, stun_port))
+    return std::nullopt;
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
     std::string from;
     uint16_t from_port = 0;
     auto resp = sock.recv_from(from, from_port, 200);
-    if (!resp || resp->size() < 20) continue;
-    if (from != stun_host || from_port != stun_port) continue;
-    if ((*resp)[0] != 0x01 || (*resp)[1] != 0x01) continue;
+    if (!resp || resp->size() < 20)
+      continue;
+    if (from != stun_host || from_port != stun_port)
+      continue;
+    if ((*resp)[0] != 0x01 || (*resp)[1] != 0x01)
+      continue;
 
     std::size_t off = 20;
     while (off + 4 <= resp->size()) {
       const uint16_t type = read_u16_be(resp->data() + off);
       const uint16_t len = read_u16_be(resp->data() + off + 2);
       off += 4;
-      if (off + len > resp->size()) break;
+      if (off + len > resp->size())
+        break;
 
       if (type == 0x0020 && len >= 8) {
         const uint8_t family = (*resp)[off + 1];
@@ -220,7 +251,7 @@ std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,
           const uint16_t port = static_cast<uint16_t>(xport ^ (cookie >> 16));
           const uint32_t addr = xaddr ^ cookie;
 
-          EndpointHint hint{};
+          EndpointHint hint {};
           hint.ip[10] = 0xff;
           hint.ip[11] = 0xff;
           std::memcpy(hint.ip.data() + 12, &addr, 4);
@@ -230,16 +261,15 @@ std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,
         }
       }
       off += len;
-      if (len % 4 != 0) off += 4 - (len % 4);
+      if (len % 4 != 0)
+        off += 4 - (len % 4);
     }
   }
   return std::nullopt;
 }
 
-EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host,
-                              uint16_t port) {
-  const std::string lan =
-      fallback_host.empty() ? guess_lan_ipv4() : fallback_host;
+EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host, uint16_t port) {
+  const std::string lan = fallback_host.empty() ? guess_lan_ipv4() : fallback_host;
   // Same-WiFi peers break when we advertise a VPN/STUN public IP (no hairpin).
   // Prefer a private LAN address whenever we have one.
   if (is_lan_ipv4(lan) && lan != "127.0.0.1" && lan != "localhost") {
@@ -253,14 +283,19 @@ EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host,
 }
 
 bool is_lan_ipv4(const std::string& host) {
-  if (host == "127.0.0.1" || host == "localhost") return true;
-  in_addr addr{};
-  if (inet_pton(AF_INET, host.c_str(), &addr) != 1) return false;
+  if (host == "127.0.0.1" || host == "localhost")
+    return true;
+  in_addr addr {};
+  if (inet_pton(AF_INET, host.c_str(), &addr) != 1)
+    return false;
   const uint8_t* b = reinterpret_cast<const uint8_t*>(&addr.s_addr);
-  if (b[0] == 10) return true;
-  if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
-  if (b[0] == 192 && b[1] == 168) return true;
+  if (b[0] == 10)
+    return true;
+  if (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+    return true;
+  if (b[0] == 192 && b[1] == 168)
+    return true;
   return false;
 }
 
-}  // namespace nyx
+} // namespace nyx

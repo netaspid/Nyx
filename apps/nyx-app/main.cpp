@@ -9,16 +9,16 @@
 #include <QTimer>
 
 #include "android_platform.hpp"
+#include "call_frame_provider.hpp"
+#include "node_controller.hpp"
 #include "nyx/log.hpp"
 #include "nyx/nat.hpp"
 #include "nyx/paths.hpp"
-#include "call_frame_provider.hpp"
-#include "node_controller.hpp"
 #include "win_chrome.hpp"
 
 #include <QString>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 
 static void stderrQtHandler(QtMsgType, const QMessageLogContext&, const QString& msg) {
   std::fprintf(stderr, "%s\n", msg.toLocal8Bit().constData());
@@ -75,7 +75,8 @@ int main(int argc, char* argv[]) {
 #if defined(Q_OS_ANDROID)
   static NodeController* s_node_for_hangup = &node;
   nyx_android::set_hangup_handler([]() {
-    if (s_node_for_hangup) s_node_for_hangup->hangupCall();
+    if (s_node_for_hangup)
+      s_node_for_hangup->hangupCall();
   });
 #endif
 
@@ -94,7 +95,10 @@ int main(int argc, char* argv[]) {
   node.chatVideoRecorder()->setFrameProvider(capture_frames);
   engine.addImageProvider(QStringLiteral("nyxcapture"), capture_frames);
   QObject::connect(
-      &engine, &QQmlApplicationEngine::objectCreationFailed, &app, []() { QCoreApplication::exit(-1); },
+      &engine,
+      &QQmlApplicationEngine::objectCreationFailed,
+      &app,
+      []() { QCoreApplication::exit(-1); },
       Qt::QueuedConnection);
   QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
     for (const QQmlError& w : warnings) {
@@ -110,9 +114,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  QTimer::singleShot(0, &app, []() {
-    nyxApplyNativeChromeDarkAll(true);
-  });
+  QTimer::singleShot(0, &app, []() { nyxApplyNativeChromeDarkAll(true); });
 
   const int rc = app.exec();
 #if defined(Q_OS_ANDROID)

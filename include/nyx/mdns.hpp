@@ -31,7 +31,7 @@ struct LanPeer {
 
 /** Periodic beacon announce and browse. */
 class MdnsLan {
- public:
+public:
   MdnsLan() = default;
   ~MdnsLan();
 
@@ -42,26 +42,26 @@ class MdnsLan {
   static bool setup_socket(UdpSocket& socket, std::string* err = nullptr);
 
   /** Background announces every ~3 s. */
-  void start_advertising(UdpSocket socket, Profile profile, uint16_t port,
-                         std::string host_ip);
+  void start_advertising(UdpSocket socket, Profile profile, uint16_t port, std::string host_ip);
   void stop_advertising();
 
   /** Browses the LAN, collecting Nyx beacon replies. */
   static std::vector<LanPeer> browse(UdpSocket& socket, int timeout_ms = 3000);
 
   /** One announce (+ optional unicast to peers that miss ethernet multicast). */
-  static bool send_announcement(UdpSocket& socket, const Profile& profile,
-                                uint16_t port, const std::string& host_ip,
+  static bool send_announcement(UdpSocket& socket,
+                                const Profile& profile,
+                                uint16_t port,
+                                const std::string& host_ip,
                                 const std::vector<std::string>& unicast_hosts = {});
 
   /** Parses a beacon packet (exposed for tests). */
-  static std::optional<LanPeer> parse_beacon(const ByteBuffer& data,
-                                             const std::string& from_host);
+  static std::optional<LanPeer> parse_beacon(const ByteBuffer& data, const std::string& from_host);
 
- private:
-  std::atomic<bool> running_{false};
+private:
+  std::atomic<bool> running_ {false};
   std::thread thread_;
   UdpSocket advert_socket_;
 };
 
-}  // namespace nyx
+} // namespace nyx

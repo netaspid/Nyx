@@ -25,13 +25,13 @@ constexpr uint32_t kHelloCapCalls = 1u << 2;
 
 /** Greeting after the handshake: public key, nickname, capabilities. */
 struct HelloMessage {
-  PublicKey public_key{};
+  PublicKey public_key {};
   std::string nickname;
   uint32_t capabilities = 0;
   /** Stable sender inbox token (when capabilities & kHelloCapDmInboxToken). */
-  InviteToken dm_inbox_token{};
+  InviteToken dm_inbox_token {};
   bool has_dm_inbox_token = false;
-  ProfileMeta profile_meta{};
+  ProfileMeta profile_meta {};
   bool has_profile_meta = false;
 
   ByteBuffer encode() const;
@@ -44,11 +44,13 @@ std::optional<std::string> decode_text_message(const ByteBuffer& data);
 std::optional<HelloMessage> decode_hello_message(const ByteBuffer& data);
 
 /** Hello exchange on kChatStream after the Noise handshake. */
-bool exchange_hello(Connection& connection, const Profile& profile, HelloMessage& peer_out,
+bool exchange_hello(Connection& connection,
+                    const Profile& profile,
+                    HelloMessage& peer_out,
                     int timeout_sec = 10,
                     const std::function<bool()>& should_continue = {});
 
 /** Saves a contact from Hello into books/contacts.json. */
 void remember_contact(const HelloMessage& peer);
 
-}  // namespace nyx
+} // namespace nyx

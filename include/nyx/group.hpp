@@ -22,13 +22,12 @@ enum class GroupRole : uint8_t {
 };
 
 inline bool can_start_field_call(GroupRole role) {
-  return role == GroupRole::Owner || role == GroupRole::Host ||
-         role == GroupRole::Member;
+  return role == GroupRole::Owner || role == GroupRole::Host || role == GroupRole::Member;
 }
 
 /** Field member in the local roster. */
 struct GroupMemberRecord {
-  UserId user_id{};
+  UserId user_id {};
   std::string nickname;
   GroupRole role = GroupRole::Member;
 };
@@ -41,10 +40,10 @@ enum class GroupVisibility : uint8_t {
 
 /** Field description on disk. */
 struct GroupRecord {
-  GroupId id{};
+  GroupId id {};
   std::string name;
-  UserId owner_id{};
-  InviteToken invite_token{};
+  UserId owner_id {};
+  InviteToken invite_token {};
   std::vector<GroupMemberRecord> members;
   uint64_t created_ms = 0;
   std::string description;
@@ -55,19 +54,21 @@ struct GroupRecord {
 
 /** Local field storage: data_dir()/groups.json. */
 class GroupStore {
- public:
+public:
   GroupStore();
 
   bool load();
   bool save() const;
 
   /** Creates a field with the owner in the roster. */
-  GroupRecord create(const std::string& name, const UserId& owner_id,
-                     const std::string& owner_nickname);
+  GroupRecord
+  create(const std::string& name, const UserId& owner_id, const std::string& owner_nickname);
 
   /** Updates the meta of an existing field (description, tags, ...). */
-  bool update_meta(const GroupId& id, const std::string& description,
-                   const std::string& direction, const std::string& tags,
+  bool update_meta(const GroupId& id,
+                   const std::string& description,
+                   const std::string& direction,
+                   const std::string& tags,
                    GroupVisibility visibility);
 
   std::optional<GroupRecord> find(const GroupId& id) const;
@@ -93,8 +94,8 @@ class GroupStore {
   /** Ensures the creator is present in members by owner_id. */
   static void ensure_roster(GroupRecord& group, const std::string& owner_nickname_fallback = {});
 
- private:
+private:
   std::vector<GroupRecord> groups_;
 };
 
-}  // namespace nyx
+} // namespace nyx

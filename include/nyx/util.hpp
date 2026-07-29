@@ -31,8 +31,10 @@ void random_bytes(uint8_t* out, std::size_t len);
 bool parse_host_port(const std::string& addr, std::string& host, uint16_t& port);
 
 /** Compares a UDP sender address with the expected host:port (resolves DNS). */
-bool endpoint_matches(const std::string& from_host, uint16_t from_port,
-                      const std::string& expected_host, uint16_t expected_port);
+bool endpoint_matches(const std::string& from_host,
+                      uint16_t from_port,
+                      const std::string& expected_host,
+                      uint16_t expected_port);
 
 /** Path from UTF-8 (Qt, JSON); uses the wide API on Windows. */
 std::filesystem::path path_from_utf8(const std::string& utf8);
@@ -46,4 +48,4 @@ std::string normalize_utf8_path(const std::string& utf8);
 /** Normalizes a share root for grant comparison (lowercased on Windows). */
 std::string normalize_grant_root(const std::string& root_path);
 
-}  // namespace nyx
+} // namespace nyx

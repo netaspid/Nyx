@@ -9,8 +9,8 @@
 #include "nyx/file_index.hpp"
 #include "nyx/file_proto.hpp"
 
-#include <functional>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -21,16 +21,13 @@ namespace nyx {
 
 /** Sends and receives files over a Connection. */
 class FileTransferService {
- public:
+public:
   using EventCallback = std::function<void(const std::string& text)>;
-  using ProgressCallback =
-      std::function<void(const FileHash& hash, uint64_t done, uint64_t total)>;
+  using ProgressCallback = std::function<void(const FileHash& hash, uint64_t done, uint64_t total)>;
   using CompletionCallback = std::function<void(
-      const FileHash& hash, bool success, const std::string& path,
-      const std::string& error)>;
+      const FileHash& hash, bool success, const std::string& path, const std::string& error)>;
 
-  FileTransferService(Connection& connection, FileIndex& index,
-                      std::string download_dir);
+  FileTransferService(Connection& connection, FileIndex& index, std::string download_dir);
 
   /** Share scope: zero = DM, otherwise the field group_id. */
   void set_share_scope(const GroupId& group_id) { share_scope_ = group_id; }
@@ -70,14 +67,11 @@ class FileTransferService {
 
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_progress(ProgressCallback cb) { on_progress_ = std::move(cb); }
-  void set_on_complete(CompletionCallback cb) {
-    on_complete_ = std::move(cb);
-  }
+  void set_on_complete(CompletionCallback cb) { on_complete_ = std::move(cb); }
   /** Invoked after a ListResp arrives from the peer. */
   void set_on_remote_list(std::function<void(const std::vector<FileEntry>&)> cb) {
     on_remote_list_ = std::move(cb);
   }
-
 
   /** Copy of remote_list_ (thread-safe for the UI). */
   std::vector<FileEntry> remote_list_snapshot() const;
@@ -85,7 +79,7 @@ class FileTransferService {
   /** An outgoing/incoming transfer or Offer wait is in progress. */
   bool busy() const;
 
- private:
+private:
   bool send_bulk(const ByteBuffer& payload);
   void emit_event(const std::string& text);
   void emit_progress(const FileHash& hash, uint64_t done, uint64_t total);
@@ -103,7 +97,7 @@ class FileTransferService {
   Connection& connection_;
   FileIndex& index_;
   std::string download_dir_;
-  GroupId share_scope_{};
+  GroupId share_scope_ {};
 
   struct OutgoingState {
     FileEntry entry;
@@ -120,12 +114,8 @@ class FileTransferService {
     std::string dest_path;
     std::string part_path;
 
-    IncomingState(FileOffer o, BlobWriter w, uint64_t rec, std::string dest,
-                  std::string part)
-        : offer(std::move(o)),
-          writer(std::move(w)),
-          received(rec),
-          dest_path(std::move(dest)),
+    IncomingState(FileOffer o, BlobWriter w, uint64_t rec, std::string dest, std::string part)
+        : offer(std::move(o)), writer(std::move(w)), received(rec), dest_path(std::move(dest)),
           part_path(std::move(part)) {}
   };
 
@@ -152,4 +142,4 @@ class FileTransferService {
   uint64_t index_revision_ = 0;
 };
 
-}  // namespace nyx
+} // namespace nyx

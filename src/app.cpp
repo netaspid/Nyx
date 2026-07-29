@@ -1,10 +1,10 @@
 #include "nyx/app.hpp"
 
-#include "nyx/connection.hpp"
 #include "nyx/account_store.hpp"
+#include "nyx/avatar_store.hpp"
+#include "nyx/connection.hpp"
 #include "nyx/identity.hpp"
 #include "nyx/paths.hpp"
-#include "nyx/avatar_store.hpp"
 #include "nyx/profile_meta.hpp"
 #include "nyx/session_intent.hpp"
 #include "nyx/util.hpp"
@@ -20,14 +20,14 @@ namespace {
 
 constexpr std::size_t kMaxNicknameLen = 64;
 
-bool read_nickname(const ByteBuffer& data, std::size_t offset, std::size_t len,
-                   std::string& out) {
-  if (len > kMaxNicknameLen || offset + len > data.size()) return false;
+bool read_nickname(const ByteBuffer& data, std::size_t offset, std::size_t len, std::string& out) {
+  if (len > kMaxNicknameLen || offset + len > data.size())
+    return false;
   out.assign(reinterpret_cast<const char*>(data.data() + offset), len);
   return true;
 }
 
-}  // namespace
+} // namespace
 
 ByteBuffer HelloMessage::encode() const {
   ByteBuffer out;
@@ -48,20 +48,23 @@ ByteBuffer HelloMessage::encode() const {
 }
 
 std::optional<HelloMessage> HelloMessage::decode(const ByteBuffer& data) {
-  if (data.size() < 1 + kPublicKeySize + 2 + 4) return std::nullopt;
-  if (data[0] != static_cast<uint8_t>(ChatKind::Hello)) return std::nullopt;
+  if (data.size() < 1 + kPublicKeySize + 2 + 4)
+    return std::nullopt;
+  if (data[0] != static_cast<uint8_t>(ChatKind::Hello))
+    return std::nullopt;
 
   HelloMessage msg;
   std::memcpy(msg.public_key.data(), data.data() + 1, kPublicKeySize);
   const uint16_t nick_len = read_u16_le(data.data() + 1 + kPublicKeySize);
   const std::size_t nick_off = 1 + kPublicKeySize + 2;
-  if (!read_nickname(data, nick_off, nick_len, msg.nickname)) return std::nullopt;
+  if (!read_nickname(data, nick_off, nick_len, msg.nickname))
+    return std::nullopt;
   const std::size_t cap_off = nick_off + nick_len;
-  if (cap_off + 4 > data.size()) return std::nullopt;
+  if (cap_off + 4 > data.size())
+    return std::nullopt;
   msg.capabilities = read_u32_le(data.data() + cap_off);
   std::size_t offset = cap_off + 4;
-  if ((msg.capabilities & kHelloCapDmInboxToken) != 0 &&
-      offset + kInviteTokenSize <= data.size()) {
+  if ((msg.capabilities & kHelloCapDmInboxToken) != 0 && offset + kInviteTokenSize <= data.size()) {
     std::memcpy(msg.dm_inbox_token.data(), data.data() + offset, kInviteTokenSize);
     msg.has_dm_inbox_token = true;
     offset += kInviteTokenSize;
@@ -95,8 +98,11 @@ std::optional<HelloMessage> decode_hello_message(const ByteBuffer& data) {
   return HelloMessage::decode(data);
 }
 
-bool exchange_hello(Connection& connection, const Profile& profile, HelloMessage& peer_out,
-                    int timeout_sec, const std::function<bool()>& should_continue) {
+bool exchange_hello(Connection& connection,
+                    const Profile& profile,
+                    HelloMessage& peer_out,
+                    int timeout_sec,
+                    const std::function<bool()>& should_continue) {
   HelloMessage hello;
   hello.public_key = profile.public_key;
   hello.nickname = profile.nickname;
@@ -111,24 +117,27 @@ bool exchange_hello(Connection& connection, const Profile& profile, HelloMessage
     meta.photo_hashes.clear();
     for (const auto& e : avatars.photos()) {
       meta.photo_hashes.push_back(e.hash);
-      if (meta.photo_hashes.size() >= kMaxProfilePhotosWire) break;
+      if (meta.photo_hashes.size() >= kMaxProfilePhotosWire)
+        break;
     }
     hello.profile_meta = std::move(meta);
     hello.has_profile_meta = true;
     hello.capabilities |= kHelloCapProfileMeta;
   }
   hello.capabilities |= kHelloCapCalls;
-  if (!connection.send_payload(kChatStream, hello.encode())) return false;
+  if (!connection.send_payload(kChatStream, hello.encode()))
+    return false;
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(timeout_sec);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_sec);
   while (std::chrono::steady_clock::now() < deadline) {
-    if (should_continue && !should_continue()) return false;
+    if (should_continue && !should_continue())
+      return false;
     connection.drive();
     ByteBuffer payload;
     uint32_t stream_id = 0;
     while (connection.recv_stream(stream_id, payload)) {
-      if (stream_id != kChatStream) continue;
+      if (stream_id != kChatStream)
+        continue;
       if (auto decoded = decode_hello_message(payload)) {
         peer_out = std::move(*decoded);
         return true;
@@ -172,4 +181,4 @@ void remember_contact(const HelloMessage& peer) {
   book.save();
 }
 
-}  // namespace nyx
+} // namespace nyx

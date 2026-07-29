@@ -23,16 +23,16 @@ void hole_punch(UdpSocket& sock, const EndpointHint& hint);
 void hole_punch_burst(UdpSocket& sock, const EndpointHint& hint, int packets = 4);
 
 /** STUN Binding Request -> external endpoint (best effort). */
-std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,
-                                                   const std::string& stun_host = "stun.l.google.com",
-                                                   uint16_t stun_port = 19302,
-                                                   int timeout_ms = 800);
+std::optional<EndpointHint>
+stun_external_endpoint(UdpSocket& sock,
+                       const std::string& stun_host = "stun.l.google.com",
+                       uint16_t stun_port = 19302,
+                       int timeout_ms = 800);
 
 /** Rendezvous hint: prefer the private LAN IP (Wi-Fi); STUN is the fallback. */
-EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host,
-                              uint16_t port);
+EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host, uint16_t port);
 
 /** Private or loopback IPv4 (drives the LAN indicator in the UI). */
 bool is_lan_ipv4(const std::string& host);
 
-}  // namespace nyx
+} // namespace nyx

@@ -24,7 +24,7 @@ enum class GroupKind : uint8_t {
 };
 
 struct GroupJoinMessage {
-  GroupId group_id{};
+  GroupId group_id {};
 
   ByteBuffer encode() const;
   static std::optional<GroupJoinMessage> decode(const ByteBuffer& data);
@@ -33,7 +33,7 @@ struct GroupJoinMessage {
 struct GroupJoinAckMessage {
   bool accepted = false;
   std::string reason;
-  GroupId group_id{};
+  GroupId group_id {};
   std::string group_name;
   std::vector<GroupMemberRecord> members;
 
@@ -61,4 +61,4 @@ struct GroupMetaMessage {
 /** Detects a GroupKind by the first byte (as opposed to ChatKind). */
 bool is_group_frame(const ByteBuffer& data);
 
-}  // namespace nyx
+} // namespace nyx

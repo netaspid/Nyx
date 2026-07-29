@@ -36,16 +36,16 @@ struct SessionInfo {
 
 inline const char* session_state_name(SessionState s) {
   switch (s) {
-    case SessionState::Connecting:
-      return "connecting";
-    case SessionState::Live:
-      return "live";
-    case SessionState::Offline:
-      return "offline";
-    case SessionState::Disconnected:
-      return "disconnected";
-    default:
-      return "idle";
+  case SessionState::Connecting:
+    return "connecting";
+  case SessionState::Live:
+    return "live";
+  case SessionState::Offline:
+    return "offline";
+  case SessionState::Disconnected:
+    return "disconnected";
+  default:
+    return "idle";
   }
 }
 
@@ -59,4 +59,4 @@ inline std::string make_group_session_id(const std::string& group_hex) {
 
 inline constexpr const char* kDmInboxSessionId = "inbox";
 
-}  // namespace nyx_app
+} // namespace nyx_app

@@ -18,7 +18,6 @@ struct HintConnectResult {
 };
 
 /** Hole punch outside the LAN, then Noise handshake. The socket is moved in. */
-HintConnectResult connect_via_rendezvous_hint(nyx::UdpSocket socket,
-                                              const nyx::EndpointHint& hint);
+HintConnectResult connect_via_rendezvous_hint(nyx::UdpSocket socket, const nyx::EndpointHint& hint);
 
-}  // namespace nyx_app
+} // namespace nyx_app

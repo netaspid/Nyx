@@ -25,7 +25,7 @@ struct StoredMessage {
 
 /** Conversation storage (.jsonl file). */
 class MessageStore {
- public:
+public:
   explicit MessageStore(std::string path);
 
   /** Switches the history file (after JoinAck, once the GroupId is known).
@@ -53,7 +53,7 @@ class MessageStore {
   /** @deprecated use path_for_chat(dm_chat_id(...)). */
   static std::string chat_path(const UserId& peer_id);
 
- private:
+private:
   bool load_from_disk() const;
 
   std::string path_;
@@ -61,4 +61,4 @@ class MessageStore {
   mutable bool loaded_ = false;
 };
 
-}  // namespace nyx
+} // namespace nyx

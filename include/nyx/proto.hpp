@@ -26,22 +26,21 @@ struct Frame {
   ByteBuffer payload;
 
   /** Builds a frame with payload_length filled in. */
-  static Frame make(PacketType type, uint32_t stream_id, uint32_t seq,
-                    ByteBuffer payload);
+  static Frame make(PacketType type, uint32_t stream_id, uint32_t seq, ByteBuffer payload);
 
   /** Serializes to bytes for UDP. Empty buffer when the payload is too large. */
   ByteBuffer encode() const;
 
   /** Parses a buffer. @param err optional error description. */
-  static std::optional<Frame> decode(const uint8_t* data, std::size_t len,
-                                     std::string* err = nullptr);
+  static std::optional<Frame>
+  decode(const uint8_t* data, std::size_t len, std::string* err = nullptr);
 };
 
 /** Address hint for rendezvous (26 bytes: ip, port, nonce). */
 struct EndpointHint {
-  std::array<uint8_t, 16> ip{};
+  std::array<uint8_t, 16> ip {};
   uint16_t port = 0;
-  std::array<uint8_t, 8> nonce{};
+  std::array<uint8_t, 8> nonce {};
   ByteBuffer encode() const;
   static std::optional<EndpointHint> decode(const uint8_t* data, std::size_t len);
 
@@ -60,8 +59,8 @@ enum class RendezvousKind : uint8_t {
 /** Bootstrap server message: register or lookup by invite token. */
 struct RendezvousMessage {
   RendezvousKind kind = RendezvousKind::NotFound;
-  InviteToken token{};
-  EndpointHint hint{};
+  InviteToken token {};
+  EndpointHint hint {};
 
   ByteBuffer encode() const;
   static std::optional<RendezvousMessage> decode(const uint8_t* data, std::size_t len);
@@ -92,4 +91,4 @@ bool is_handshake_datagram(const ByteBuffer& data);
 /** Datagram hole-punch probe (NYX-PUNCH). */
 bool is_punch_datagram(const ByteBuffer& data);
 
-}  // namespace nyx
+} // namespace nyx

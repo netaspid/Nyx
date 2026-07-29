@@ -10,14 +10,16 @@ BlobReader::BlobReader(std::string path) : path_(std::move(path)) {}
 
 bool BlobReader::open() {
   file_.open(path_from_utf8(path_), std::ios::binary);
-  if (!file_) return false;
+  if (!file_)
+    return false;
   std::error_code ec;
   size_ = static_cast<uint64_t>(std::filesystem::file_size(path_from_utf8(path_), ec));
   return !ec;
 }
 
 std::size_t BlobReader::read_at(uint64_t offset, ByteBuffer& out, std::size_t max_len) {
-  if (!file_) return 0;
+  if (!file_)
+    return 0;
   file_.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
   out.resize(max_len);
   file_.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(max_len));
@@ -31,20 +33,24 @@ BlobWriter::BlobWriter(std::string path) : path_(std::move(path)) {}
 bool BlobWriter::open(bool truncate) {
   const auto fs_path = path_from_utf8(path_);
   auto mode = std::ios::binary | std::ios::in | std::ios::out;
-  if (truncate) mode |= std::ios::trunc;
+  if (truncate)
+    mode |= std::ios::trunc;
   file_.open(fs_path, mode);
-  if (file_) return true;
+  if (file_)
+    return true;
   file_.clear();
-  file_.open(fs_path, std::ios::binary | std::ios::out |
-                          (truncate ? std::ios::trunc : std::ios::app));
-  if (!file_) return false;
+  file_.open(fs_path,
+             std::ios::binary | std::ios::out | (truncate ? std::ios::trunc : std::ios::app));
+  if (!file_)
+    return false;
   file_.close();
   file_.open(fs_path, std::ios::binary | std::ios::in | std::ios::out);
   return static_cast<bool>(file_);
 }
 
 bool BlobWriter::write_at(uint64_t offset, const ByteBuffer& data) {
-  if (!file_) return false;
+  if (!file_)
+    return false;
   file_.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
   file_.write(reinterpret_cast<const char*>(data.data()),
               static_cast<std::streamsize>(data.size()));
@@ -59,4 +65,4 @@ bool BlobWriter::close() {
   return true;
 }
 
-}  // namespace nyx
+} // namespace nyx

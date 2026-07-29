@@ -50,4 +50,4 @@ struct NetworkConfig {
   static bool parse_rendezvous_list(const std::string& csv, NetworkConfig& out);
 };
 
-}  // namespace nyx
+} // namespace nyx

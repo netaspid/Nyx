@@ -23,6 +23,8 @@ std::string default_log_path();
 
 void log_write(LogLevel level, const std::string& message);
 
-inline void log_info(const std::string& msg) { log_write(LogLevel::Info, msg); }
+inline void log_info(const std::string& msg) {
+  log_write(LogLevel::Info, msg);
+}
 
-}  // namespace nyx
+} // namespace nyx

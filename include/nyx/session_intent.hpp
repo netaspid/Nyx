@@ -22,16 +22,16 @@ enum class SessionIntentKind : uint8_t {
 /** Record: whether to bring the session up automatically. */
 struct SessionIntent {
   SessionIntentKind kind = SessionIntentKind::Direct;
-  std::string key;           /**< dm:<hex> | group:<hex> */
-  std::string ref_id_hex;    /**< peer or group id */
-  std::string invite_hex;    /**< join invite / outbound DM token */
-  bool enabled = true;       /**< false after an explicit disconnect */
+  std::string key;        /**< dm:<hex> | group:<hex> */
+  std::string ref_id_hex; /**< peer or group id */
+  std::string invite_hex; /**< join invite / outbound DM token */
+  bool enabled = true;    /**< false after an explicit disconnect */
   uint64_t updated_ms = 0;
 };
 
 /** Persists session_intents.json in the account data_dir. */
 class SessionIntentStore {
- public:
+public:
   explicit SessionIntentStore(std::string path = {});
 
   /** Reads intents from disk. @return true even when the file does not exist yet. */
@@ -51,7 +51,7 @@ class SessionIntentStore {
   bool is_enabled(const std::string& key) const;
   const SessionIntent* find(const std::string& key) const;
 
- private:
+private:
   std::string path_;
   std::vector<SessionIntent> intents_;
 };
@@ -64,4 +64,4 @@ bool load_or_create_dm_inbox_token(InviteToken& out);
 /** Hex of the stable inbox token (empty string on error). */
 std::string dm_inbox_token_hex();
 
-}  // namespace nyx
+} // namespace nyx

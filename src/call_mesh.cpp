@@ -16,37 +16,41 @@ constexpr auto kPunchInterval = std::chrono::milliseconds(200);
 constexpr auto kConnectRetry = std::chrono::milliseconds(400);
 constexpr auto kPendingTimeout = std::chrono::seconds(3);
 
-}  // namespace
+} // namespace
 
-std::vector<UserId> select_call_relays(
-    std::vector<std::pair<UserId, uint16_t>> candidates,
-    std::size_t participant_count) {
+std::vector<UserId> select_call_relays(std::vector<std::pair<UserId, uint16_t>> candidates,
+                                       std::size_t participant_count) {
   std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-    if (a.second != b.second) return a.second > b.second;
+    if (a.second != b.second)
+      return a.second > b.second;
     return a.first < b.first;
   });
   const std::size_t wanted =
-      std::min(candidates.size(), participant_count > 12 ? std::size_t{3}
-                                                         : std::size_t{2});
+      std::min(candidates.size(), participant_count > 12 ? std::size_t {3} : std::size_t {2});
   std::vector<UserId> relays;
   relays.reserve(wanted);
-  for (std::size_t i = 0; i < wanted; ++i) relays.push_back(candidates[i].first);
+  for (std::size_t i = 0; i < wanted; ++i)
+    relays.push_back(candidates[i].first);
   return relays;
 }
 
-std::vector<UserId> call_relay_targets(const UserId& leaf,
-                                       const std::vector<UserId>& relays) {
+std::vector<UserId> call_relay_targets(const UserId& leaf, const std::vector<UserId>& relays) {
   std::vector<UserId> out;
-  if (relays.empty()) return out;
+  if (relays.empty())
+    return out;
   uint32_t hash = 2166136261u;
-  for (uint8_t byte : leaf) hash = (hash ^ byte) * 16777619u;
+  for (uint8_t byte : leaf)
+    hash = (hash ^ byte) * 16777619u;
   const std::size_t primary = hash % relays.size();
   out.push_back(relays[primary]);
-  if (relays.size() > 1) out.push_back(relays[(primary + 1) % relays.size()]);
+  if (relays.size() > 1)
+    out.push_back(relays[(primary + 1) % relays.size()]);
   return out;
 }
 
-CallMesh::~CallMesh() { stop(); }
+CallMesh::~CallMesh() {
+  stop();
+}
 
 bool CallMesh::start(const CallId& call_id, const UserId& self) {
   std::lock_guard lock(mutex_);
@@ -90,21 +94,26 @@ bool CallMesh::self_is_initiator(const UserId& self, const UserId& peer) {
   return self < peer;
 }
 
-std::string CallMesh::local_host_guess() const { return guess_lan_ipv4(); }
+std::string CallMesh::local_host_guess() const {
+  return guess_lan_ipv4();
+}
 
 std::size_t CallMesh::established_count() const {
   std::lock_guard lock(mutex_);
   std::size_t n = 0;
   for (const auto& [_, link] : peers_) {
-    if (link.conn && link.conn->state() == ConnectionState::Established) ++n;
+    if (link.conn && link.conn->state() == ConnectionState::Established)
+      ++n;
   }
   return n;
 }
 
 void CallMesh::upsert_peer(const CallPeerEndpoint& peer) {
   std::lock_guard lock(mutex_);
-  if (!active_ || peer.port == 0 || peer.host.empty()) return;
-  if (peer.user_id == self_) return;
+  if (!active_ || peer.port == 0 || peer.host.empty())
+    return;
+  if (peer.user_id == self_)
+    return;
   if (peers_.size() >= kMaxCallParticipants && peers_.find(peer.user_id) == peers_.end()) {
     return;
   }
@@ -130,8 +139,8 @@ void CallMesh::try_connect(PeerLink& link) {
   link.initiator_attempted = true;
   link.last_connect_try = std::chrono::steady_clock::now();
   link.pending_since = link.last_connect_try;
-  link.pending = std::make_unique<PendingConnection>(socket_, link.ep.host, link.ep.port,
-                                                     HandshakeRole::Initiator);
+  link.pending = std::make_unique<PendingConnection>(
+      socket_, link.ep.host, link.ep.port, HandshakeRole::Initiator);
   if (!link.pending->start(nullptr)) {
     link.pending.reset();
     link.initiator_attempted = false;
@@ -139,8 +148,10 @@ void CallMesh::try_connect(PeerLink& link) {
 }
 
 void CallMesh::maintain_peer(PeerLink& link, std::chrono::steady_clock::time_point now) {
-  if (link.conn && link.conn->state() == ConnectionState::Established) return;
-  if (link.ep.port == 0 || link.ep.host.empty()) return;
+  if (link.conn && link.conn->state() == ConnectionState::Established)
+    return;
+  if (link.ep.port == 0 || link.ep.host.empty())
+    return;
 
   if (now - link.last_punch >= kPunchInterval) {
     hole_punch_burst(socket_, make_hint(link.ep.host, link.ep.port), 4);
@@ -155,9 +166,12 @@ void CallMesh::maintain_peer(PeerLink& link, std::chrono::steady_clock::time_poi
     return;
   }
 
-  if (!self_is_initiator(self_, link.ep.user_id)) return;
-  if (link.conn) return;
-  if (now - link.last_connect_try < kConnectRetry && link.initiator_attempted) return;
+  if (!self_is_initiator(self_, link.ep.user_id))
+    return;
+  if (link.conn)
+    return;
+  if (now - link.last_connect_try < kConnectRetry && link.initiator_attempted)
+    return;
   try_connect(link);
 }
 
@@ -180,8 +194,10 @@ bool CallMesh::send_realtime(const ByteBuffer& data) {
   std::lock_guard lock(mutex_);
   bool any = false;
   for (auto& [_, link] : peers_) {
-    if (!link.conn || link.conn->state() != ConnectionState::Established) continue;
-    if (link.conn->send_realtime(data)) any = true;
+    if (!link.conn || link.conn->state() != ConnectionState::Established)
+      continue;
+    if (link.conn->send_realtime(data))
+      any = true;
   }
   return any;
 }
@@ -190,11 +206,11 @@ bool CallMesh::send_realtime_except(const UserId& skip, const ByteBuffer& data) 
   std::lock_guard lock(mutex_);
   bool any = false;
   for (auto& [id, link] : peers_) {
-    if (id == skip || !link.conn ||
-        link.conn->state() != ConnectionState::Established) {
+    if (id == skip || !link.conn || link.conn->state() != ConnectionState::Established) {
       continue;
     }
-    if (link.conn->send_realtime(data)) any = true;
+    if (link.conn->send_realtime(data))
+      any = true;
   }
   return any;
 }
@@ -204,10 +220,12 @@ bool CallMesh::send_realtime_video(const ByteBuffer& data) {
   const std::size_t n = peers_.size();
   std::vector<UserId> video_targets;
   if (n <= kVideoFullMeshMax) {
-    for (const auto& [id, _] : peers_) video_targets.push_back(id);
+    for (const auto& [id, _] : peers_)
+      video_targets.push_back(id);
   } else if (n <= kVideoSparseMax) {
     std::vector<UserId> ids;
-    for (const auto& [id, _] : peers_) ids.push_back(id);
+    for (const auto& [id, _] : peers_)
+      ids.push_back(id);
     std::sort(ids.begin(), ids.end());
     const std::size_t take = std::min(kVideoSparseTargets, ids.size());
     auto it = std::lower_bound(ids.begin(), ids.end(), self_);
@@ -222,15 +240,19 @@ bool CallMesh::send_realtime_video(const ByteBuffer& data) {
   bool any = false;
   for (const auto& id : video_targets) {
     auto it = peers_.find(id);
-    if (it == peers_.end() || !it->second.conn) continue;
-    if (it->second.conn->state() != ConnectionState::Established) continue;
-    if (it->second.conn->send_realtime(data)) any = true;
+    if (it == peers_.end() || !it->second.conn)
+      continue;
+    if (it->second.conn->state() != ConnectionState::Established)
+      continue;
+    if (it->second.conn->send_realtime(data))
+      any = true;
   }
   return any;
 }
 
 void CallMesh::demux_incoming(const std::string& host, uint16_t port, const ByteBuffer& wire) {
-  if (is_punch_datagram(wire)) return;
+  if (is_punch_datagram(wire))
+    return;
 
   PeerLink* by_addr = nullptr;
   for (auto& [_, link] : peers_) {
@@ -251,12 +273,15 @@ void CallMesh::demux_incoming(const std::string& host, uint16_t port, const Byte
       return;
     }
 
-    if (!by_addr) return;
-    if (by_addr->conn && by_addr->conn->state() == ConnectionState::Established) return;
-    if (self_is_initiator(self_, by_addr->ep.user_id)) return;
+    if (!by_addr)
+      return;
+    if (by_addr->conn && by_addr->conn->state() == ConnectionState::Established)
+      return;
+    if (self_is_initiator(self_, by_addr->ep.user_id))
+      return;
 
-    by_addr->pending = std::make_unique<PendingConnection>(socket_, host, port,
-                                                           HandshakeRole::Responder);
+    by_addr->pending =
+        std::make_unique<PendingConnection>(socket_, host, port, HandshakeRole::Responder);
     by_addr->pending_since = std::chrono::steady_clock::now();
     if (!by_addr->pending->start(&wire)) {
       by_addr->pending.reset();
@@ -281,7 +306,8 @@ void CallMesh::poll() {
   RealtimeCallback callback;
   {
     std::lock_guard lock(mutex_);
-    if (!active_) return;
+    if (!active_)
+      return;
 
     std::string host;
     uint16_t port = 0;
@@ -313,10 +339,11 @@ void CallMesh::poll() {
     }
     callback = on_realtime_;
   }
-  if (!callback) return;
+  if (!callback)
+    return;
   for (auto& [from, raw] : received) {
     callback(from, std::move(raw));
   }
 }
 
-}  // namespace nyx
+} // namespace nyx

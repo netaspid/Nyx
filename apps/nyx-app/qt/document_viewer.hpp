@@ -27,7 +27,7 @@ class DocumentViewer : public QObject {
   Q_PROPERTY(bool canPrev READ canPrev NOTIFY changed)
   Q_PROPERTY(bool canNext READ canNext NOTIFY changed)
 
- public:
+public:
   explicit DocumentViewer(QObject* parent = nullptr);
   ~DocumentViewer() override;
 
@@ -46,8 +46,8 @@ class DocumentViewer : public QObject {
   bool canPrev() const { return page_ > 1; }
   bool canNext() const { return page_ < page_count_; }
 
-  Q_INVOKABLE bool openDocument(const QString& path, const QString& mime = {},
-                                const QString& title = {});
+  Q_INVOKABLE bool
+  openDocument(const QString& path, const QString& mime = {}, const QString& title = {});
   Q_INVOKABLE void close();
   Q_INVOKABLE void setPage(int page);
   Q_INVOKABLE void nextPage();
@@ -60,11 +60,11 @@ class DocumentViewer : public QObject {
   /** True when desktop in-app viewer should handle this file. */
   static bool canHandle(const QString& path, const QString& mime);
 
- signals:
+signals:
   void changed();
   void toast(const QString& message, bool isError);
 
- private:
+private:
   enum class Kind { Text, Pdf, Office };
 
   void resetState();

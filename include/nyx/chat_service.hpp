@@ -21,15 +21,14 @@ namespace nyx {
 
 /** 1:1 chat session over an established Connection. */
 class ChatService {
- public:
+public:
   struct PeerInfo {
-    UserId user_id{};
+    UserId user_id {};
     std::string nickname;
   };
 
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
-  using DeliveryCallback =
-      std::function<void(uint64_t message_id, DeliveryStatus status)>;
+  using DeliveryCallback = std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
   using CallFrameCallback = std::function<void(const ByteBuffer& frame)>;
 
@@ -67,7 +66,7 @@ class ChatService {
 
   bool connected() const { return connected_; }
 
- private:
+private:
   ChatMessage make_message(const std::string& text) const;
   StoredMessage to_stored(const ChatMessage& msg, bool outgoing) const;
   void deliver_incoming(ChatMessage msg);
@@ -76,7 +75,7 @@ class ChatService {
   Connection& connection_;
   Profile profile_;
   PeerInfo peer_;
-  ChatId chat_id_{};
+  ChatId chat_id_ {};
   MessageStore store_;
   Outbox outbox_;
   bool connected_ = true;
@@ -87,4 +86,4 @@ class ChatService {
   CallFrameCallback on_call_frame_;
 };
 
-}  // namespace nyx
+} // namespace nyx

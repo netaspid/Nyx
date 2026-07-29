@@ -30,11 +30,15 @@ using ProgressFn = std::function<void(int percent, const wchar_t* status)>;
 /** Stops Nyx processes that lock files in install_dir (upgrade/reinstall). */
 bool stop_nyx_for_install(const std::wstring& install_dir, std::wstring* err = nullptr);
 
-bool extract_payload(const std::vector<std::uint8_t>& blob, const std::wstring& target_dir,
-                     ProgressFn progress, std::wstring* err);
+bool extract_payload(const std::vector<std::uint8_t>& blob,
+                     const std::wstring& target_dir,
+                     ProgressFn progress,
+                     std::wstring* err);
 
-bool create_shortcut(const std::wstring& lnk_path, const std::wstring& target,
-                     const std::wstring& work_dir, const std::wstring& desc);
+bool create_shortcut(const std::wstring& lnk_path,
+                     const std::wstring& target,
+                     const std::wstring& work_dir,
+                     const std::wstring& desc);
 
 bool register_uninstall(const std::wstring& install_dir, const std::wstring& uninstall_exe);
 
@@ -47,18 +51,20 @@ bool ensure_system_prerequisites(std::wstring* err = nullptr);
  * Install document-viewer dependencies (MuPDF/Poppler + LibreOffice) when missing.
  * Uses winget when available; otherwise downloads MuPDF tools into install_dir\\tools.
  */
-bool ensure_document_dependencies(const std::wstring& install_dir, std::wstring* err = nullptr,
+bool ensure_document_dependencies(const std::wstring& install_dir,
+                                  std::wstring* err = nullptr,
                                   ProgressFn progress = nullptr);
 
 /** Checks extracted files and that Qt/runtime DLLs load. */
 bool verify_installation(const std::wstring& install_dir, std::wstring* err = nullptr);
 
 /** Re-copies payload files that are missing or empty under install_dir. */
-bool repair_installation(const std::vector<std::uint8_t>& blob, const std::wstring& install_dir,
+bool repair_installation(const std::vector<std::uint8_t>& blob,
+                         const std::wstring& install_dir,
                          std::wstring* err = nullptr);
 
 std::wstring default_install_dir();
 
 bool browse_for_folder(HWND owner, std::wstring& path);
 
-}  // namespace nyx_setup
+} // namespace nyx_setup

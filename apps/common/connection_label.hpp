@@ -17,4 +17,4 @@ enum class ConnectionVia {
 /** Human-readable label: LAN, Internet, Field, ... */
 std::string connection_label(ConnectionVia via, const std::string& peer_host);
 
-}  // namespace nyx_app
+} // namespace nyx_app

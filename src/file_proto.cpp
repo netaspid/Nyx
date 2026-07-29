@@ -16,14 +16,18 @@ constexpr std::size_t kMaxMimeLen = 128;
 constexpr std::size_t kMaxReasonLen = 256;
 constexpr std::size_t kMaxChunkPayload = kFileChunkSize;
 
-bool read_string(const ByteBuffer& data, std::size_t offset, std::size_t len,
-                 std::size_t max_len, std::string& out) {
-  if (len > max_len || offset + len > data.size()) return false;
+bool read_string(const ByteBuffer& data,
+                 std::size_t offset,
+                 std::size_t len,
+                 std::size_t max_len,
+                 std::string& out) {
+  if (len > max_len || offset + len > data.size())
+    return false;
   out.assign(reinterpret_cast<const char*>(data.data() + offset), len);
   return true;
 }
 
-}  // namespace
+} // namespace
 
 ByteBuffer FileOffer::encode() const {
   ByteBuffer out;
@@ -48,12 +52,15 @@ std::optional<FileOffer> FileOffer::decode(const ByteBuffer& data) {
   std::size_t off = 41;
   const uint16_t name_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, name_len, kMaxPathLen, offer.name)) return std::nullopt;
+  if (!read_string(data, off, name_len, kMaxPathLen, offer.name))
+    return std::nullopt;
   off += name_len;
-  if (off + 2 > data.size()) return std::nullopt;
+  if (off + 2 > data.size())
+    return std::nullopt;
   const uint16_t mime_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, mime_len, kMaxMimeLen, offer.mime)) return std::nullopt;
+  if (!read_string(data, off, mime_len, kMaxMimeLen, offer.mime))
+    return std::nullopt;
   return offer;
 }
 
@@ -82,10 +89,8 @@ ByteBuffer FileCapabilities::encode() const {
   return out;
 }
 
-std::optional<FileCapabilities> FileCapabilities::decode(
-    const ByteBuffer& data) {
-  if (data.size() < 7 ||
-      data[0] != static_cast<uint8_t>(FileKind::Capabilities)) {
+std::optional<FileCapabilities> FileCapabilities::decode(const ByteBuffer& data) {
+  if (data.size() < 7 || data[0] != static_cast<uint8_t>(FileKind::Capabilities)) {
     return std::nullopt;
   }
   FileCapabilities caps;
@@ -103,10 +108,8 @@ ByteBuffer FileRangeRequest::encode() const {
   return out;
 }
 
-std::optional<FileRangeRequest> FileRangeRequest::decode(
-    const ByteBuffer& data) {
-  if (data.size() < 41 ||
-      data[0] != static_cast<uint8_t>(FileKind::RangeRequest)) {
+std::optional<FileRangeRequest> FileRangeRequest::decode(const ByteBuffer& data) {
+  if (data.size() < 41 || data[0] != static_cast<uint8_t>(FileKind::RangeRequest)) {
     return std::nullopt;
   }
   FileRangeRequest request;
@@ -123,8 +126,7 @@ ByteBuffer FileCancel::encode() const {
 }
 
 std::optional<FileCancel> FileCancel::decode(const ByteBuffer& data) {
-  if (data.size() < 33 ||
-      data[0] != static_cast<uint8_t>(FileKind::Cancel)) {
+  if (data.size() < 33 || data[0] != static_cast<uint8_t>(FileKind::Cancel)) {
     return std::nullopt;
   }
   FileCancel cancel;
@@ -151,7 +153,8 @@ std::optional<FileChunk> FileChunk::decode(const ByteBuffer& data) {
   std::memcpy(chunk.hash.data(), data.data() + 1, 32);
   chunk.offset = read_u64_le(data.data() + 33);
   const uint32_t len = read_u32_le(data.data() + 41);
-  if (len > kMaxChunkPayload || data.size() < 45 + len) return std::nullopt;
+  if (len > kMaxChunkPayload || data.size() < 45 + len)
+    return std::nullopt;
   chunk.data.assign(data.begin() + 45, data.begin() + 45 + len);
   return chunk;
 }
@@ -184,11 +187,13 @@ ByteBuffer FileDeny::encode() const {
 }
 
 std::optional<FileDeny> FileDeny::decode(const ByteBuffer& data) {
-  if (data.size() < 35 || data[0] != static_cast<uint8_t>(FileKind::Deny)) return std::nullopt;
+  if (data.size() < 35 || data[0] != static_cast<uint8_t>(FileKind::Deny))
+    return std::nullopt;
   FileDeny deny;
   std::memcpy(deny.hash.data(), data.data() + 1, 32);
   const uint16_t len = read_u16_le(data.data() + 33);
-  if (!read_string(data, 35, len, kMaxReasonLen, deny.reason)) return std::nullopt;
+  if (!read_string(data, 35, len, kMaxReasonLen, deny.reason))
+    return std::nullopt;
   return deny;
 }
 
@@ -202,31 +207,39 @@ ByteBuffer encode_list_request(const std::string& root_path, const std::string& 
   ByteBuffer out;
   out.push_back(static_cast<uint8_t>(FileKind::ListReq));
   write_u16_le(out, static_cast<uint16_t>(std::min<std::size_t>(root_path.size(), 65535)));
-  out.insert(out.end(), root_path.begin(),
-             root_path.begin() + static_cast<std::ptrdiff_t>(
-                                     std::min<std::size_t>(root_path.size(), 65535)));
+  out.insert(out.end(),
+             root_path.begin(),
+             root_path.begin() +
+                 static_cast<std::ptrdiff_t>(std::min<std::size_t>(root_path.size(), 65535)));
   write_u16_le(out, static_cast<uint16_t>(std::min<std::size_t>(parent_rel.size(), 65535)));
-  out.insert(out.end(), parent_rel.begin(),
-             parent_rel.begin() + static_cast<std::ptrdiff_t>(
-                                      std::min<std::size_t>(parent_rel.size(), 65535)));
+  out.insert(out.end(),
+             parent_rel.begin(),
+             parent_rel.begin() +
+                 static_cast<std::ptrdiff_t>(std::min<std::size_t>(parent_rel.size(), 65535)));
   return out;
 }
 
 std::optional<std::pair<std::string, std::string>> decode_list_request(const ByteBuffer& data) {
-  if (data.empty() || data[0] != static_cast<uint8_t>(FileKind::ListReq)) return std::nullopt;
-  if (data.size() == 1) return std::make_pair(std::string{}, std::string{});
-  if (data.size() < 5) return std::nullopt;
+  if (data.empty() || data[0] != static_cast<uint8_t>(FileKind::ListReq))
+    return std::nullopt;
+  if (data.size() == 1)
+    return std::make_pair(std::string {}, std::string {});
+  if (data.size() < 5)
+    return std::nullopt;
   std::size_t off = 1;
   const uint16_t root_len = read_u16_le(data.data() + off);
   off += 2;
   std::string root;
-  if (!read_string(data, off, root_len, kMaxPathLen, root)) return std::nullopt;
+  if (!read_string(data, off, root_len, kMaxPathLen, root))
+    return std::nullopt;
   off += root_len;
-  if (off + 2 > data.size()) return std::nullopt;
+  if (off + 2 > data.size())
+    return std::nullopt;
   const uint16_t parent_len = read_u16_le(data.data() + off);
   off += 2;
   std::string parent;
-  if (!read_string(data, off, parent_len, kMaxPathLen, parent)) return std::nullopt;
+  if (!read_string(data, off, parent_len, kMaxPathLen, parent))
+    return std::nullopt;
   return std::make_pair(std::move(root), std::move(parent));
 }
 
@@ -238,30 +251,30 @@ ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
   std::vector<const FileEntry*> ordered;
   ordered.reserve(entries.size());
   for (const auto& e : entries) {
-    if (e.is_directory()) ordered.push_back(&e);
+    if (e.is_directory())
+      ordered.push_back(&e);
   }
   for (const auto& e : entries) {
-    if (!e.is_directory()) ordered.push_back(&e);
+    if (!e.is_directory())
+      ordered.push_back(&e);
   }
 
   ByteBuffer out;
   out.reserve(std::min(kMaxListBytes, ordered.size() * 128 + 8));
   out.push_back(static_cast<uint8_t>(FileKind::ListResp));
-  write_u16_le(out, 0);  // count is patched in below
+  write_u16_le(out, 0); // count is patched in below
 
   uint16_t count = 0;
   for (const FileEntry* pe : ordered) {
-    if (!pe || count == 65535) break;
+    if (!pe || count == 65535)
+      break;
     const auto& e = *pe;
-    const auto rel_len =
-        static_cast<uint16_t>(std::min(e.relative_path.size(), kMaxPathLen));
-    const auto mime_len =
-        static_cast<uint16_t>(std::min(e.mime.size(), kMaxMimeLen));
-    const auto root_len =
-        static_cast<uint16_t>(std::min(e.root_path.size(), kMaxPathLen));
-    const std::size_t add =
-        32 + 8 + 2 + rel_len + 2 + mime_len + 2 + root_len;
-    if (out.size() + add > kMaxListBytes && count > 0) break;
+    const auto rel_len = static_cast<uint16_t>(std::min(e.relative_path.size(), kMaxPathLen));
+    const auto mime_len = static_cast<uint16_t>(std::min(e.mime.size(), kMaxMimeLen));
+    const auto root_len = static_cast<uint16_t>(std::min(e.root_path.size(), kMaxPathLen));
+    const std::size_t add = 32 + 8 + 2 + rel_len + 2 + mime_len + 2 + root_len;
+    if (out.size() + add > kMaxListBytes && count > 0)
+      break;
 
     out.insert(out.end(), e.hash.begin(), e.hash.end());
     write_u64_le(out, e.size);
@@ -287,7 +300,8 @@ std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& dat
   std::vector<FileEntry> entries;
   std::size_t off = 3;
   for (uint16_t i = 0; i < count; ++i) {
-    if (off + 32 + 8 + 2 + 2 > data.size()) return std::nullopt;
+    if (off + 32 + 8 + 2 + 2 > data.size())
+      return std::nullopt;
     FileEntry entry;
     std::memcpy(entry.hash.data(), data.data() + off, 32);
     off += 32;
@@ -301,12 +315,14 @@ std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& dat
     off += path_len;
     const uint16_t mime_len = read_u16_le(data.data() + off);
     off += 2;
-    if (!read_string(data, off, mime_len, kMaxMimeLen, entry.mime)) return std::nullopt;
+    if (!read_string(data, off, mime_len, kMaxMimeLen, entry.mime))
+      return std::nullopt;
     off += mime_len;
     if (off + 2 <= data.size()) {
       const uint16_t root_len = read_u16_le(data.data() + off);
       off += 2;
-      if (!read_string(data, off, root_len, kMaxPathLen, entry.root_path)) return std::nullopt;
+      if (!read_string(data, off, root_len, kMaxPathLen, entry.root_path))
+        return std::nullopt;
       off += root_len;
     }
     entries.push_back(std::move(entry));
@@ -318,7 +334,8 @@ ByteBuffer encode_index_push(const std::vector<FileEntry>& entries,
                              const std::vector<std::string>& root_paths,
                              uint64_t revision) {
   ByteBuffer out = encode_list_response(entries);
-  if (out.empty()) return out;
+  if (out.empty())
+    return out;
   out[0] = static_cast<uint8_t>(FileKind::IndexPush);
   write_u16_le(out, static_cast<uint16_t>(root_paths.size()));
   for (const auto& path : root_paths) {
@@ -336,7 +353,8 @@ std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data) {
   ByteBuffer as_list = data;
   as_list[0] = static_cast<uint8_t>(FileKind::ListResp);
   auto entries = decode_list_response(as_list);
-  if (!entries) return std::nullopt;
+  if (!entries)
+    return std::nullopt;
 
   IndexPushPayload payload;
   payload.entries = std::move(*entries);
@@ -344,7 +362,8 @@ std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data) {
   std::size_t off = 3;
   const uint16_t entry_count = read_u16_le(data.data() + 1);
   for (uint16_t i = 0; i < entry_count; ++i) {
-    if (off + 32 + 8 + 2 + 2 > data.size()) break;
+    if (off + 32 + 8 + 2 + 2 > data.size())
+      break;
     off += 32 + 8;
     const uint16_t path_len = read_u16_le(data.data() + off);
     off += 2 + path_len;
@@ -355,14 +374,17 @@ std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data) {
       off += 2 + root_len;
     }
   }
-  if (off + 2 > data.size()) return payload;
+  if (off + 2 > data.size())
+    return payload;
   const uint16_t roots_in_payload = read_u16_le(data.data() + off);
   off += 2;
   for (uint16_t i = 0; i < roots_in_payload; ++i) {
-    if (off + 2 > data.size()) break;
+    if (off + 2 > data.size())
+      break;
     const uint16_t len = read_u16_le(data.data() + off);
     off += 2;
-    if (off + len > data.size()) break;
+    if (off + len > data.size())
+      break;
     payload.root_paths.emplace_back(reinterpret_cast<const char*>(data.data() + off), len);
     off += len;
   }
@@ -376,7 +398,7 @@ namespace {
 
 constexpr std::size_t kMaxPolicyJson = 512 * 1024;
 
-}  // namespace
+} // namespace
 
 ByteBuffer encode_policy_push(const GroupFileAccess& policy) {
   const std::string json = FileAccessStore::encode_group_policy_json(policy);
@@ -393,10 +415,12 @@ std::optional<GroupFileAccess> decode_policy_push(const ByteBuffer& data) {
     return std::nullopt;
   }
   const uint32_t len = read_u32_le(data.data() + 1);
-  if (len == 0 || len > kMaxPolicyJson || data.size() < 5 + len) return std::nullopt;
+  if (len == 0 || len > kMaxPolicyJson || data.size() < 5 + len)
+    return std::nullopt;
   const std::string json(reinterpret_cast<const char*>(data.data() + 5), len);
   GroupFileAccess policy;
-  if (!FileAccessStore::decode_group_policy_json(json, policy)) return std::nullopt;
+  if (!FileAccessStore::decode_group_policy_json(json, policy))
+    return std::nullopt;
   return policy;
 }
 
@@ -406,4 +430,4 @@ ByteBuffer encode_policy_request() {
   return out;
 }
 
-}  // namespace nyx
+} // namespace nyx

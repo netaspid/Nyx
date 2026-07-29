@@ -29,4 +29,4 @@ NodeConfig parse_config(int argc, char** argv, int start_index);
 /** Prints usage help. */
 void print_usage();
 
-}  // namespace nyx_node
+} // namespace nyx_node

@@ -13,9 +13,13 @@ constexpr std::size_t kMaxReasonLen = 256;
 constexpr std::size_t kMaxNickLen = 128;
 constexpr std::size_t kMaxMetaFieldLen = 1024;
 
-bool read_string(const ByteBuffer& data, std::size_t offset, std::size_t len,
-                 std::size_t max_len, std::string& out) {
-  if (len > max_len || offset + len > data.size()) return false;
+bool read_string(const ByteBuffer& data,
+                 std::size_t offset,
+                 std::size_t len,
+                 std::size_t max_len,
+                 std::string& out) {
+  if (len > max_len || offset + len > data.size())
+    return false;
   out.assign(reinterpret_cast<const char*>(data.data() + offset), len);
   return true;
 }
@@ -28,7 +32,8 @@ void write_member(ByteBuffer& out, const GroupMemberRecord& m) {
 }
 
 bool read_member(const ByteBuffer& data, std::size_t& off, GroupMemberRecord& m) {
-  if (off + 32 + 1 + 2 > data.size()) return false;
+  if (off + 32 + 1 + 2 > data.size())
+    return false;
   std::memcpy(m.user_id.data(), data.data() + off, 32);
   off += 32;
   m.role = static_cast<GroupRole>(data[off++]);
@@ -37,17 +42,20 @@ bool read_member(const ByteBuffer& data, std::size_t& off, GroupMemberRecord& m)
   }
   const uint16_t nick_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, nick_len, kMaxNickLen, m.nickname)) return false;
+  if (!read_string(data, off, nick_len, kMaxNickLen, m.nickname))
+    return false;
   off += nick_len;
   return true;
 }
 
-}  // namespace
+} // namespace
 
 bool is_group_frame(const ByteBuffer& data) {
-  if (data.empty()) return false;
+  if (data.empty())
+    return false;
   const uint8_t b = data[0];
-  if (b == static_cast<uint8_t>(GroupKind::Meta)) return true;
+  if (b == static_cast<uint8_t>(GroupKind::Meta))
+    return true;
   return b >= static_cast<uint8_t>(GroupKind::Join) &&
          b <= static_cast<uint8_t>(GroupKind::MemberJoined);
 }
@@ -78,7 +86,8 @@ ByteBuffer GroupJoinAckMessage::encode() const {
   write_u16_le(out, static_cast<uint16_t>(group_name.size()));
   out.insert(out.end(), group_name.begin(), group_name.end());
   write_u16_le(out, static_cast<uint16_t>(members.size()));
-  for (const auto& m : members) write_member(out, m);
+  for (const auto& m : members)
+    write_member(out, m);
   return out;
 }
 
@@ -91,21 +100,26 @@ std::optional<GroupJoinAckMessage> GroupJoinAckMessage::decode(const ByteBuffer&
   msg.accepted = data[off++] != 0;
   const uint16_t reason_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, reason_len, kMaxReasonLen, msg.reason)) return std::nullopt;
+  if (!read_string(data, off, reason_len, kMaxReasonLen, msg.reason))
+    return std::nullopt;
   off += reason_len;
-  if (off + 32 + 2 > data.size()) return std::nullopt;
+  if (off + 32 + 2 > data.size())
+    return std::nullopt;
   std::memcpy(msg.group_id.data(), data.data() + off, 32);
   off += 32;
   const uint16_t name_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, name_len, kMaxNameLen, msg.group_name)) return std::nullopt;
+  if (!read_string(data, off, name_len, kMaxNameLen, msg.group_name))
+    return std::nullopt;
   off += name_len;
-  if (off + 2 > data.size()) return std::nullopt;
+  if (off + 2 > data.size())
+    return std::nullopt;
   const uint16_t count = read_u16_le(data.data() + off);
   off += 2;
   for (uint16_t i = 0; i < count; ++i) {
     GroupMemberRecord m;
-    if (!read_member(data, off, m)) return std::nullopt;
+    if (!read_member(data, off, m))
+      return std::nullopt;
     msg.members.push_back(std::move(m));
   }
   return msg;
@@ -118,14 +132,14 @@ ByteBuffer GroupMemberJoinedMessage::encode() const {
   return out;
 }
 
-std::optional<GroupMemberJoinedMessage> GroupMemberJoinedMessage::decode(
-    const ByteBuffer& data) {
+std::optional<GroupMemberJoinedMessage> GroupMemberJoinedMessage::decode(const ByteBuffer& data) {
   if (data.size() < 2 || data[0] != static_cast<uint8_t>(GroupKind::MemberJoined)) {
     return std::nullopt;
   }
   GroupMemberJoinedMessage msg;
   std::size_t off = 1;
-  if (!read_member(data, off, msg.member)) return std::nullopt;
+  if (!read_member(data, off, msg.member))
+    return std::nullopt;
   return msg;
 }
 
@@ -143,30 +157,34 @@ ByteBuffer GroupMetaMessage::encode() const {
 }
 
 std::optional<GroupMetaMessage> GroupMetaMessage::decode(const ByteBuffer& data) {
-  if (data.size() < 1 + 2 + 2 + 2 + 1 ||
-      data[0] != static_cast<uint8_t>(GroupKind::Meta)) {
+  if (data.size() < 1 + 2 + 2 + 2 + 1 || data[0] != static_cast<uint8_t>(GroupKind::Meta)) {
     return std::nullopt;
   }
   GroupMetaMessage msg;
   std::size_t off = 1;
   const uint16_t desc_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, desc_len, kMaxMetaFieldLen, msg.description)) return std::nullopt;
+  if (!read_string(data, off, desc_len, kMaxMetaFieldLen, msg.description))
+    return std::nullopt;
   off += desc_len;
-  if (off + 2 > data.size()) return std::nullopt;
+  if (off + 2 > data.size())
+    return std::nullopt;
   const uint16_t dir_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, dir_len, kMaxMetaFieldLen, msg.direction)) return std::nullopt;
+  if (!read_string(data, off, dir_len, kMaxMetaFieldLen, msg.direction))
+    return std::nullopt;
   off += dir_len;
-  if (off + 2 > data.size()) return std::nullopt;
+  if (off + 2 > data.size())
+    return std::nullopt;
   const uint16_t tags_len = read_u16_le(data.data() + off);
   off += 2;
-  if (!read_string(data, off, tags_len, kMaxMetaFieldLen, msg.tags)) return std::nullopt;
+  if (!read_string(data, off, tags_len, kMaxMetaFieldLen, msg.tags))
+    return std::nullopt;
   off += tags_len;
-  if (off >= data.size()) return std::nullopt;
-  msg.visibility =
-      data[off] != 0 ? GroupVisibility::PublicListed : GroupVisibility::Circle;
+  if (off >= data.size())
+    return std::nullopt;
+  msg.visibility = data[off] != 0 ? GroupVisibility::PublicListed : GroupVisibility::Circle;
   return msg;
 }
 
-}  // namespace nyx
+} // namespace nyx

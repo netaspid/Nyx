@@ -9,7 +9,7 @@
 class ChatListModel : public QAbstractListModel {
   Q_OBJECT
 
- public:
+public:
   enum Roles {
     KeyRole = Qt::UserRole + 1,
     TitleRole,
@@ -38,7 +38,7 @@ class ChatListModel : public QAbstractListModel {
   Q_INVOKABLE void setSessionState(const QString& key, const QString& state);
   Q_INVOKABLE void setSelectedKey(const QString& key);
 
- private:
+private:
   struct Row {
     QString key;
     QString title;

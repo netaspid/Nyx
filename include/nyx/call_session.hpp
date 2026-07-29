@@ -21,10 +21,10 @@ enum class CallState : uint8_t {
 
 struct CallSession {
   CallState state = CallState::Idle;
-  CallId call_id{};
+  CallId call_id {};
   CallMode mode = CallMode::Audio;
   CallScope scope = CallScope::Direct;
-  UserId remote_or_group{};
+  UserId remote_or_group {};
   bool local_mic_muted = false;
   bool local_camera_on = false;
   std::string end_reason;
@@ -46,4 +46,4 @@ struct CallSession {
   void reset();
 };
 
-}  // namespace nyx
+} // namespace nyx

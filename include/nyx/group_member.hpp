@@ -21,7 +21,7 @@
 namespace nyx {
 
 struct GroupRecordView {
-  GroupId id{};
+  GroupId id {};
   std::string name;
   std::string description;
   std::string direction;
@@ -34,15 +34,16 @@ struct GroupRecordView {
 
 /** Field member session (not the owner hub). */
 class GroupMemberService {
- public:
+public:
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
-  using DeliveryCallback =
-      std::function<void(uint64_t message_id, DeliveryStatus status)>;
+  using DeliveryCallback = std::function<void(uint64_t message_id, DeliveryStatus status)>;
   using EventCallback = std::function<void(const std::string& text)>;
   using MetaCallback = std::function<void()>;
   using CallFrameCallback = std::function<void(const ByteBuffer& frame)>;
 
-  GroupMemberService(Connection& connection, Profile profile, GroupId group_id,
+  GroupMemberService(Connection& connection,
+                     Profile profile,
+                     GroupId group_id,
                      std::string group_name);
 
   /** After Hello: sends GroupJoin and waits for JoinAck. */
@@ -66,16 +67,16 @@ class GroupMemberService {
   const ChatId& chat_id() const { return chat_id_; }
   Connection& connection() { return connection_; }
 
- private:
+private:
   ChatMessage make_message(const std::string& text) const;
   StoredMessage to_stored(const ChatMessage& msg, bool outgoing) const;
   void deliver_incoming(ChatMessage msg);
 
   Connection& connection_;
   Profile profile_;
-  GroupId group_id_{};
+  GroupId group_id_ {};
   std::string group_name_;
-  ChatId chat_id_{};
+  ChatId chat_id_ {};
   MessageStore store_;
   GroupRecordView view_;
   bool joined_ = false;
@@ -90,4 +91,4 @@ class GroupMemberService {
   std::unordered_set<uint64_t> pending_acks_;
 };
 
-}  // namespace nyx
+} // namespace nyx

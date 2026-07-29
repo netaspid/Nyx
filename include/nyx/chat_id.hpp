@@ -23,4 +23,4 @@ ChatId group_chat_id(const GroupId& group_id);
 /** Hex form used in history file paths. */
 std::string chat_id_hex(const ChatId& id);
 
-}  // namespace nyx
+} // namespace nyx

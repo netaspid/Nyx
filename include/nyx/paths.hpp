@@ -53,4 +53,4 @@ std::string default_logs_dir();
 /** Main log file path. */
 std::string default_log_file_path();
 
-}  // namespace nyx
+} // namespace nyx

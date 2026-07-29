@@ -15,7 +15,7 @@
 namespace nyx {
 
 class UdpSocket {
- public:
+public:
   UdpSocket();
   ~UdpSocket();
 
@@ -30,14 +30,14 @@ class UdpSocket {
   bool send_to(const ByteBuffer& data, const std::string& host, uint16_t port);
 
   /** Receives a datagram. timeout_ms < 0 = no timeout; 0 = poll. */
-  std::optional<ByteBuffer> recv_from(std::string& host, uint16_t& port,
-                                      int timeout_ms = -1);
+  std::optional<ByteBuffer> recv_from(std::string& host, uint16_t& port, int timeout_ms = -1);
 
   /** Local port after bind. */
   uint16_t local_port() const;
 
   /** Bind + join multicast group; optional iface IPv4 (empty = auto). */
-  bool bind_multicast_listener(const std::string& group, uint16_t port,
+  bool bind_multicast_listener(const std::string& group,
+                               uint16_t port,
                                std::string* err = nullptr,
                                const std::string& iface_ipv4 = {});
 
@@ -46,7 +46,7 @@ class UdpSocket {
   /** Set multicast TX iface; re-joins membership when group was joined. */
   bool set_multicast_interface(const std::string& ipv4, std::string* err = nullptr);
 
- private:
+private:
   struct State {
     uintptr_t sock = static_cast<uintptr_t>(-1);
     uint16_t local_port = 0;
@@ -58,4 +58,4 @@ class UdpSocket {
   static bool platform_init();
 };
 
-}  // namespace nyx
+} // namespace nyx

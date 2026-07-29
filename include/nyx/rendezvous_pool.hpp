@@ -16,7 +16,7 @@ namespace nyx {
 
 /** Client supporting a rendezvous server list. */
 class RendezvousPool {
- public:
+public:
   explicit RendezvousPool(UdpSocket socket);
 
   void set_servers(const std::vector<RendezvousServer>& servers);
@@ -35,21 +35,22 @@ class RendezvousPool {
 
   UdpSocket& socket() { return socket_; }
 
- private:
-  bool send_to_server(const RendezvousServer& server, PacketType type,
-                      const ByteBuffer& payload);
-  std::optional<EndpointHint> lookup_on(const RendezvousServer& server,
-                                         const InviteToken& token, int timeout_ms);
+private:
+  bool send_to_server(const RendezvousServer& server, PacketType type, const ByteBuffer& payload);
+  std::optional<EndpointHint>
+  lookup_on(const RendezvousServer& server, const InviteToken& token, int timeout_ms);
 
   UdpSocket socket_;
   std::vector<RendezvousServer> servers_;
 };
 
 /** Register/unregister via an already open UDP socket (hub/listen refresh). */
-bool register_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
+bool register_token_on(UdpSocket& socket,
+                       const std::vector<RendezvousServer>& servers,
                        const InviteToken& token);
 /** Removes the invite from bootstrap when hub/listen stops. */
-bool unregister_token_on(UdpSocket& socket, const std::vector<RendezvousServer>& servers,
-                          const InviteToken& token);
+bool unregister_token_on(UdpSocket& socket,
+                         const std::vector<RendezvousServer>& servers,
+                         const InviteToken& token);
 
-}  // namespace nyx
+} // namespace nyx

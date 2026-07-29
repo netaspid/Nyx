@@ -23,8 +23,8 @@ using UserId = PublicKey;
 /** User profile on disk. */
 struct Profile {
   std::string nickname;
-  SecretKey secret_key{};
-  PublicKey public_key{};
+  SecretKey secret_key {};
+  PublicKey public_key {};
 
   UserId user_id() const { return public_key; }
 };
@@ -45,7 +45,7 @@ bool load_profile(const std::string& path, Profile& out);
 
 /** Local contact book record. */
 struct Contact {
-  UserId user_id{};
+  UserId user_id {};
   std::string nickname;
   uint8_t trust_level = 0;
   uint64_t last_seen_ms = 0;
@@ -61,7 +61,7 @@ struct Contact {
 
 /** Local contact book (JSON on disk). */
 class ContactBook {
- public:
+public:
   explicit ContactBook(std::string path);
 
   bool load();
@@ -72,9 +72,9 @@ class ContactBook {
   bool remove(const UserId& user_id);
   const std::vector<Contact>& contacts() const { return contacts_; }
 
- private:
+private:
   std::string path_;
   std::vector<Contact> contacts_;
 };
 
-}  // namespace nyx
+} // namespace nyx

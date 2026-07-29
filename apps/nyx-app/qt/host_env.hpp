@@ -17,4 +17,4 @@ inline QProcessEnvironment host_process_environment() {
   return env;
 }
 
-}  // namespace nyx_app
+} // namespace nyx_app

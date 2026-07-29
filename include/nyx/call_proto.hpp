@@ -56,11 +56,11 @@ enum class CallHangupReason : uint8_t {
 };
 
 struct CallInviteMessage {
-  CallId call_id{};
+  CallId call_id {};
   CallMode mode = CallMode::Audio;
   CallScope scope = CallScope::Direct;
   /** DM: peer id; Field: group id as 32 bytes. */
-  UserId group_or_peer{};
+  UserId group_or_peer {};
   std::string sdp_lite;
 
   ByteBuffer encode() const;
@@ -68,13 +68,13 @@ struct CallInviteMessage {
 };
 
 struct CallRingingMessage {
-  CallId call_id{};
+  CallId call_id {};
   ByteBuffer encode() const;
   static std::optional<CallRingingMessage> decode(const ByteBuffer& data);
 };
 
 struct CallAcceptMessage {
-  CallId call_id{};
+  CallId call_id {};
   CallMode mode = CallMode::Audio;
   std::string sdp_lite;
 
@@ -83,7 +83,7 @@ struct CallAcceptMessage {
 };
 
 struct CallRejectMessage {
-  CallId call_id{};
+  CallId call_id {};
   CallRejectReason reason = CallRejectReason::Declined;
 
   ByteBuffer encode() const;
@@ -91,7 +91,7 @@ struct CallRejectMessage {
 };
 
 struct CallHangupMessage {
-  CallId call_id{};
+  CallId call_id {};
   CallHangupReason reason = CallHangupReason::Normal;
 
   ByteBuffer encode() const;
@@ -99,7 +99,7 @@ struct CallHangupMessage {
 };
 
 struct CallUpdateMessage {
-  CallId call_id{};
+  CallId call_id {};
   bool mic_muted = false;
   bool camera_on = false;
   bool screen_share = false;
@@ -109,13 +109,13 @@ struct CallUpdateMessage {
 };
 
 struct CallPeerEndpoint {
-  UserId user_id{};
+  UserId user_id {};
   std::string host;
   uint16_t port = 0;
 };
 
 struct CallRosterMessage {
-  CallId call_id{};
+  CallId call_id {};
   std::vector<UserId> participants;
 
   ByteBuffer encode() const;
@@ -123,7 +123,7 @@ struct CallRosterMessage {
 };
 
 struct CallPeerIntroMessage {
-  CallId call_id{};
+  CallId call_id {};
   CallPeerEndpoint peer;
 
   ByteBuffer encode() const;
@@ -131,8 +131,8 @@ struct CallPeerIntroMessage {
 };
 
 struct CallPeerGoneMessage {
-  CallId call_id{};
-  UserId user_id{};
+  CallId call_id {};
+  UserId user_id {};
 
   ByteBuffer encode() const;
   static std::optional<CallPeerGoneMessage> decode(const ByteBuffer& data);
@@ -140,7 +140,7 @@ struct CallPeerGoneMessage {
 
 /** Local UDP endpoint for mesh media. */
 struct CallEndpointMessage {
-  CallId call_id{};
+  CallId call_id {};
   CallPeerEndpoint self;
 
   ByteBuffer encode() const;
@@ -148,16 +148,16 @@ struct CallEndpointMessage {
 };
 
 struct CallLeaveAckMessage {
-  CallId call_id{};
-  UserId user_id{};
+  CallId call_id {};
+  UserId user_id {};
 
   ByteBuffer encode() const;
   static std::optional<CallLeaveAckMessage> decode(const ByteBuffer& data);
 };
 
 struct CallRelayCandidateMessage {
-  CallId call_id{};
-  UserId user_id{};
+  CallId call_id {};
+  UserId user_id {};
   uint16_t score = 0;
 
   ByteBuffer encode() const;
@@ -165,7 +165,7 @@ struct CallRelayCandidateMessage {
 };
 
 struct CallRelaySetMessage {
-  CallId call_id{};
+  CallId call_id {};
   uint32_t epoch = 0;
   std::vector<UserId> relays;
 
@@ -178,4 +178,4 @@ CallId generate_call_id();
 std::string call_id_hex(const CallId& id);
 bool call_id_from_hex(const std::string& hex, CallId& out);
 
-}  // namespace nyx
+} // namespace nyx

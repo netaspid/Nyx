@@ -19,7 +19,7 @@ constexpr int kCallAudioFrameMs = 20;
 constexpr int kCallAudioFrameSamples = kCallAudioSampleRate * kCallAudioFrameMs / 1000;
 
 class OpusEncoderWrap {
- public:
+public:
   OpusEncoderWrap();
   ~OpusEncoderWrap();
   OpusEncoderWrap(const OpusEncoderWrap&) = delete;
@@ -29,12 +29,12 @@ class OpusEncoderWrap {
   /** PCM int16 mono → Opus packet. */
   std::optional<ByteBuffer> encode(const int16_t* pcm, int samples);
 
- private:
+private:
   void* enc_ = nullptr;
 };
 
 class OpusDecoderWrap {
- public:
+public:
   OpusDecoderWrap();
   ~OpusDecoderWrap();
   OpusDecoderWrap(const OpusDecoderWrap&) = delete;
@@ -44,8 +44,8 @@ class OpusDecoderWrap {
   /** Opus packet -> PCM int16 (samples = kCallAudioFrameSamples on success). */
   std::optional<std::vector<int16_t>> decode(const uint8_t* data, std::size_t len);
 
- private:
+private:
   void* dec_ = nullptr;
 };
 
-}  // namespace nyx
+} // namespace nyx

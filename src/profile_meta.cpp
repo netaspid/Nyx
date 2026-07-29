@@ -19,7 +19,7 @@ uint64_t wall_ms() {
   return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
-}  // namespace
+} // namespace
 
 namespace nyx {
 
@@ -28,57 +28,67 @@ namespace {
 constexpr std::size_t kMaxBioLen = 280;
 constexpr std::size_t kMaxInterestsLen = 200;
 
-std::string meta_path() { return data_dir() + "/profile_meta.json"; }
-
-void clamp_meta(ProfileMeta& m) {
-  if (m.bio.size() > kMaxBioLen) m.bio.resize(kMaxBioLen);
-  if (m.interests.size() > kMaxInterestsLen) m.interests.resize(kMaxInterestsLen);
+std::string meta_path() {
+  return data_dir() + "/profile_meta.json";
 }
 
-}  // namespace
+void clamp_meta(ProfileMeta& m) {
+  if (m.bio.size() > kMaxBioLen)
+    m.bio.resize(kMaxBioLen);
+  if (m.interests.size() > kMaxInterestsLen)
+    m.interests.resize(kMaxInterestsLen);
+}
+
+} // namespace
 
 std::string availability_to_string(Availability a) {
   switch (a) {
-    case Availability::Away:
-      return "away";
-    case Availability::Busy:
-      return "busy";
-    case Availability::Invisible:
-      return "invisible";
-    default:
-      return "available";
+  case Availability::Away:
+    return "away";
+  case Availability::Busy:
+    return "busy";
+  case Availability::Invisible:
+    return "invisible";
+  default:
+    return "available";
   }
 }
 
 Availability availability_from_string(const std::string& s) {
-  if (s == "away") return Availability::Away;
-  if (s == "busy") return Availability::Busy;
-  if (s == "invisible") return Availability::Invisible;
+  if (s == "away")
+    return Availability::Away;
+  if (s == "busy")
+    return Availability::Busy;
+  if (s == "invisible")
+    return Availability::Invisible;
   return Availability::Available;
 }
 
 std::string availability_label_ru(Availability a) {
   switch (a) {
-    case Availability::Away:
-      return "отошёл";
-    case Availability::Busy:
-      return "занят";
-    case Availability::Invisible:
-      return "невидимый";
-    default:
-      return "доступен";
+  case Availability::Away:
+    return "отошёл";
+  case Availability::Busy:
+    return "занят";
+  case Availability::Invisible:
+    return "невидимый";
+  default:
+    return "доступен";
   }
 }
 
 bool load_profile_meta(ProfileMeta& out) {
-  out = ProfileMeta{};
+  out = ProfileMeta {};
   std::ifstream file(meta_path(), std::ios::binary);
-  if (!file) return true;
+  if (!file)
+    return true;
   std::ostringstream ss;
   ss << file.rdbuf();
   const std::string json = ss.str();
-  if (auto bio = json_get_string(json, "bio")) out.bio = *bio;
-  if (auto interests = json_get_string(json, "interests")) out.interests = *interests;
+  if (auto bio = json_get_string(json, "bio"))
+    out.bio = *bio;
+  if (auto interests = json_get_string(json, "interests"))
+    out.interests = *interests;
   if (auto av = json_get_string(json, "availability")) {
     out.availability = availability_from_string(*av);
   }
@@ -97,14 +107,15 @@ bool load_profile_meta(ProfileMeta& out) {
 bool save_profile_meta(const ProfileMeta& meta) {
   ProfileMeta m = meta;
   clamp_meta(m);
-  if (m.updated_ms == 0) m.updated_ms = wall_ms();
+  if (m.updated_ms == 0)
+    m.updated_ms = wall_ms();
   ensure_data_dir();
   std::ofstream file(meta_path(), std::ios::binary | std::ios::trunc);
-  if (!file) return false;
+  if (!file)
+    return false;
   file << "{\"v\":1,\"bio\":\"" << json_escape(m.bio) << "\",\"interests\":\""
        << json_escape(m.interests) << "\",\"availability\":\""
-       << availability_to_string(m.availability) << "\",\"updated_ms\":" << m.updated_ms
-       << "}\n";
+       << availability_to_string(m.availability) << "\",\"updated_ms\":" << m.updated_ms << "}\n";
   return static_cast<bool>(file);
 }
 
@@ -126,19 +137,24 @@ void append_profile_meta_wire(ByteBuffer& out, const ProfileMeta& meta) {
 }
 
 bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, ProfileMeta& out) {
-  if (offset + 2 > data.size()) return false;
+  if (offset + 2 > data.size())
+    return false;
   const uint16_t bio_len = read_u16_le(data.data() + offset);
   offset += 2;
-  if (bio_len > kMaxBioLen || offset + bio_len > data.size()) return false;
+  if (bio_len > kMaxBioLen || offset + bio_len > data.size())
+    return false;
   out.bio.assign(reinterpret_cast<const char*>(data.data() + offset), bio_len);
   offset += bio_len;
-  if (offset + 2 > data.size()) return false;
+  if (offset + 2 > data.size())
+    return false;
   const uint16_t int_len = read_u16_le(data.data() + offset);
   offset += 2;
-  if (int_len > kMaxInterestsLen || offset + int_len > data.size()) return false;
+  if (int_len > kMaxInterestsLen || offset + int_len > data.size())
+    return false;
   out.interests.assign(reinterpret_cast<const char*>(data.data() + offset), int_len);
   offset += int_len;
-  if (offset >= data.size()) return false;
+  if (offset >= data.size())
+    return false;
   out.availability = static_cast<Availability>(data[offset]);
   ++offset;
   out.photo_hashes.clear();
@@ -149,10 +165,12 @@ bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, Profile
     offset += 8;
     if (offset < data.size()) {
       const uint8_t count = data[offset++];
-      if (count > kMaxProfilePhotosWire) return false;
+      if (count > kMaxProfilePhotosWire)
+        return false;
       for (uint8_t i = 0; i < count; ++i) {
-        if (offset + 32 > data.size()) return false;
-        FileHash h{};
+        if (offset + 32 > data.size())
+          return false;
+        FileHash h {};
         std::memcpy(h.data(), data.data() + offset, 32);
         offset += 32;
         out.photo_hashes.push_back(h);
@@ -162,4 +180,4 @@ bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, Profile
   return true;
 }
 
-}  // namespace nyx
+} // namespace nyx

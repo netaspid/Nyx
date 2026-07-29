@@ -19,14 +19,14 @@ constexpr std::size_t kMaxAvatarHistory = 5;
 constexpr std::size_t kMaxAvatarBytes = 200 * 1024;
 
 struct AvatarEntry {
-  FileHash hash{};
+  FileHash hash {};
   std::string mime = "image/jpeg";
   uint64_t set_ms = 0;
 };
 
 /** Own avatars: current = photos[0]. */
 class AvatarStore {
- public:
+public:
   AvatarStore();
 
   bool load();
@@ -50,7 +50,9 @@ class AvatarStore {
   bool remove(const FileHash& hash);
 
   /** Peer cache: store a blob. */
-  bool cache_peer_photo(const UserId& peer, const FileHash& hash, const ByteBuffer& data,
+  bool cache_peer_photo(const UserId& peer,
+                        const FileHash& hash,
+                        const ByteBuffer& data,
                         const std::string& mime = "image/jpeg");
   /** Peer cache path; empty when the file is missing. */
   std::string peer_path(const UserId& peer, const FileHash& hash) const;
@@ -62,9 +64,9 @@ class AvatarStore {
   static std::string self_dir();
   static std::string peers_dir();
 
- private:
+private:
   std::vector<AvatarEntry> photos_;
   std::string store_json_path() const;
 };
 
-}  // namespace nyx
+} // namespace nyx

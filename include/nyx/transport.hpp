@@ -6,8 +6,8 @@
 
 #include "nyx/types.hpp"
 
-#include <cstdint>
 #include <chrono>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <vector>
@@ -15,7 +15,7 @@
 namespace nyx {
 
 class ReliableSession {
- public:
+public:
   explicit ReliableSession(std::size_t window = 256, std::size_t mtu = kDefaultMtu);
 
   /** Splits data into Data frames for stream_id. */
@@ -33,16 +33,16 @@ class ReliableSession {
   /** Flushes queued fragments when the ARQ window has room. */
   std::vector<ByteBuffer> drain_outbound();
 
- private:
+private:
   struct SendItem {
     uint32_t stream_id = 0;
     ByteBuffer payload;
     uint32_t retransmits = 0;
-    std::chrono::steady_clock::time_point sent_at{};
+    std::chrono::steady_clock::time_point sent_at {};
   };
 
-  std::optional<ByteBuffer> encode_data(uint32_t stream_id, uint32_t seq,
-                                        const ByteBuffer& payload) const;
+  std::optional<ByteBuffer>
+  encode_data(uint32_t stream_id, uint32_t seq, const ByteBuffer& payload) const;
   void on_ack(uint32_t ack, const std::vector<uint32_t>& sack);
   std::vector<ByteBuffer> on_data(uint32_t seq, const ByteBuffer& payload);
 
@@ -83,4 +83,4 @@ class ReliableSession {
   std::map<uint32_t, ByteBuffer> recv_hold_;
 };
 
-}  // namespace nyx
+} // namespace nyx

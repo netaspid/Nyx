@@ -5,13 +5,12 @@
  */
 
 #include "connection_label.hpp"
-#include "session_types.hpp"
 #include "nyx/app.hpp"
 #include "nyx/avatar_store.hpp"
-#include "nyx/call_proto.hpp"
-#include "nyx/call_session.hpp"
 #include "nyx/call_media.hpp"
 #include "nyx/call_mesh.hpp"
+#include "nyx/call_proto.hpp"
+#include "nyx/call_session.hpp"
 #include "nyx/chat_service.hpp"
 #include "nyx/connection.hpp"
 #include "nyx/conversation.hpp"
@@ -27,9 +26,10 @@
 #include "nyx/messaging.hpp"
 #include "nyx/network_config.hpp"
 #include "nyx/session_intent.hpp"
+#include "session_types.hpp"
 
-#include <atomic>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <deque>
@@ -71,15 +71,15 @@ enum class NodeMode {
 
 /** Network scenario orchestrator: several parallel sessions. */
 class NodeService {
- public:
+public:
   using StatusCallback = std::function<void(const std::string&)>;
   using MessageCallback = std::function<void(const UiMessage&)>;
   using DeliveryCallback =
       std::function<void(const std::string& session_id, uint64_t message_id, bool delivered)>;
   using TokenCallback = std::function<void(const std::string& token_hex)>;
   using LanPeersCallback = std::function<void(const std::vector<nyx::LanPeer>&)>;
-  using GroupInfoCallback = std::function<void(const std::string& group_id_hex,
-                                               const std::string& invite_hex)>;
+  using GroupInfoCallback =
+      std::function<void(const std::string& group_id_hex, const std::string& invite_hex)>;
   using ChatReadyCallback = std::function<void(const std::string& session_id,
                                                const std::string& title,
                                                const std::string& connection_label,
@@ -114,8 +114,7 @@ class NodeService {
   void set_on_group_meta_changed(SessionsChangedCallback cb);
   void set_on_chat_ready(ChatReadyCallback cb);
 
-  using FileProgressCallback =
-      std::function<void(const std::string& label, int percent)>;
+  using FileProgressCallback = std::function<void(const std::string& label, int percent)>;
   using FileIndexProgressCallback =
       std::function<void(const std::string& path, int files_scanned, bool finished)>;
   using RemoteFilesCallback = std::function<void(const std::vector<nyx::FileEntry>&)>;
@@ -138,9 +137,8 @@ class NodeService {
   void set_on_transfer_queue_changed(TransferQueueCallback cb);
   void set_on_avatars_changed(SessionsChangedCallback cb);
   void set_on_call_changed(CallChangedCallback cb);
-  using CallMediaCallback =
-      std::function<void(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
-                         const nyx::UserId& from)>;
+  using CallMediaCallback = std::function<void(
+      nyx::CallMediaType type, const nyx::ByteBuffer& payload, const nyx::UserId& from)>;
   void set_on_call_media(CallMediaCallback cb);
   void set_on_mode(std::function<void(NodeMode)> cb);
   void set_on_session_ended(SessionEndedCallback cb);
@@ -168,8 +166,10 @@ class NodeService {
   bool scan_lan_peers(int timeout_ms = 2000);
 
   bool create_group(const std::string& name);
-  bool update_group_meta(const std::string& group_id_hex, const std::string& description,
-                         const std::string& direction, const std::string& tags,
+  bool update_group_meta(const std::string& group_id_hex,
+                         const std::string& description,
+                         const std::string& direction,
+                         const std::string& tags,
                          bool public_listed);
   bool delete_group(const std::string& group_id_hex);
   /** Removes a chat/field from local lists: dm:<peer> | group:<gid> | chat:<stem>. */
@@ -220,7 +220,8 @@ class NodeService {
   /** Whether a room may be opened in the current/given field (Owner/Host). */
   bool can_start_call(const std::string& session_id = {}) const;
   /** Assigns Host/Member role to a field member (owner hub only). */
-  bool set_field_member_role(const std::string& group_id_hex, const std::string& user_id_hex,
+  bool set_field_member_role(const std::string& group_id_hex,
+                             const std::string& user_id_hex,
                              const std::string& role);
   nyx::CallState call_state() const;
   nyx::CallMode call_mode() const;
@@ -234,8 +235,8 @@ class NodeService {
   void set_call_camera_on(bool on);
   void set_call_relay_score(uint16_t score) { call_relay_score_.store(score); }
   /** Sends a media packet into the active call (kRealtimeStream). */
-  bool send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
-                       uint8_t audio_level = 0);
+  bool
+  send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload, uint8_t audio_level = 0);
 
   bool index_folder(const std::string& path, const std::string& scope_group_id_hex = {});
   bool remove_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
@@ -244,10 +245,12 @@ class NodeService {
                          const std::string& scope_group_id_hex = {}) const;
   /** Catalog request: scope = group hex; empty root/parent = share roots only. */
   bool request_remote_files_at(const std::string& root_path, const std::string& parent_rel);
-  bool request_remote_files_at(const std::string& scope_group_id_hex, const std::string& root_path,
+  bool request_remote_files_at(const std::string& scope_group_id_hex,
+                               const std::string& root_path,
                                const std::string& parent_rel);
   bool request_file_access_policy();
-  bool download_file(const std::string& hash_hex, const std::string& dest_path = {},
+  bool download_file(const std::string& hash_hex,
+                     const std::string& dest_path = {},
                      const std::string& session_id = {});
   std::vector<TransferQueueItem> transfer_queue() const;
   bool pause_transfer(const std::string& hash_hex, bool paused);
@@ -258,15 +261,14 @@ class NodeService {
                                        const std::string& folder_rel,
                                        const std::string& dest_dir = {});
   bool send_file(const std::string& path_or_hash);
-  std::optional<nyx::FileEntry> import_file_object(
-      const std::string& path, const std::string& display_name,
-      const std::string& mime,
-      const std::string& scope_group_id_hex = {},
-      const std::string& owner_user_id_hex = {},
-      const std::string& relative_dir = {});
+  std::optional<nyx::FileEntry> import_file_object(const std::string& path,
+                                                   const std::string& display_name,
+                                                   const std::string& mime,
+                                                   const std::string& scope_group_id_hex = {},
+                                                   const std::string& owner_user_id_hex = {},
+                                                   const std::string& relative_dir = {});
   /** Verified local object (share root or objects/ cache) by hash hex. */
-  std::optional<nyx::FileEntry> find_file_object(
-      const std::string& hash_hex) const;
+  std::optional<nyx::FileEntry> find_file_object(const std::string& hash_hex) const;
   bool can_request_remote_files() const;
   /** Session used for file exchange in a scope (group:<hex> or active). */
   std::string file_exchange_session_id(const std::string& scope_group_id_hex) const;
@@ -280,7 +282,8 @@ class NodeService {
                                const std::string& relative_path = {}) const;
   nyx::GroupFileAccess file_access_policy(const std::string& scope_group_id_hex);
   bool set_member_file_role(const std::string& scope_group_id_hex,
-                            const std::string& user_id_hex, const std::string& role_id);
+                            const std::string& user_id_hex,
+                            const std::string& role_id);
   bool upsert_file_role(const std::string& scope_group_id_hex, const nyx::FileRole& role);
   bool remove_file_role(const std::string& scope_group_id_hex, const std::string& role_id);
   bool set_path_member_file_role(const std::string& scope_group_id_hex,
@@ -293,17 +296,19 @@ class NodeService {
                                         const std::string& relative_path,
                                         const std::string& user_id_hex,
                                         uint32_t permissions);
-  bool set_path_role(const std::string& scope_group_id_hex, const std::string& root_path,
-                     const std::string& relative_path, const std::string& role_id);
+  bool set_path_role(const std::string& scope_group_id_hex,
+                     const std::string& root_path,
+                     const std::string& relative_path,
+                     const std::string& role_id);
   bool upsert_permission_preset(const std::string& scope_group_id_hex,
                                 const nyx::FilePermissionPreset& preset);
   bool remove_permission_preset(const std::string& scope_group_id_hex,
                                 const std::string& preset_id);
 
   std::vector<nyx::ShareRoot> all_share_roots() const;
-  std::vector<nyx::FileEntry> local_files_at_root(
-      const std::string& share_root_path, const std::string& parent_rel,
-      const std::string& scope_group_id_hex = {}) const;
+  std::vector<nyx::FileEntry> local_files_at_root(const std::string& share_root_path,
+                                                  const std::string& parent_rel,
+                                                  const std::string& scope_group_id_hex = {}) const;
 
   void publish_field_index();
 
@@ -311,7 +316,7 @@ class NodeService {
   bool is_group_hub_running(const std::string& group_id_hex) const;
   std::string dm_inbox_token_hex() const;
 
- private:
+private:
   struct FileDownloadRequest {
     std::string hash_hex;
     std::string dest_path;
@@ -324,12 +329,12 @@ class NodeService {
   struct NetSession {
     std::string id;
     SessionKind kind = SessionKind::Idle;
-    std::atomic<SessionState> state{SessionState::Idle};
-    std::atomic<bool> running{false};
+    std::atomic<SessionState> state {SessionState::Idle};
+    std::atomic<bool> running {false};
     /** Connecting while the UI shows offline (quiet background probe). */
-    std::atomic<bool> quiet_ui{false};
+    std::atomic<bool> quiet_ui {false};
     /** Was already Live in this session: a dropped room is not a failed join. */
-    std::atomic<bool> ever_live{false};
+    std::atomic<bool> ever_live {false};
     std::thread worker;
     std::unique_ptr<nyx::Connection> connection;
     std::unique_ptr<nyx::ChatService> chat;
@@ -337,7 +342,7 @@ class NodeService {
     std::unique_ptr<nyx::GroupHub> group_hub;
     std::unique_ptr<nyx::GroupMemberService> group_member;
     std::unique_ptr<nyx::MdnsLan> mdns;
-    nyx::GroupId share_scope{};
+    nyx::GroupId share_scope {};
     std::string title;
     std::string ref_id_hex;
     std::deque<FileDownloadRequest> download_queue;
@@ -347,20 +352,21 @@ class NodeService {
     std::mutex call_media_outbound_mutex;
 
     struct AvatarRx {
-      nyx::FileHash hash{};
+      nyx::FileHash hash {};
       uint64_t size = 0;
       std::string mime;
       nyx::ByteBuffer data;
     };
     std::optional<AvatarRx> avatar_rx;
-    nyx::UserId avatar_peer{};
+    nyx::UserId avatar_peer {};
 
     NetSession() = default;
     NetSession(const NetSession&) = delete;
     NetSession& operator=(const NetSession&) = delete;
     /** Otherwise a joinable std::thread calls std::terminate in the destructor. */
     ~NetSession() {
-      if (!worker.joinable()) return;
+      if (!worker.joinable())
+        return;
       running.store(false);
       if (worker.get_id() == std::this_thread::get_id()) {
         worker.detach();
@@ -371,15 +377,20 @@ class NodeService {
   };
 
   void emit_status(const std::string& text);
-  void emit_message(const std::shared_ptr<NetSession>& session, const nyx::ChatMessage& msg,
-                    bool outgoing, const std::string& delivery = {});
-  void emit_delivery(const std::shared_ptr<NetSession>& session, uint64_t message_id,
-                     bool delivered);
+  void emit_message(const std::shared_ptr<NetSession>& session,
+                    const nyx::ChatMessage& msg,
+                    bool outgoing,
+                    const std::string& delivery = {});
+  void
+  emit_delivery(const std::shared_ptr<NetSession>& session, uint64_t message_id, bool delivered);
   void emit_session_ended(const std::string& session_id);
   void emit_sessions_changed();
-  void emit_chat_ready(const std::shared_ptr<NetSession>& session, const std::string& title,
-                       ConnectionVia via, const std::string& peer_host,
-                       nyx::ConversationKind kind, const std::string& ref_id_hex);
+  void emit_chat_ready(const std::shared_ptr<NetSession>& session,
+                       const std::string& title,
+                       ConnectionVia via,
+                       const std::string& peer_host,
+                       nyx::ConversationKind kind,
+                       const std::string& ref_id_hex);
   void set_mode(NodeMode mode);
 
   bool parse_rendezvous(std::string& host, uint16_t& port) const;
@@ -406,13 +417,18 @@ class NodeService {
   /** Browse LAN and dial peer by user-id hex (skips *-field hub beacons). */
   bool try_connect_via_lan(const std::string& user_id_hex);
   /** LAN browse + token/endpoint fallback on a detached thread (never blocks caller). */
-  void dial_dm_async(std::string peer_hex, std::string token_hex, std::string lan_host,
-                     uint16_t lan_port, bool quiet);
+  void dial_dm_async(std::string peer_hex,
+                     std::string token_hex,
+                     std::string lan_host,
+                     uint16_t lan_port,
+                     bool quiet);
   /** Browse LAN for field hub beacons / any peer; returns host:port candidates. */
   std::vector<nyx::LanPeer> browse_lan_peers(int timeout_ms);
   void run_direct_chat(std::shared_ptr<NetSession> session,
-                       std::unique_ptr<nyx::Connection> connection, const nyx::Profile& profile,
-                       bool incoming, ConnectionVia via);
+                       std::unique_ptr<nyx::Connection> connection,
+                       const nyx::Profile& profile,
+                       bool incoming,
+                       ConnectionVia via);
 
   void sync_live_group_from_session(const std::shared_ptr<NetSession>& session);
   void set_live_group_snapshot(const nyx::GroupId& id, nyx::GroupRecord rec);
@@ -428,7 +444,8 @@ class NodeService {
   void after_file_access_changed(const std::string& scope_group_id_hex);
   bool try_apply_file_access_policy(const nyx::ByteBuffer& payload);
 
-  void request_missing_avatars(nyx::Connection& conn, const nyx::UserId& peer,
+  void request_missing_avatars(nyx::Connection& conn,
+                               const nyx::UserId& peer,
                                const std::vector<nyx::FileHash>& hashes);
   void sync_avatars_after_hello(const std::shared_ptr<NetSession>& session,
                                 const nyx::HelloMessage& peer);
@@ -442,10 +459,10 @@ class NodeService {
                                   const nyx::ByteBuffer& frame);
   void pump_call_realtime(const std::shared_ptr<NetSession>& session);
   void emit_call_changed();
-  void emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
+  void emit_call_media(nyx::CallMediaType type,
+                       const nyx::ByteBuffer& payload,
                        const nyx::UserId& from = {});
-  bool note_inbound_call_media(const nyx::UserId& from, nyx::CallMediaType type,
-                               uint32_t seq);
+  bool note_inbound_call_media(const nyx::UserId& from, nyx::CallMediaType type, uint32_t seq);
   void pump_pending_call_signals(const std::shared_ptr<NetSession>& session);
   void announce_relay_candidate();
   void recompute_relay_set();
@@ -518,33 +535,33 @@ class NodeService {
   uint32_t call_media_seq_ = 0;
   std::shared_ptr<nyx::CallMesh> call_mesh_;
   std::vector<nyx::CallPeerEndpoint> call_mesh_pending_peers_;
-  std::chrono::steady_clock::time_point call_mesh_last_announce_{};
+  std::chrono::steady_clock::time_point call_mesh_last_announce_ {};
   int call_mesh_announce_burst_ = 0;
   bool call_is_host_ = false;
-  std::atomic<bool> call_mesh_need_start_{false};
-  std::atomic<bool> call_mesh_need_announce_{false};
-  std::chrono::steady_clock::time_point call_inbound_opus_{};
-  std::chrono::steady_clock::time_point call_inbound_video_{};
+  std::atomic<bool> call_mesh_need_start_ {false};
+  std::atomic<bool> call_mesh_need_announce_ {false};
+  std::chrono::steady_clock::time_point call_inbound_opus_ {};
+  std::chrono::steady_clock::time_point call_inbound_video_ {};
   std::set<nyx::UserId> call_participants_;
   std::map<nyx::UserId, uint16_t> call_relay_candidates_;
   std::vector<nyx::UserId> call_relays_;
   uint32_t call_relay_epoch_ = 0;
-  std::atomic<uint16_t> call_relay_score_{500};
+  std::atomic<uint16_t> call_relay_score_ {500};
   std::map<nyx::UserId, std::pair<uint8_t, std::chrono::steady_clock::time_point>>
       call_speaker_levels_;
-  nyx::UserId call_dominant_speaker_{};
+  nyx::UserId call_dominant_speaker_ {};
   struct CallMediaDedupeEntry {
-    nyx::UserId from{};
+    nyx::UserId from {};
     uint32_t seq = 0;
     uint8_t type = 0;
   };
-  std::array<CallMediaDedupeEntry, 256> call_media_dedupe_{};
+  std::array<CallMediaDedupeEntry, 256> call_media_dedupe_ {};
   int call_media_dedupe_i_ = 0;
   struct PendingCallSignal {
     std::string session_id;
     nyx::ByteBuffer wire;
-    std::chrono::steady_clock::time_point next_send{};
-    std::chrono::steady_clock::time_point expires{};
+    std::chrono::steady_clock::time_point next_send {};
+    std::chrono::steady_clock::time_point expires {};
   };
   std::vector<PendingCallSignal> pending_call_signals_;
 
@@ -553,10 +570,10 @@ class NodeService {
   std::string rendezvous_ = "127.0.0.1:3478";
   nyx::NetworkConfig network_config_;
 
-  std::atomic<NodeMode> mode_{NodeMode::Idle};
+  std::atomic<NodeMode> mode_ {NodeMode::Idle};
   std::thread discovery_thread_;
-  std::atomic<bool> discovery_busy_{false};
-  std::atomic<bool> dm_reconnect_busy_{false};
+  std::atomic<bool> discovery_busy_ {false};
+  std::atomic<bool> dm_reconnect_busy_ {false};
 
   nyx::FileIndex file_index_;
   /** Resources catalog cache for the local hub (roots + fetched levels). */
@@ -565,4 +582,4 @@ class NodeService {
   nyx::SessionIntentStore intent_store_;
 };
 
-}  // namespace nyx_app
+} // namespace nyx_app
