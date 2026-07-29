@@ -582,6 +582,23 @@ static void test_message_store() {
   assert(recent.size() == 1);
   assert(recent[0].text == "stored");
   std::remove(path.c_str());
+
+  {
+    const std::string oversized = "test_chat_history_oversized.jsonl";
+    std::remove(oversized.c_str());
+    {
+      std::ofstream out(oversized, std::ios::binary | std::ios::trunc);
+      out << "{\"id\":1,\"ts\":1,\"chat_id\":\"\",\"author\":\"a\",\"author_id\":\"\",\"text\":"
+             "\"x\","
+             "\"out\":false}\n";
+    }
+    std::error_code ec;
+    std::filesystem::resize_file(oversized, nyx::kMaxJsonStoreBytes + 1, ec);
+    assert(!ec);
+    nyx::MessageStore huge(oversized);
+    assert(huge.recent(10).empty());
+    std::remove(oversized.c_str());
+  }
   std::cout << "message store ok\n";
 }
 

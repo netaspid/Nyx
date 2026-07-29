@@ -60,6 +60,11 @@ bool MessageStore::load_from_disk() const {
   loaded_ = true;
   cache_.clear();
 
+  std::error_code ec;
+  const auto size = std::filesystem::file_size(path_, ec);
+  if (!ec && !json_store_within_limit(static_cast<std::size_t>(size)))
+    return false;
+
   std::ifstream file(path_, std::ios::binary);
   if (!file)
     return true;

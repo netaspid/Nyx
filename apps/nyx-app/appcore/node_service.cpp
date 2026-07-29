@@ -191,48 +191,30 @@ std::string files_ui_state_path() {
   return nyx::data_dir() + "/files_ui.json";
 }
 
-} // namespace
+struct FilesUiState {
+  std::string scope_group_id;
+  std::string selected_root;
+};
 
-std::string NodeService::load_files_scope_group_id() const {
-  std::ifstream in(files_ui_state_path());
-  if (!in)
-    return {};
-  std::ostringstream ss;
-  ss << in.rdbuf();
-  if (auto gid = nyx::json_get_string(ss.str(), "scope_group_id"))
-    return *gid;
-  return {};
+FilesUiState load_files_ui_state() {
+  FilesUiState st;
+  const auto loaded = nyx::json_read_file_limited(files_ui_state_path());
+  if (!loaded || loaded->empty())
+    return st;
+  if (auto gid = nyx::json_get_string(*loaded, "scope_group_id"))
+    st.scope_group_id = *gid;
+  if (auto root = nyx::json_get_string(*loaded, "selected_root"))
+    st.selected_root = *root;
+  return st;
 }
 
-std::string NodeService::load_files_selected_root() const {
-  std::ifstream in(files_ui_state_path());
-  if (!in)
-    return {};
-  std::ostringstream ss;
-  ss << in.rdbuf();
-  if (auto root = nyx::json_get_string(ss.str(), "selected_root"))
-    return *root;
-  return {};
-}
-
-void NodeService::save_files_scope_group_id(const std::string& scope_group_id_hex) const {
+void write_files_ui_state(const FilesUiState& st) {
   nyx::ensure_data_dir();
-  const std::string selected = load_files_selected_root();
-  std::ofstream out(files_ui_state_path(), std::ios::trunc);
-  if (!out)
-    return;
-  out << "{\"scope_group_id\":\"" << scope_group_id_hex << "\",\"selected_root\":\"" << selected
-      << "\"}\n";
-}
-
-void NodeService::save_files_selected_root(const std::string& root_path) const {
-  nyx::ensure_data_dir();
-  const std::string scope = load_files_scope_group_id();
   std::ofstream out(files_ui_state_path(), std::ios::trunc);
   if (!out)
     return;
   std::string escaped;
-  for (char c : root_path) {
+  for (char c : st.selected_root) {
     if (c == '\\')
       escaped += "\\\\";
     else if (c == '"')
@@ -240,7 +222,30 @@ void NodeService::save_files_selected_root(const std::string& root_path) const {
     else
       escaped += c;
   }
-  out << "{\"scope_group_id\":\"" << scope << "\",\"selected_root\":\"" << escaped << "\"}\n";
+  out << "{\"scope_group_id\":\"" << st.scope_group_id << "\",\"selected_root\":\"" << escaped
+      << "\"}\n";
+}
+
+} // namespace
+
+std::string NodeService::load_files_scope_group_id() const {
+  return load_files_ui_state().scope_group_id;
+}
+
+std::string NodeService::load_files_selected_root() const {
+  return load_files_ui_state().selected_root;
+}
+
+void NodeService::save_files_scope_group_id(const std::string& scope_group_id_hex) const {
+  auto st = load_files_ui_state();
+  st.scope_group_id = scope_group_id_hex;
+  write_files_ui_state(st);
+}
+
+void NodeService::save_files_selected_root(const std::string& root_path) const {
+  auto st = load_files_ui_state();
+  st.selected_root = root_path;
+  write_files_ui_state(st);
 }
 
 void NodeService::set_on_file_index_progress(FileIndexProgressCallback cb) {
@@ -1498,7 +1503,8 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
     }
   }
 
-  set_live_group_snapshot(live.id, std::move(live));
+  const auto live_id = live.id;
+  set_live_group_snapshot(live_id, std::move(live));
 }
 
 } // namespace nyx_app

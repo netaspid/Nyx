@@ -32,7 +32,7 @@ jobs:
           clang-tidy -p build \
             src/session_intent.cpp src/group.cpp src/identity.cpp src/file_access.cpp \
             src/avatar_store.cpp src/network_config.cpp src/profile_meta.cpp src/file_index.cpp \
-            src/account_store.cpp apps/nyx-app/appcore/session_types.hpp \
+            src/account_store.cpp src/message_store.cpp apps/nyx-app/appcore/session_types.hpp \
             apps/nyx-app/appcore/node_service_connect.cpp \
             apps/nyx-app/appcore/node_service_avatar.cpp \
             apps/nyx-app/appcore/node_service_files.cpp \
