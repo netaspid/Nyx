@@ -35,7 +35,7 @@ class BlobWriter {
  public:
   explicit BlobWriter(std::string path);
 
-  bool open();
+  bool open(bool truncate = true);
   bool write_at(uint64_t offset, const ByteBuffer& data);
   bool close();
 

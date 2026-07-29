@@ -37,6 +37,7 @@ void GroupHub::attach_files(FileIndex& index, const GroupId& share_scope,
   file_services_.clear();
   member_catalog_.clear();
   member_roots_.clear();
+  member_catalog_revisions_.clear();
   hash_providers_.clear();
   active_relay_.reset();
 }
@@ -153,6 +154,27 @@ bool GroupHub::download_local_file(const FileHash& hash, const std::string& dest
   return true;
 }
 
+bool GroupHub::request_file_from_provider(const FileHash& hash,
+                                          const std::string& dest_path) {
+  if (dest_path.empty()) return false;
+  HubMember* provider = find_hash_provider(hash);
+  if (!provider || !provider->joined) return false;
+  if (active_relay_) return false;
+  auto& files = file_service_for(*provider);
+  if (files.busy()) return false;
+  return files.request_file(hash_hex(hash), dest_path);
+}
+
+bool GroupHub::provider_transfer_busy(const FileHash& hash) const {
+  for (const auto& [member, service] : file_services_) {
+    if (!member || !service || !member->joined) continue;
+    const auto it = hash_providers_.find(hash_hex(hash));
+    if (it == hash_providers_.end() || member->user_id != it->second) continue;
+    return service->busy();
+  }
+  return false;
+}
+
 HubMember* GroupHub::find_hash_provider(const FileHash& hash) {
   const auto it = hash_providers_.find(hash_hex(hash));
   if (it == hash_providers_.end()) return nullptr;
@@ -163,11 +185,10 @@ HubMember* GroupHub::find_hash_provider(const FileHash& hash) {
 }
 
 void GroupHub::relay_file_request(HubMember& provider, HubMember& requester,
-                                  const FileHash& hash) {
+                                  const FileHash& hash,
+                                  const ByteBuffer& request) {
   active_relay_ = FileRelay{&requester, &provider, hash};
-  FileRequest req;
-  req.hash = hash;
-  provider.connection.send_payload(kBulkStream, req.encode());
+  provider.connection.send_payload(kBulkStream, request);
 }
 
 void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) {
@@ -239,8 +260,12 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
 
   if (kind == FileKind::IndexPush) {
     if (auto push = decode_index_push(payload)) {
+      const uint64_t previous = member_catalog_revisions_[member.user_id];
+      if (push->revision != 0 && push->revision < previous) return;
       member_catalog_[member.user_id] = push->entries;
       member_roots_[member.user_id] = push->root_paths;
+      member_catalog_revisions_[member.user_id] =
+          std::max(previous, push->revision);
       rebuild_hash_providers();
       if (on_event_) {
         on_event_(member.nickname + " опубликовал " + std::to_string(push->entries.size()) +
@@ -295,7 +320,50 @@ void GroupHub::handle_member_bulk(HubMember& member, const ByteBuffer& payload) 
       }
       if (HubMember* provider = find_hash_provider(req->hash)) {
         if (provider != &member) {
-          relay_file_request(*provider, member, req->hash);
+          relay_file_request(*provider, member, req->hash, payload);
+          return;
+        }
+      }
+    }
+  }
+  if (kind == FileKind::RangeRequest) {
+    if (auto req = FileRangeRequest::decode(payload)) {
+      std::optional<FileEntry> entry;
+      if (file_index_) entry = file_index_->find_by_hash(req->hash);
+      if (!entry) {
+        for (const auto& [uid, catalog] : member_catalog_) {
+          (void)uid;
+          const auto found = std::find_if(
+              catalog.begin(), catalog.end(),
+              [&](const FileEntry& item) { return item.hash == req->hash; });
+          if (found != catalog.end()) {
+            entry = *found;
+            break;
+          }
+        }
+      }
+      if (entry && file_access_ &&
+          member.user_id != owner_.public_key) {
+        const uint32_t perms = file_access_->permissions_for(
+            file_scope_, member.user_id, entry->root_path,
+            entry->relative_path);
+        if (!FileAccessStore::has_permission(
+                perms, FilePermission::Download)) {
+          FileDeny deny;
+          deny.hash = req->hash;
+          deny.reason = "нет права скачивания";
+          member.connection.send_payload(kBulkStream, deny.encode());
+          return;
+        }
+      }
+      if (file_index_ &&
+          file_index_->find_for_session(req->hash, file_scope_)) {
+        file_service_for(member).handle_bulk(payload);
+        return;
+      }
+      if (HubMember* provider = find_hash_provider(req->hash)) {
+        if (provider != &member) {
+          relay_file_request(*provider, member, req->hash, payload);
           return;
         }
       }
@@ -312,7 +380,10 @@ FileTransferService& GroupHub::file_service_for(HubMember& member) {
   auto fs = std::make_unique<FileTransferService>(member.connection, *file_index_,
                                                   default_downloads_dir());
   fs->set_share_scope(file_scope_);
+  fs->announce_capabilities();
   if (on_event_) fs->set_on_event(on_event_);
+  if (on_file_complete_) fs->set_on_complete(on_file_complete_);
+  if (on_file_progress_) fs->set_on_progress(on_file_progress_);
   it = file_services_.emplace(&member, std::move(fs)).first;
   return *it->second;
 }
@@ -385,12 +456,16 @@ bool GroupHub::send_call_frame(const ByteBuffer& frame, const UserId* skip_user)
   return true;
 }
 
-void GroupHub::distribute_call_mesh_intros(const CallId& call_id) {
+void GroupHub::distribute_call_mesh_intros(const CallId& call_id,
+                                           const std::vector<UserId>& participants) {
+  auto included = [&](const UserId& id) {
+    return std::find(participants.begin(), participants.end(), id) != participants.end();
+  };
   CallRosterMessage roster;
   roster.call_id = call_id;
-  roster.participants.push_back(owner_.public_key);
+  if (included(owner_.public_key)) roster.participants.push_back(owner_.public_key);
   for (const auto& m : members_) {
-    if (!m.joined) continue;
+    if (!m.joined || !included(m.user_id)) continue;
     roster.participants.push_back(m.user_id);
     if (roster.participants.size() >= kMaxCallParticipants) break;
   }
@@ -408,11 +483,13 @@ void GroupHub::distribute_call_mesh_intros(const CallId& call_id) {
 
   const std::string owner_host = guess_lan_ipv4();
   for (auto& target : members_) {
-    if (!target.joined) continue;
+    if (!target.joined || !included(target.user_id)) continue;
     // Owner → member (порт уточнит Endpoint от owner).
-    send_intro(target, owner_.public_key, owner_host, socket_.local_port());
+    if (included(owner_.public_key)) {
+      send_intro(target, owner_.public_key, owner_host, socket_.local_port());
+    }
     for (const auto& src : members_) {
-      if (!src.joined || src.user_id == target.user_id) continue;
+      if (!src.joined || !included(src.user_id) || src.user_id == target.user_id) continue;
       send_intro(target, src.user_id, src.connection.peer_host(), src.connection.peer_port());
     }
   }
@@ -812,6 +889,7 @@ void GroupHub::drop_stale_members() {
     it = members_.erase(it);
     member_catalog_.erase(uid);
     member_roots_.erase(uid);
+    member_catalog_revisions_.erase(uid);
     removed = true;
   }
   if (removed) {
@@ -849,6 +927,7 @@ bool GroupHub::remove_member(const UserId& user_id) {
       it = members_.erase(it);
       member_catalog_.erase(user_id);
       member_roots_.erase(user_id);
+      member_catalog_revisions_.erase(user_id);
       file_services_.clear();
       rebuild_hash_providers();
     } else {

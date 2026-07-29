@@ -18,6 +18,7 @@ enum class MdBlockType : uint8_t {
   Formula = 2,
   Media = 3,
   Action = 4,
+  File = 5,
 };
 
 /** Один блок после разбора текста сообщения. */
@@ -29,6 +30,9 @@ struct MdBlock {
   std::string hash;
   /** Медиа: подпись. */
   std::string caption;
+  /** File-card MIME and size. */
+  std::string mime;
+  uint64_t size = 0;
   /** $$…$$ vs $…$. */
   bool display_math = false;
 };

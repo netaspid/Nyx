@@ -17,6 +17,11 @@ bool register_install_manifest(const std::string& install_dir);
 
 bool launch_app(const std::string& exe_path);
 
+/** Install PDF/Office viewer deps via the distro package manager when missing.
+ *  Skips PDF packages if install_dir/tools already has mutool/pdftoppm. */
+bool ensure_document_dependencies(const std::string& install_dir, std::string* err = nullptr,
+                                  bool interactive = true);
+
 bool verify_installation(const std::string& install_dir, std::string* err = nullptr);
 
 bool repair_installation(const std::vector<std::uint8_t>& blob, const std::string& install_dir,

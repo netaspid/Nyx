@@ -19,7 +19,7 @@ namespace nyx {
 constexpr std::size_t kCallIdSize = 16;
 using CallId = std::array<uint8_t, kCallIdSize>;
 /** Верхняя граница участников конференции (mesh). */
-constexpr std::size_t kMaxCallParticipants = 200;
+constexpr std::size_t kMaxCallParticipants = 20;
 
 enum class CallKind : uint8_t {
   Invite = 0x60,
@@ -32,6 +32,9 @@ enum class CallKind : uint8_t {
   PeerIntro = 0x67,
   PeerGone = 0x68,
   Endpoint = 0x69,
+  LeaveAck = 0x6A,
+  RelayCandidate = 0x6B,
+  RelaySet = 0x6C,
 };
 
 enum class CallMode : uint8_t { Audio = 1, AudioVideo = 2 };
@@ -142,6 +145,32 @@ struct CallEndpointMessage {
 
   ByteBuffer encode() const;
   static std::optional<CallEndpointMessage> decode(const ByteBuffer& data);
+};
+
+struct CallLeaveAckMessage {
+  CallId call_id{};
+  UserId user_id{};
+
+  ByteBuffer encode() const;
+  static std::optional<CallLeaveAckMessage> decode(const ByteBuffer& data);
+};
+
+struct CallRelayCandidateMessage {
+  CallId call_id{};
+  UserId user_id{};
+  uint16_t score = 0;
+
+  ByteBuffer encode() const;
+  static std::optional<CallRelayCandidateMessage> decode(const ByteBuffer& data);
+};
+
+struct CallRelaySetMessage {
+  CallId call_id{};
+  uint32_t epoch = 0;
+  std::vector<UserId> relays;
+
+  ByteBuffer encode() const;
+  static std::optional<CallRelaySetMessage> decode(const ByteBuffer& data);
 };
 
 bool is_call_frame(const ByteBuffer& data);

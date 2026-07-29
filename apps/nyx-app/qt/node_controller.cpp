@@ -1,5 +1,6 @@
 #include "node_controller.hpp"
 #include "android_platform.hpp"
+#include "document_viewer.hpp"
 #include "win_chrome.hpp"
 
 #include "nyx/account_store.hpp"
@@ -26,6 +27,7 @@
 #include <QAction>
 #include <QClipboard>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -33,6 +35,10 @@
 #include <QImage>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QMimeDatabase>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QPointer>
 #include <QTemporaryFile>
 #include <QGuiApplication>
 #include <QIcon>
@@ -44,6 +50,7 @@
 #include <QStyleHints>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
+#include <QThreadPool>
 #include <QUrl>
 #include <QVariantMap>
 
@@ -55,6 +62,32 @@ QString normalizeSessionKey(const QString& key) {
            key.section(QLatin1Char(':'), 1).toLower();
   }
   return key;
+}
+
+QString safeMediaPathPart(QString value) {
+  value = value.trimmed();
+  value.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")),
+                QStringLiteral("_"));
+  value.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
+  if (value.isEmpty()) value = QStringLiteral("Чат");
+  return value.left(64);
+}
+
+QString mediaRelativeDir(const QString& chatKey, const QString&,
+                         const QString& mediaKind) {
+  QString stable = chatKey.section(QLatin1Char(':'), 1).toLower();
+  if (stable.isEmpty()) stable = chatKey.toLower();
+  stable.remove(QRegularExpression(QStringLiteral("[^a-z0-9]")));
+  if (stable.isEmpty()) stable = QStringLiteral("local");
+  const QString label = chatKey.startsWith(QLatin1String("group:"))
+                            ? QStringLiteral("Поле")
+                            : QStringLiteral("Личный чат");
+  const QString conversation =
+      label + QStringLiteral(" (") + stable.left(8) + QLatin1Char(')');
+  const QString leaf = mediaKind == QLatin1String("circle")
+                           ? QStringLiteral("Видеокружки")
+                           : QStringLiteral("Голосовые сообщения");
+  return QStringLiteral("Медиа/") + conversation + QLatin1Char('/') + leaf;
 }
 
 }  // namespace
@@ -101,6 +134,20 @@ bool parse_user_id_hex(const QString& hex, nyx::UserId& out) {
 }  // namespace
 
 NodeController::NodeController(QObject* parent) : QObject(parent) {
+  connect(&document_viewer_, &DocumentViewer::toast, this,
+          [this](const QString& message, bool isError) { showToast(message, isError); });
+
+#if defined(Q_OS_ANDROID)
+  service_.set_call_relay_score(300);
+  nyx_android::native_camera_stop();
+  nyx_android::voice_capture_stop();
+  nyx_android::voice_playback_stop();
+  nyx_android::set_voip_audio_mode(false);
+  nyx_android::cancel_call_notifications();
+#else
+  service_.set_call_relay_score(800);
+#endif
+
   // QAudioSource::start() can block for seconds on Android — keep it off the GUI thread
   // so call controls / hangup UI stay responsive.
   call_audio_thread_.setObjectName(QStringLiteral("nyx-call-audio"));
@@ -110,12 +157,69 @@ NodeController::NodeController(QObject* parent) : QObject(parent) {
   });
   connect(&call_audio_, &CallAudioIo::micLevelChanged, this, &NodeController::audioTestLevelChanged);
   connect(&call_audio_, &CallAudioIo::micTestChanged, this, &NodeController::audioTestChanged);
+  connect(&call_audio_, &CallAudioIo::localVoiceActiveChanged, this,
+          [this](bool active) {
+            const bool small_field =
+                service_.call_is_field_room() &&
+                service_.call_participants().size() <= 2;
+            call_video_.setTransmitEnabled(
+                !service_.call_is_field_room() || small_field || active);
+          });
+  connect(&call_audio_, &CallAudioIo::dominantSpeakerChanged, this,
+          [this](const QString& peerId) {
+            if (!service_.call_is_field_room()) return;
+            if (QDateTime::currentMSecsSinceEpoch() < manual_call_focus_until_ms_) return;
+            manual_call_focus_.clear();
+            call_video_.setFocusedPeerId(peerId);
+            if (peerId.isEmpty()) {
+              if (call_frames_) call_frames_->setPrimaryRemoteKey(QString());
+              call_remote_frame_url_.clear();
+              emit callRemoteFrameChanged();
+            }
+            emit callVideoPeersChanged();
+          });
   call_audio_thread_.start();
 
   // Video encode/JPEG decode must not block Answer/rotate UI.
   call_video_thread_.setObjectName(QStringLiteral("nyx-call-video"));
   call_video_.moveToThread(&call_video_thread_);
   call_video_thread_.start();
+
+#if defined(Q_OS_ANDROID)
+  connect(qApp, &QGuiApplication::applicationStateChanged, this,
+          [this](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationSuspended ||
+                state == Qt::ApplicationHidden ||
+                state == Qt::ApplicationInactive) {
+              if (service_.call_state() == nyx::CallState::Active &&
+                  service_.call_mode() == nyx::CallMode::AudioVideo &&
+                  service_.call_camera_on()) {
+                resume_call_camera_ = true;
+                suspended_call_id_ = QString::fromStdString(service_.call_id_hex());
+                call_video_.setCameraEnabled(false);
+              }
+              return;
+            }
+            if (state != Qt::ApplicationActive || !resume_call_camera_) return;
+            const QString current = QString::fromStdString(service_.call_id_hex());
+            const bool restore = service_.call_state() == nyx::CallState::Active &&
+                                 current == suspended_call_id_ &&
+                                 service_.call_camera_on();
+            resume_call_camera_ = false;
+            suspended_call_id_.clear();
+            if (restore) {
+              QTimer::singleShot(150, this, [this]() {
+                if (service_.call_state() != nyx::CallState::Active ||
+                    !service_.call_camera_on()) {
+                  return;
+                }
+                call_video_.setCameraEnabled(true);
+                call_video_.start();
+                emit callChanged();
+              });
+            }
+          });
+#endif
 
   connect(&call_video_, &CallVideoIo::cameraOpenFailed, this, [this]() {
     service_.set_call_camera_on(false);
@@ -171,16 +275,18 @@ void NodeController::beginMainSession() {
   syncFileScopeLabel();
   resetFileBrowse();
 
-  refreshFileLists();
-
   service_.load_network_config();
   syncNetworkSettingsFromService();
   refreshProfile();
+  loadProfileMeta();
   refreshChatList();
   refreshGroupList();
   refreshContactList();
-  loadProfileMeta();
-  refreshFileAccessLists();
+  // File index / access lists can be large — don't stall first paint.
+  QTimer::singleShot(0, this, [this]() {
+    refreshFileLists();
+    refreshFileAccessLists();
+  });
 #if defined(Q_OS_ANDROID)
   nyx_android::request_notification_permission();
   // Defer FGS until Activity is fully resumed (Xiaomi/Android 14).
@@ -188,18 +294,18 @@ void NodeController::beginMainSession() {
   QTimer::singleShot(5000, this, []() { nyx_android::start_keepalive_service(); });
 #endif
 
-  lan_discovery_timer_.setInterval(5000);
+  lan_discovery_timer_.setInterval(12000);
   connect(&lan_discovery_timer_, &QTimer::timeout, this, &NodeController::tickLanDiscovery);
   lan_discovery_timer_.start();
-  QTimer::singleShot(800, this, &NodeController::tickLanDiscovery);
+  QTimer::singleShot(1500, this, &NodeController::tickLanDiscovery);
   QTimer::singleShot(400, this, [this]() {
     service_.ensure_owned_hubs_running();
-    refreshChatList();
+    refreshChatSessionStates();
     emit sessionsChanged();
   });
-  QTimer::singleShot(1500, this, &NodeController::maybeAutoReconnectSessions);
+  QTimer::singleShot(2500, this, &NodeController::maybeAutoReconnectSessions);
 
-  session_reconnect_timer_.setInterval(5000);
+  session_reconnect_timer_.setInterval(20000);
   connect(&session_reconnect_timer_, &QTimer::timeout, this,
           &NodeController::maybeAutoReconnectSessions);
   session_reconnect_timer_.start();
@@ -216,23 +322,20 @@ NodeController::~NodeController() {
     tray_icon_->hide();
   }
   if (call_audio_thread_.isRunning()) {
-    // Ensure stop runs on the audio thread before we tear it down.
-    QMetaObject::invokeMethod(&call_audio_, &CallAudioIo::stop, Qt::BlockingQueuedConnection);
-    call_audio_thread_.quit();
-    if (!call_audio_thread_.wait(3000)) {
-      call_audio_thread_.terminate();
-      call_audio_thread_.wait(500);
-    }
+    QMetaObject::invokeMethod(&call_audio_, [this]() {
+      call_audio_.stop();
+      call_audio_thread_.quit();
+    }, Qt::QueuedConnection);
+    if (!call_audio_thread_.wait(5000)) call_audio_thread_.wait();
   } else {
     call_audio_.stop();
   }
   if (call_video_thread_.isRunning()) {
-    QMetaObject::invokeMethod(&call_video_, &CallVideoIo::stop, Qt::BlockingQueuedConnection);
-    call_video_thread_.quit();
-    if (!call_video_thread_.wait(3000)) {
-      call_video_thread_.terminate();
-      call_video_thread_.wait(500);
-    }
+    QMetaObject::invokeMethod(&call_video_, [this]() {
+      call_video_.stop();
+      call_video_thread_.quit();
+    }, Qt::QueuedConnection);
+    if (!call_video_thread_.wait(5000)) call_video_thread_.wait();
   } else {
     call_video_.stop();
   }
@@ -266,13 +369,20 @@ bool NodeController::activeFieldIsOwner() const {
   if (active_chat_kind_ != static_cast<int>(nyx::ConversationKind::Group)) return false;
   if (active_chat_ref_id_.isEmpty()) return false;
 
+  const QString gid = active_chat_ref_id_.trimmed().toLower();
+  for (const QVariant& v : group_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("groupId")).toString() != gid) continue;
+    return m.value(QStringLiteral("isOwner")).toBool();
+  }
+
   nyx::Profile profile;
   if (!nyx::active_profile(profile)) return false;
 
   nyx::GroupStore store;
   store.load();
   nyx::GroupId group_id{};
-  if (!nyx::GroupStore::group_id_from_hex(active_chat_ref_id_.toStdString(), group_id)) {
+  if (!nyx::GroupStore::group_id_from_hex(gid.toStdString(), group_id)) {
     return false;
   }
   const auto group = store.find(group_id);
@@ -288,16 +398,9 @@ void NodeController::maybeAutoReconnectSessions() {
   emit inviteTokenChanged();
   emit listeningChanged();
   emit busyChanged();
+  // Only session badges — full disk rebuild every few seconds freezes the UI.
+  refreshChatSessionStates();
   emit sessionsChanged();
-  refreshGroupList();
-  refreshChatList();
-  // Reconnect is async — refresh again so list/status catch Live sessions.
-  QTimer::singleShot(2000, this, [this]() {
-    refreshChatList();
-    emit sessionsChanged();
-    emit chatChanged();
-    emit busyChanged();
-  });
 }
 
 QString NodeController::sessionSummary() const {
@@ -1167,17 +1270,45 @@ void NodeController::openRemoteFile(const QString& hashHex, const QString& fileN
     showToast(QStringLiteral("Нет права открывать файлы по сети"));
     return;
   }
-  const QString suggested = fileName.trimmed().isEmpty() ? QStringLiteral("download") : fileName.trimmed();
-  const QString dest = pickSaveFile(suggested);
-  if (dest.isEmpty()) return;
-  if (!service_.download_file(hashHex.trimmed().toStdString(), dest.toStdString())) {
-    showToast(QStringLiteral("Не удалось запросить файл"));
-    return;
-  }
-  showToast(QStringLiteral("Запрос файла отправлен…"));
+  openFileByHash(hashHex, fileName, {}, rootPath, relativePath);
 }
 
 void NodeController::openFilesView() { setMainViewMode(1); }
+
+void NodeController::openChatMediaFolder(const QString& mediaKind) {
+  const QString kind = mediaKind.trimmed().toLower();
+  if (kind != QLatin1String("voice") && kind != QLatin1String("circle"))
+    return;
+
+  QString scope_id;
+  nyx::GroupId scope{};
+  if (active_chat_kind_ == 1) {
+    scope_id = active_chat_ref_id_.trimmed().toLower();
+    if (!nyx::FileIndex::group_id_from_hex(scope_id.toStdString(), scope)) {
+      showToast(QStringLiteral("Не удалось определить хранилище чата"));
+      return;
+    }
+  }
+
+  setFileScopeGroupId(scope_id);
+  setFilesSection(0);
+  refreshFileShareRoots();
+
+  const QString root =
+      QString::fromStdString(nyx::FileIndex::library_root_path(scope));
+  setFileSelectedShareRoot(root);
+  const QString relative =
+      mediaRelativeDir(active_chat_key_, peer_title_, kind);
+  const QString directory = QDir(root).filePath(relative);
+  if (!QDir(directory).exists()) {
+    setMainViewMode(1);
+    showToast(QStringLiteral("В этом чате пока нет сохранённых медиа"));
+    return;
+  }
+
+  browseIntoFolder(relative);
+  setMainViewMode(1);
+}
 
 void NodeController::showChatView() { setMainViewMode(0); }
 
@@ -1238,6 +1369,33 @@ QVariantList NodeController::entriesToVariant(const std::vector<nyx::FileEntry>&
       full_rel = joinFileRelPath(browse_rel, utf8q(rel));
     }
     const QString root = utf8q(e.root_path);
+    QString owner_hex;
+    if (!std::all_of(e.owner_id.begin(), e.owner_id.end(),
+                     [](uint8_t b) { return b == 0; })) {
+      owner_hex = QString::fromStdString(
+          nyx::to_hex(e.owner_id.data(), e.owner_id.size()));
+    } else if (is_dir && display.size() == 64) {
+      // Owner folder at library root.
+      bool hex_ok = true;
+      for (const QChar c : display) {
+        if (!c.isDigit() && (c.toLower() < QLatin1Char('a') ||
+                             c.toLower() > QLatin1Char('f'))) {
+          hex_ok = false;
+          break;
+        }
+      }
+      if (hex_ok) owner_hex = display.toLower();
+    } else {
+      const QString posix = full_rel;
+      const int slash = posix.indexOf(QLatin1Char('/'));
+      const QString head = slash > 0 ? posix.left(slash) : QString{};
+      if (head.size() == 64) owner_hex = head.toLower();
+    }
+    QString owner_label;
+    if (!owner_hex.isEmpty()) {
+      owner_label = userDisplayName(owner_hex);
+      if (is_dir && display.toLower() == owner_hex) display = owner_label;
+    }
     m.insert(QStringLiteral("name"), display);
     m.insert(QStringLiteral("navPath"), utf8q(rel));
     m.insert(QStringLiteral("fullRelPath"), full_rel);
@@ -1249,6 +1407,8 @@ QVariantList NodeController::entriesToVariant(const std::vector<nyx::FileEntry>&
     m.insert(QStringLiteral("mime"), utf8q(e.mime));
     m.insert(QStringLiteral("isRemote"), remote);
     m.insert(QStringLiteral("isDirectory"), is_dir);
+    m.insert(QStringLiteral("ownerId"), owner_hex);
+    m.insert(QStringLiteral("ownerLabel"), owner_label);
     if (remote) {
       const bool can_dl = is_dir ? canDownloadFolderAt(root, full_rel)
                                  : canFileDownloadAt(root, full_rel);
@@ -1326,20 +1486,14 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
   const auto roots = service_.all_share_roots();
   if (roots.empty()) return;
 
+  // Keep current scope; only restore selected root if it belongs to that scope.
   if (!file_selected_share_root_.isEmpty()) {
-    for (const auto& r : roots) {
+    const auto scope_roots =
+        service_.share_roots_for_scope(file_scope_group_id_.toStdString());
+    for (const auto& r : scope_roots) {
       const QString path = QString::fromStdString(r.path);
       if (!shareRootPathsEqual(file_selected_share_root_, path)) continue;
       file_selected_share_root_ = path;
-      const QString gid = r.is_personal()
-                              ? QString()
-                              : QString::fromStdString(nyx::FileIndex::group_id_hex(r.group_id))
-                                    .trimmed()
-                                    .toLower();
-      if (file_scope_group_id_ != gid) {
-        file_scope_group_id_ = gid;
-        service_.save_files_scope_group_id(gid.toStdString());
-      }
       service_.save_files_selected_root(path.toStdString());
       return;
     }
@@ -1351,14 +1505,7 @@ void NodeController::syncFileScopeFromSavedOrRoots() {
       service_.share_roots_for_scope(file_scope_group_id_.toStdString());
   if (!scope_roots.empty()) return;
 
-  const nyx::ShareRoot& first = roots.front();
-  const QString gid = first.is_personal()
-                          ? QString()
-                          : QString::fromStdString(nyx::FileIndex::group_id_hex(first.group_id))
-                                .trimmed()
-                                .toLower();
-  file_scope_group_id_ = gid;
-  service_.save_files_scope_group_id(gid.toStdString());
+  // No roots in current scope yet — do not silently jump to another field.
 }
 
 void NodeController::setFilesSection(int section) {
@@ -1492,27 +1639,19 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
   const QString p = path.trimmed();
   if (p.isEmpty()) return;
 
+  // Prefer a root that matches the active scope; never switch scope on click.
   QString canonical;
-  QString gid = file_scope_group_id_;
-  for (const auto& r : service_.all_share_roots()) {
+  const auto scope_roots =
+      service_.share_roots_for_scope(file_scope_group_id_.toStdString());
+  for (const auto& r : scope_roots) {
     const QString rp = QString::fromStdString(r.path);
     if (!shareRootPathsEqual(p, rp)) continue;
     canonical = rp;
-    gid = r.is_personal()
-              ? QString()
-              : QString::fromStdString(nyx::FileIndex::group_id_hex(r.group_id)).trimmed().toLower();
     break;
   }
   if (canonical.isEmpty()) return;
   if (file_selected_share_root_ == canonical) return;
 
-  if (file_scope_group_id_ != gid) {
-    file_scope_group_id_ = gid;
-    syncFileScopeLabel();
-    service_.save_files_scope_group_id(gid.toStdString());
-    refreshFileAccessLists();
-    emit fileAccessChanged();
-  }
   file_selected_share_root_ = canonical;
   resetFileBrowse();
   refreshLocalFileModel();
@@ -1692,7 +1831,8 @@ void NodeController::syncFileScopeLabel() {
 
 void NodeController::refreshFileShareRoots() {
   file_share_roots_.clear();
-  const auto roots = service_.all_share_roots();
+  const auto roots =
+      service_.share_roots_for_scope(file_scope_group_id_.toStdString());
   for (const auto& r : roots) {
     const QString path = QString::fromStdString(r.path);
     const QString scopeId = r.is_personal()
@@ -1708,7 +1848,9 @@ void NodeController::refreshFileShareRoots() {
     m.insert(QStringLiteral("isPersonal"), r.is_personal());
     m.insert(QStringLiteral("scopeGroupId"), scopeId);
     m.insert(QStringLiteral("scopeLabel"), scopeLabelForGroupId(scopeId));
-    m.insert(QStringLiteral("fileCount"), service_.file_count_in_root(r.path));
+    m.insert(QStringLiteral("fileCount"),
+             service_.file_count_in_root(r.path,
+                                         file_scope_group_id_.toStdString()));
     m.insert(QStringLiteral("canRemove"), canRemoveShareRoot(r));
     file_share_roots_.append(m);
   }
@@ -1734,7 +1876,31 @@ void NodeController::refreshFileShareRoots() {
 
 void NodeController::refreshLocalFileModel() {
   if (file_selected_share_root_.isEmpty()) {
-    local_file_list_.clear();
+    // Managed library + leftover objects for the active scope.
+    const auto all =
+        service_.local_files_for_scope(file_scope_group_id_.toStdString());
+    const std::string objects_prefix =
+        nyx::normalize_utf8_path(nyx::data_dir() + "/objects") + "/";
+    const std::string library_prefix = nyx::normalize_utf8_path(
+        nyx::FileIndex::library_root_path([&] {
+          nyx::GroupId scope{};
+          if (!file_scope_group_id_.isEmpty()) {
+            nyx::FileIndex::group_id_from_hex(file_scope_group_id_.toStdString(),
+                                             scope);
+          }
+          return scope;
+        }()));
+    std::vector<nyx::FileEntry> managed;
+    managed.reserve(all.size());
+    for (const auto& e : all) {
+      if (e.is_directory()) continue;
+      const std::string root = nyx::normalize_utf8_path(e.root_path);
+      if (root.rfind(objects_prefix, 0) == 0 || root == library_prefix ||
+          root.rfind(library_prefix + "/", 0) == 0) {
+        managed.push_back(e);
+      }
+    }
+    local_file_list_ = entriesToVariant(managed, false);
     return;
   }
   std::string root_path = file_selected_share_root_.toStdString();
@@ -1744,7 +1910,9 @@ void NodeController::refreshLocalFileModel() {
       break;
     }
   }
-  const auto entries = service_.local_files_at_root(root_path, file_browse_path_.toStdString());
+  const auto entries = service_.local_files_at_root(
+      root_path, file_browse_path_.toStdString(),
+      file_scope_group_id_.toStdString());
   local_file_list_ = entriesToVariant(entries, false);
 }
 
@@ -1805,29 +1973,68 @@ void NodeController::refreshFileLists() {
 
 QString NodeController::pickFolder() {
 #if defined(Q_OS_ANDROID)
-  // Scoped storage: user Documents trees are not readable via std::filesystem.
-  // Share roots live under app-private storage so indexing/transfer work.
+  // Android cannot reliably index arbitrary Documents trees; build a managed
+  // share root and fill it from the system file picker (Documents/Downloads…).
   const QString base =
-      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/shares");
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+      QStringLiteral("/shares");
   QDir().mkpath(base);
   bool ok = false;
   const QString name = QInputDialog::getText(
-      nullptr, QStringLiteral("Новая папка"),
+      nullptr, QStringLiteral("Папка для обмена"),
       QStringLiteral(
-          "На Android нельзя индексировать системные папки (Documents и т.п.).\n"
-          "Создайте папку в хранилище Nyx и кладите туда файлы для обмена.\n\n"
+          "Создайте папку в хранилище Nyx и выберите файлы "
+          "(Documents, Downloads и т.п.) для копирования в неё.\n\n"
           "Имя папки:"),
-      QLineEdit::Normal, QStringLiteral("shared"), &ok);
+      QLineEdit::Normal, QStringLiteral("Documents"), &ok);
   if (!ok) return {};
   QString clean = name.trimmed();
-  clean.replace(QRegularExpression(QStringLiteral(R"([\\/:*?"<>|])")), QStringLiteral("_"));
+  clean.replace(QRegularExpression(QStringLiteral(R"([\\/:*?"<>|])")),
+                QStringLiteral("_"));
   if (clean.isEmpty()) clean = QStringLiteral("shared");
   const QString path = QDir(base).filePath(clean);
   if (!QDir().mkpath(path)) {
     showToast(QStringLiteral("Не удалось создать папку"), true);
     return {};
   }
-  showToast(QStringLiteral("Папка в хранилище приложения: %1").arg(path));
+
+  const QList<QUrl> urls = QFileDialog::getOpenFileUrls(
+      nullptr, QStringLiteral("Файлы в папку «%1»").arg(clean), QUrl(),
+      QStringLiteral("Все файлы (*.*)"));
+  int copied = 0;
+  for (const QUrl& url : urls) {
+    QString source;
+    QString file_name;
+    bool temporary = false;
+    if (url.scheme() == QLatin1String("content")) {
+      const auto info = nyx_android::storage_document_info(url.toString());
+      file_name = QFileInfo(info.name).fileName();
+      if (file_name.isEmpty()) {
+        file_name = QStringLiteral("file-%1").arg(++copied);
+      }
+      source = QDir(path).filePath(
+          QString::number(QDateTime::currentMSecsSinceEpoch()) +
+          QLatin1Char('-') + file_name);
+      if (!nyx_android::copy_content_uri(url.toString(), source)) continue;
+      // Already copied into the share folder.
+      const QString final_path = QDir(path).filePath(file_name);
+      if (final_path != source) {
+        QFile::remove(final_path);
+        QFile::rename(source, final_path);
+      }
+      ++copied;
+      continue;
+    }
+    source = url.toLocalFile();
+    file_name = QFileInfo(source).fileName();
+    if (file_name.isEmpty() || source.isEmpty()) continue;
+    const QString dest = QDir(path).filePath(file_name);
+    QFile::remove(dest);
+    if (QFile::copy(source, dest)) ++copied;
+  }
+  showToast(copied > 0
+                ? QStringLiteral("В папку скопировано файлов: %1").arg(copied)
+                : QStringLiteral("Папка создана — можно добавить файлы позже"));
   return path;
 #else
   const QString dir =
@@ -1890,7 +2097,10 @@ void NodeController::runIndexJob(const QString& path, const QString& scopeGroupI
   std::thread([this, p, scope, rescan]() {
     const bool ok = rescan ? service_.rescan_share_root(p.toStdString(), scope.toStdString())
                            : service_.index_folder(p.toStdString(), scope.toStdString());
-    const int count = ok ? service_.file_count_in_root(p.toStdString()) : 0;
+    const int count =
+        ok ? service_.file_count_in_root(p.toStdString(),
+                                         scope.toStdString())
+           : 0;
     QMetaObject::invokeMethod(
         this,
         [this, ok, count, p, rescan]() {
@@ -1950,9 +2160,13 @@ void NodeController::removeIndexedFolder(const QString& path) {
   QString scope = file_scope_group_id_;
   for (const auto& r : service_.all_share_roots()) {
     if (!shareRootPathsEqual(path, QString::fromStdString(r.path))) continue;
-    scope = r.is_personal()
-                ? QString()
-                : QString::fromStdString(nyx::FileIndex::group_id_hex(r.group_id)).trimmed().toLower();
+    const QString root_scope =
+        r.is_personal()
+            ? QString()
+            : QString::fromStdString(nyx::FileIndex::group_id_hex(r.group_id))
+                  .trimmed()
+                  .toLower();
+    if (root_scope != scope) continue;
     if (!canRemoveShareRoot(r)) {
       showToast(QStringLiteral("Нет права убирать эту папку"));
       return;
@@ -1982,9 +2196,13 @@ void NodeController::rescanIndexedFolder(const QString& path) {
   QString scope = file_scope_group_id_;
   for (const auto& r : service_.all_share_roots()) {
     if (!shareRootPathsEqual(path, QString::fromStdString(r.path))) continue;
-    scope = r.is_personal()
-                ? QString()
-                : QString::fromStdString(nyx::FileIndex::group_id_hex(r.group_id)).trimmed().toLower();
+    const QString root_scope =
+        r.is_personal()
+            ? QString()
+            : QString::fromStdString(nyx::FileIndex::group_id_hex(r.group_id))
+                  .trimmed()
+                  .toLower();
+    if (root_scope != scope) continue;
     break;
   }
   runIndexJob(path.trimmed(), scope, true);
@@ -2132,6 +2350,59 @@ void NodeController::wireCallbacks() {
   });
 
   service_.set_on_message([this](const nyx_app::UiMessage& msg) {
+    if (!msg.outgoing) {
+      const auto blocks = nyx::parse_markdown_blocks(msg.text);
+      const QString chat_key = QString::fromStdString(msg.chat_key);
+      const QString title = QString::fromStdString(msg.author);
+      nyx::GroupId scope_id{};
+      QString scope_hex;
+      if (chat_key.startsWith(QLatin1String("group:"))) {
+        scope_hex = chat_key.section(QLatin1Char(':'), 1).toLower();
+        nyx::FileIndex::group_id_from_hex(scope_hex.toStdString(), scope_id);
+      }
+      const QString library_root = QString::fromStdString(
+          nyx::FileIndex::library_root_path(scope_id));
+      for (const auto& block : blocks) {
+        if (block.type != nyx::MdBlockType::File || block.hash.empty()) continue;
+        const QString mime = QString::fromStdString(block.mime).toLower();
+        const QString name = safeMediaPathPart(
+            QString::fromStdString(block.caption));
+        QString kind;
+        if (mime.startsWith(QLatin1String("audio/")) &&
+            (name.startsWith(QLatin1String("voice-message"),
+                             Qt::CaseInsensitive) ||
+             name.compare(QLatin1String("voice.m4a"),
+                          Qt::CaseInsensitive) == 0)) {
+          kind = QStringLiteral("voice");
+        } else if (mime.startsWith(QLatin1String("video/")) &&
+                   name.startsWith(QLatin1String("circle-message"),
+                                   Qt::CaseInsensitive)) {
+          kind = QStringLiteral("circle");
+        } else {
+          continue;
+        }
+        const QString relative_dir =
+            mediaRelativeDir(chat_key, title, kind);
+        const QString dest_dir =
+            QDir(library_root).filePath(relative_dir);
+        QDir().mkpath(dest_dir);
+        const QString destination =
+            QDir(dest_dir).filePath(
+                QString::fromStdString(block.hash).left(12) +
+                QLatin1Char('-') + name);
+
+        if (const auto local =
+                service_.find_file_object(block.hash)) {
+          service_.import_file_object(
+              local->absolute_path(), name.toStdString(),
+              mime.toStdString(), scope_hex.toStdString(),
+              msg.author_user_id, relative_dir.toStdString());
+        } else {
+          service_.download_file(block.hash, destination.toStdString(),
+                                 msg.session_id);
+        }
+      }
+    }
     QMetaObject::invokeMethod(
         this,
         [this, msg]() {
@@ -2285,7 +2556,7 @@ void NodeController::wireCallbacks() {
 
   service_.set_on_sessions_changed([this]() {
     QMetaObject::invokeMethod(this, [this]() {
-      refreshChatList();
+      refreshChatSessionStates();
       emit sessionsChanged();
       emit busyChanged();
       emit listeningChanged();
@@ -2387,7 +2658,7 @@ void NodeController::wireCallbacks() {
             this,
             [this, type, packet, peer]() {
               if (type == nyx::CallMediaType::Opus) {
-                call_audio_.onRemoteOpus(packet);
+                call_audio_.onRemoteOpus(peer, packet);
               } else if (type == nyx::CallMediaType::Video) {
                 call_video_.onRemoteVideo(peer, packet);
               }
@@ -2434,6 +2705,35 @@ void NodeController::wireCallbacks() {
             },
             Qt::QueuedConnection);
       });
+  service_.set_on_transfer_queue_changed([this]() {
+    QMetaObject::invokeMethod(
+        this,
+        [this]() {
+          transfer_queue_.clear();
+          for (const auto& task : service_.transfer_queue()) {
+            QVariantMap item;
+            item.insert(QStringLiteral("hash"),
+                        QString::fromStdString(task.hash_hex));
+            const QString dest = QString::fromStdString(task.dest_path);
+            item.insert(QStringLiteral("name"),
+                        QFileInfo(dest).fileName().isEmpty()
+                            ? dest
+                            : QFileInfo(dest).fileName());
+            item.insert(QStringLiteral("path"), dest);
+            item.insert(QStringLiteral("state"),
+                        QString::fromStdString(task.state));
+            item.insert(QStringLiteral("progress"), task.progress);
+            item.insert(QStringLiteral("paused"), task.paused);
+            item.insert(QStringLiteral("error"),
+                        QString::fromStdString(task.error));
+            item.insert(QStringLiteral("direction"),
+                        QString::fromStdString(task.direction));
+            transfer_queue_.append(item);
+          }
+          emit filesChanged();
+        },
+        Qt::QueuedConnection);
+  });
 
   service_.set_on_remote_files([this](const std::vector<nyx::FileEntry>& entries) {
     QMetaObject::invokeMethod(
@@ -2648,7 +2948,10 @@ void NodeController::completeOnboarding(const QString& nickname) {
 
 void NodeController::refreshChatList() {
   chat_list_.refreshFromDisk(profile_id_short_);
+  refreshChatSessionStates();
+}
 
+void NodeController::refreshChatSessionStates() {
   auto rank = [](const QString& state) -> int {
     if (state == QLatin1String("live")) return 3;
     if (state == QLatin1String("connecting")) return 2;
@@ -3119,13 +3422,13 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   service_.set_active_session(key.toStdString());
   chat_list_.setSelectedKey(key);
 
-  in_chat_ = live;
+  in_chat_ = true;  // Show chat UI immediately (narrow layout waits on inChat).
   if (live) {
     peer_status_text_ = is_group ? QStringLiteral("эфир открыт") : QStringLiteral("на связи");
   } else if (owner_field) {
     peer_status_text_ = QStringLiteral("открытие эфира…");
   } else if (is_group) {
-    peer_status_text_ = QStringLiteral("эфир закрыт");
+    peer_status_text_ = QStringLiteral("подключение к эфиру…");
   } else {
     peer_status_text_ =
         lastSeen.isEmpty() ? QStringLiteral("не на связи") : lastSeen;
@@ -3134,16 +3437,22 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   loadStoredHistory(kind, refId, key);
   chat_list_.clearUnread(key);
   emit chatChanged();
-  emit filesChanged();
+  // Defer file UI refresh — not needed for chat switch and can stall the UI thread.
+  QTimer::singleShot(0, this, [this]() { emit filesChanged(); });
 
   if (live) return;
 
   if (!owner_field) {
-    // История доступна при закрытом эфире / offline; писать нельзя.
-    chat_list_.setSessionState(key, QStringLiteral("offline"));
     if (is_group) {
-      showToast(QStringLiteral("Эфир закрыт — можно смотреть историю"), false);
+      // Members used to stop here with "эфир закрыт" and never dial the hub.
+      peer_status_text_ = QStringLiteral("подключение к эфиру…");
+      chat_list_.setSessionState(key, QStringLiteral("connecting"));
+      emit chatChanged();
+      // Let the chat view paint before hub/join work.
+      QTimer::singleShot(0, this, [this]() { connectActiveField(); });
+      return;
     }
+    chat_list_.setSessionState(key, QStringLiteral("offline"));
     return;
   }
 
@@ -3153,7 +3462,6 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   QTimer::singleShot(0, this, [this, key]() {
     if (!service_.ensure_session(key.toStdString())) {
       peer_status_text_ = QStringLiteral("эфир закрыт");
-      in_chat_ = false;
       chat_list_.setSessionState(key, QStringLiteral("offline"));
       showToast(QStringLiteral("Не удалось открыть эфир"), true);
       emit chatChanged();
@@ -3301,7 +3609,8 @@ void NodeController::startListen() {
 }
 
 void NodeController::refreshLanPeers() {
-  service_.scan_lan_peers(3500);
+  // Keep browse short — longer waits belong on the worker thread only.
+  service_.scan_lan_peers(1200);
 }
 
 void NodeController::tickLanDiscovery() {
@@ -3361,6 +3670,99 @@ QString NodeController::chatMediaDir() {
   return QString::fromStdString(nyx::data_dir() + "/chat_media");
 }
 
+QString NodeController::chatCaptureStagingPath(const QString& extension) const {
+  const QString dir =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+      QStringLiteral("/chat-capture");
+  QDir().mkpath(dir);
+  QString ext = extension.trimmed().toLower();
+  if (ext.startsWith(QLatin1Char('.'))) ext = ext.mid(1);
+  if (ext.isEmpty()) ext = QStringLiteral("bin");
+  return QDir(dir).filePath(
+      QStringLiteral("cap-%1.%2")
+          .arg(QDateTime::currentMSecsSinceEpoch())
+          .arg(ext));
+}
+
+void NodeController::removeStagingMedia(const QString& path) const {
+  const QString staging =
+      QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+           QStringLiteral("/chat-capture"))
+          .canonicalPath();
+  const QFileInfo info(path);
+  const QString parent = info.dir().canonicalPath();
+  if (!staging.isEmpty() && parent == staging) QFile::remove(info.absoluteFilePath());
+}
+
+void NodeController::requestChatCapturePermissions(bool needCamera) {
+  nyx_android::request_call_permissions(
+      needCamera, &NodeController::chatCapturePermissionCallback, this);
+}
+
+void NodeController::chatCapturePermissionCallback(bool micOk, bool cameraOk,
+                                                   void* ctx) {
+  auto* self = static_cast<NodeController*>(ctx);
+  if (!self) return;
+  QMetaObject::invokeMethod(
+      self,
+      [self, micOk, cameraOk]() {
+        emit self->chatCapturePermissionResult(micOk && cameraOk);
+      },
+      Qt::QueuedConnection);
+}
+
+QString NodeController::userDisplayName(const QString& userIdHex) const {
+  const QString uid = userIdHex.trimmed().toLower();
+  if (uid.isEmpty()) return {};
+  if (uid == profile_user_id_hex_.trimmed().toLower()) {
+    const QString nick = profile_nickname_.trimmed();
+    return nick.isEmpty() ? QStringLiteral("Вы") : nick;
+  }
+  for (const QVariant& v : contact_list_) {
+    const QVariantMap m = v.toMap();
+    if (m.value(QStringLiteral("userId")).toString().trimmed().toLower() == uid) {
+      const QString nick = m.value(QStringLiteral("nickname")).toString().trimmed();
+      if (!nick.isEmpty()) return nick;
+      break;
+    }
+  }
+  for (const QVariant& v : group_list_) {
+    const QVariantMap g = v.toMap();
+    const QVariantList members = g.value(QStringLiteral("members")).toList();
+    for (const QVariant& mv : members) {
+      const QVariantMap m = mv.toMap();
+      if (m.value(QStringLiteral("userId")).toString().trimmed().toLower() != uid)
+        continue;
+      const QString nick = m.value(QStringLiteral("nickname")).toString().trimmed();
+      if (!nick.isEmpty()) return nick;
+    }
+  }
+  return uid.left(8) + QStringLiteral("…");
+}
+
+void NodeController::openInAppMedia(const QString& path, const QString& mime,
+                                    const QString& title) {
+  if (path.trimmed().isEmpty() || !QFileInfo::exists(path)) {
+    showToast(QStringLiteral("Файл ещё не загружен"), true);
+    return;
+  }
+  document_viewer_.close();
+  in_app_media_path_ = path;
+  in_app_media_mime_ = mime;
+  in_app_media_title_ = title;
+  in_app_media_open_ = true;
+  emit inAppMediaChanged();
+}
+
+void NodeController::closeInAppMedia() {
+  if (!in_app_media_open_ && in_app_media_path_.isEmpty()) return;
+  in_app_media_open_ = false;
+  in_app_media_path_.clear();
+  in_app_media_mime_.clear();
+  in_app_media_title_.clear();
+  emit inAppMediaChanged();
+}
+
 void NodeController::ensureChatMediaRootIndexed() {
   const QString dir = chatMediaDir();
   QDir().mkpath(dir);
@@ -3369,22 +3771,176 @@ void NodeController::ensureChatMediaRootIndexed() {
   service_.index_folder(dir.toStdString(), scope.toStdString());
 }
 
+QString NodeController::importChatMediaMarkdown(const QString& localPath,
+                                                const QString& mimeHint,
+                                                const QString& displayName) {
+  const QString src = localPath.trimmed();
+  if (src.isEmpty() || !QFileInfo::exists(src)) {
+    showToast(QStringLiteral("Файл захвата не найден"), true);
+    return {};
+  }
+
+  QString mime = mimeHint.trimmed();
+  if (mime.isEmpty()) {
+    mime = QMimeDatabase().mimeTypeForFile(src).name();
+  }
+  QString name = displayName.trimmed();
+  if (name.isEmpty()) name = QFileInfo(src).fileName();
+  if (name.isEmpty()) name = QStringLiteral("media");
+
+  QString scope;
+  if (active_chat_kind_ == 1) scope = active_chat_ref_id_;
+  else if (!file_scope_group_id_.isEmpty()) scope = file_scope_group_id_;
+
+  const auto object = service_.import_file_object(
+      src.toStdString(), name.toStdString(), mime.toStdString(),
+      scope.toStdString(), profile_user_id_hex_.toStdString());
+  if (!object) {
+    showToast(QStringLiteral("Не удалось сохранить медиа в библиотеку"), true);
+    return {};
+  }
+
+  const QString hex =
+      QString::fromStdString(nyx::hash_hex(object->hash));
+  QDir().mkpath(chatMediaDir());
+  const QString ext = QFileInfo(name).suffix().toLower();
+  const QString dest =
+      chatMediaDir() + QLatin1Char('/') + hex +
+      (ext.isEmpty() ? QString{} : (QLatin1Char('.') + ext));
+  if (QFile::exists(dest)) QFile::remove(dest);
+  QFile::copy(src, dest);
+  ensureChatMediaRootIndexed();
+  refreshFileLists();
+
+  QString safe_name = name;
+  safe_name.replace(QLatin1Char(']'), QLatin1Char('_'));
+  QString safe_mime = mime;
+  safe_mime.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9.+/_-]")));
+  if (safe_mime.isEmpty()) safe_mime = QStringLiteral("application/octet-stream");
+  return QStringLiteral("[%1](nyx-file:%2;size=%3;mime=%4)")
+      .arg(safe_name, hex, QString::number(static_cast<qulonglong>(object->size)),
+           safe_mime);
+}
+
+bool NodeController::sendCapturedMedia(const QString& localPath,
+                                       const QString& mimeHint,
+                                       const QString& displayName,
+                                       const QString& mediaKind) {
+  if (!canSendMessage()) {
+    showToast(QStringLiteral("Нет связи — медиа не отправлено"), true);
+    return false;
+  }
+  const QString src = localPath.trimmed();
+  const QFileInfo source_info(src);
+  if (!source_info.isFile() || source_info.size() <= 0) {
+    showToast(QStringLiteral("Запись не создана или пуста"), true);
+    return false;
+  }
+
+  QString mime = mimeHint.trimmed();
+  if (mime.isEmpty()) mime = QMimeDatabase().mimeTypeForFile(src).name();
+  QString name = displayName.trimmed();
+  if (name.isEmpty()) name = source_info.fileName();
+  if (name.isEmpty()) name = QStringLiteral("media");
+
+  QString scope;
+  if (active_chat_kind_ == 1) scope = active_chat_ref_id_;
+  const QString chat_key = active_chat_key_;
+  const QString owner = profile_user_id_hex_;
+  const QString relative_dir =
+      (mediaKind == QLatin1String("voice") ||
+       mediaKind == QLatin1String("circle"))
+          ? mediaRelativeDir(chat_key, peer_title_, mediaKind)
+          : QString{};
+
+  QPointer<NodeController> guard(this);
+  QThreadPool::globalInstance()->start(
+      [guard, src, mime, name, scope, owner, relative_dir, chat_key]() {
+        if (!guard) return;
+        const auto object = guard->service_.import_file_object(
+            src.toStdString(), name.toStdString(), mime.toStdString(),
+            scope.toStdString(), owner.toStdString(), relative_dir.toStdString());
+        QFile::remove(src);
+
+        QString markdown;
+        if (object) {
+          QString safe_name = name;
+          safe_name.replace(QLatin1Char(']'), QLatin1Char('_'));
+          QString safe_mime = mime;
+          safe_mime.remove(
+              QRegularExpression(QStringLiteral("[^A-Za-z0-9.+/_-]")));
+          if (safe_mime.isEmpty())
+            safe_mime = QStringLiteral("application/octet-stream");
+          markdown =
+              QStringLiteral("[%1](nyx-file:%2;size=%3;mime=%4)")
+                  .arg(safe_name,
+                       QString::fromStdString(nyx::hash_hex(object->hash)),
+                       QString::number(
+                           static_cast<qulonglong>(object->size)),
+                       safe_mime);
+        }
+
+        QMetaObject::invokeMethod(
+            guard,
+            [guard, markdown, chat_key]() {
+              if (!guard) return;
+              guard->refreshFileLists();
+              if (markdown.isEmpty()) {
+                guard->showToast(
+                    QStringLiteral("Не удалось сохранить запись"), true);
+                return;
+              }
+              if (guard->active_chat_key_ != chat_key ||
+                  !guard->canSendMessage()) {
+                guard->showToast(
+                    QStringLiteral(
+                        "Запись сохранена в Файлах, но чат уже закрыт"),
+                    true);
+                return;
+              }
+              guard->sendMessage(markdown);
+            },
+            Qt::QueuedConnection);
+      });
+  return true;
+}
+
 QString NodeController::mediaLocalPath(const QString& hashHex) const {
   const QString hex = hashHex.trimmed().toLower();
   if (hex.size() != 64) return {};
+
+  auto is_verified_path = [&](const QString& path) -> bool {
+    if (path.isEmpty() || path.endsWith(QLatin1String(".part"))) return false;
+    if (!QFileInfo::exists(path)) return false;
+    return true;
+  };
+
+  // Prefer O(1) index lookup — never scan the whole listing on the UI thread.
+  if (const auto object = service_.find_file_object(hex.toStdString())) {
+    const QString path = QString::fromStdString(object->absolute_path());
+    if (is_verified_path(path)) return path;
+  }
+
   const QDir dir(chatMediaDir());
   const QStringList matches =
-      dir.entryList(QStringList{hex + QStringLiteral(".*")}, QDir::Files);
-  if (!matches.isEmpty()) return dir.filePath(matches.first());
-  for (const auto& e : service_.local_files_for_scope(
-           active_chat_kind_ == 1 ? active_chat_ref_id_.toStdString() : std::string{})) {
-    if (nyx::to_hex(e.hash.data(), e.hash.size()) == hex.toStdString())
-      return QString::fromStdString(e.absolute_path());
+      dir.entryList(QStringList{hex + QStringLiteral(".*"),
+                                hex.left(12) + QStringLiteral("-*")},
+                    QDir::Files);
+  for (const QString& name : matches) {
+    const QString path = dir.filePath(name);
+    if (is_verified_path(path)) return path;
   }
+
   const QString dl = QString::fromStdString(nyx::default_downloads_dir());
   const QDir dld(dl);
-  const QStringList dlm = dld.entryList(QStringList{hex + QStringLiteral(".*")}, QDir::Files);
-  if (!dlm.isEmpty()) return dld.filePath(dlm.first());
+  const QStringList dlm =
+      dld.entryList(QStringList{hex + QStringLiteral(".*"),
+                                hex.left(12) + QStringLiteral("-*")},
+                    QDir::Files);
+  for (const QString& name : dlm) {
+    const QString path = dld.filePath(name);
+    if (is_verified_path(path)) return path;
+  }
   return {};
 }
 
@@ -3408,10 +3964,355 @@ void NodeController::ensureMediaAvailable(const QString& hashHex) {
   }
 }
 
+QString NodeController::fileLocalPath(const QString& hashHex) const {
+  return mediaLocalPath(hashHex);
+}
+
+void NodeController::ensureFileAvailable(const QString& hashHex,
+                                         const QString& fileName) {
+  const QString hex = hashHex.trimmed().toLower();
+  if (hex.size() != 64 || !fileLocalPath(hex).isEmpty()) return;
+  QString safe_name = QFileInfo(fileName).fileName();
+  if (safe_name.isEmpty()) safe_name = hex;
+  const QString dir =
+      QString::fromStdString(nyx::default_downloads_dir());
+  QDir().mkpath(dir);
+  const QString dest =
+      QDir(dir).filePath(hex.left(12) + QLatin1Char('-') + safe_name);
+  if (!service_.download_file(hex.toStdString(), dest.toStdString())) {
+    showToast(QStringLiteral("Нет доступного источника файла"), true);
+  }
+}
+
+QString NodeController::fileTextPreview(const QString& hashHex) const {
+  const QString path = fileLocalPath(hashHex);
+  if (path.isEmpty() || path.endsWith(QLatin1String(".part"))) return {};
+  // Only preview from verified object catalog / completed downloads.
+  if (!service_.find_file_object(hashHex.trimmed().toLower().toStdString()) &&
+      !path.contains(QStringLiteral("/objects/")) &&
+      !path.contains(QStringLiteral("/library/")) &&
+      !path.contains(QStringLiteral("/chat_media/")) &&
+      !path.contains(QStringLiteral("/downloads/"))) {
+    return {};
+  }
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly)) return {};
+  const QByteArray data = file.read(256 * 1024 + 1);
+  if (data.size() > 256 * 1024 || data.contains('\0')) return {};
+  return QString::fromUtf8(data);
+}
+
+bool NodeController::openLocalFile(const QString& path, const QString& mime) {
+  const QString local = path.trimmed();
+  if (local.isEmpty() || local.endsWith(QLatin1String(".part"))) {
+    showToast(QStringLiteral("Файл ещё не готов"), true);
+    return false;
+  }
+  if (!QFileInfo::exists(local)) {
+    showToast(QStringLiteral("Файл не найден"), true);
+    return false;
+  }
+  QString use_mime = mime.trimmed();
+  if (use_mime.isEmpty()) {
+    // MatchExtension avoids reading file contents (can stall on big/network files).
+    use_mime = QMimeDatabase().mimeTypeForFile(local, QMimeDatabase::MatchExtension).name();
+  }
+  if (use_mime.startsWith(QLatin1String("image/")) ||
+      use_mime.startsWith(QLatin1String("audio/")) ||
+      use_mime.startsWith(QLatin1String("video/"))) {
+    openInAppMedia(local, use_mime, QFileInfo(local).fileName());
+    return true;
+  }
+  if (DocumentViewer::canHandle(local, use_mime)) {
+    closeInAppMedia();
+    return document_viewer_.openDocument(local, use_mime, QFileInfo(local).fileName());
+  }
+#if defined(Q_OS_ANDROID)
+  if (nyx_android::open_file(local, use_mime)) return true;
+  showToast(QStringLiteral("Не удалось открыть файл"), true);
+  return false;
+#elif defined(Q_OS_LINUX)
+  // Wrapper sets LD_LIBRARY_PATH to bundled Qt — inherited xdg-open often fails.
+  const QString abs = QFileInfo(local).absoluteFilePath();
+  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  env.remove(QStringLiteral("LD_LIBRARY_PATH"));
+  env.remove(QStringLiteral("QT_PLUGIN_PATH"));
+  env.remove(QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH"));
+  env.remove(QStringLiteral("QML2_IMPORT_PATH"));
+  env.remove(QStringLiteral("QML_IMPORT_PATH"));
+
+  auto launch = [&](const QString& program, const QStringList& args) -> bool {
+    QProcess proc;
+    proc.setProcessEnvironment(env);
+    proc.setProgram(program);
+    proc.setArguments(args);
+    proc.setWorkingDirectory(QFileInfo(abs).absolutePath());
+    return proc.startDetached();
+  };
+  if (launch(QStringLiteral("/usr/bin/xdg-open"), {abs})) return true;
+  if (launch(QStringLiteral("xdg-open"), {abs})) return true;
+  if (launch(QStringLiteral("/usr/bin/gio"), {QStringLiteral("open"), abs})) return true;
+  // Last resort (may still inherit bad env via QDesktopServices).
+  if (QDesktopServices::openUrl(QUrl::fromLocalFile(abs))) return true;
+  showToast(QStringLiteral("Не удалось открыть файл"), true);
+  return false;
+#else
+  if (QDesktopServices::openUrl(QUrl::fromLocalFile(local))) return true;
+  showToast(QStringLiteral("Не удалось открыть файл"), true);
+  return false;
+#endif
+}
+
+void NodeController::openFileByHash(const QString& hashHex,
+                                    const QString& fileName,
+                                    const QString& mime,
+                                    const QString& rootPath,
+                                    const QString& relativePath) {
+  const QString hex = hashHex.trimmed().toLower();
+  if (hex.size() != 64) {
+    showToast(QStringLiteral("Некорректный hash файла"), true);
+    return;
+  }
+  QString path = fileLocalPath(hex);
+  // Field share roots: UI already knows root+rel — use them if index lookup misses.
+  if (path.isEmpty() && !rootPath.trimmed().isEmpty() &&
+      !relativePath.trimmed().isEmpty()) {
+    const QString candidate =
+        QDir(rootPath.trimmed()).filePath(relativePath.trimmed());
+    if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile()) {
+      path = candidate;
+    }
+  }
+  if (path.isEmpty()) {
+    ensureFileAvailable(hex, fileName);
+    showToast(QStringLiteral("Файл загружается — откроется, когда будет готов"));
+    // Retry open shortly after download lands in cache.
+    QTimer::singleShot(1200, this, [this, hex, fileName, mime, rootPath, relativePath]() {
+      QString ready = fileLocalPath(hex);
+      if (ready.isEmpty() && !rootPath.trimmed().isEmpty() &&
+          !relativePath.trimmed().isEmpty()) {
+        const QString candidate =
+            QDir(rootPath.trimmed()).filePath(relativePath.trimmed());
+        if (QFileInfo::exists(candidate) && QFileInfo(candidate).isFile())
+          ready = candidate;
+      }
+      if (ready.isEmpty()) return;
+      QString use_mime = mime;
+      if (use_mime.isEmpty()) {
+        use_mime = QMimeDatabase()
+                       .mimeTypeForFile(ready, QMimeDatabase::MatchExtension)
+                       .name();
+      }
+      openLocalFile(ready, use_mime);
+    });
+    return;
+  }
+  QString use_mime = mime;
+  if (use_mime.isEmpty()) {
+    use_mime =
+        QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name();
+  }
+  openLocalFile(path, use_mime);
+}
+
+int NodeController::fileSyncState(const QString& hashHex) const {
+  // 0 = remote only, 1 = downloading, 2 = local/synced
+  const QString hex = hashHex.trimmed().toLower();
+  if (hex.size() != 64) return 0;
+  if (!fileLocalPath(hex).isEmpty()) return 2;
+  for (const auto& item : transfer_queue_) {
+    const QVariantMap m = item.toMap();
+    if (m.value(QStringLiteral("hash")).toString() != hex) continue;
+    const QString state = m.value(QStringLiteral("state")).toString();
+    if (state == QLatin1String("active") || state == QLatin1String("queued")) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+void NodeController::linkFileToChat(const QString& hashHex,
+                                    const QString& fileName,
+                                    const QString& mime,
+                                    qulonglong size) {
+  const QString hash = hashHex.trimmed().toLower();
+  if (hash.size() != 64) {
+    showToast(QStringLiteral("Некорректный hash файла"), true);
+    return;
+  }
+  QString name = fileName;
+  name.replace(QLatin1Char(']'), QLatin1Char('_'));
+  QString safe_mime = mime.trimmed();
+  safe_mime.remove(
+      QRegularExpression(QStringLiteral("[^A-Za-z0-9.+/_-]")));
+  if (safe_mime.isEmpty()) {
+    safe_mime = QStringLiteral("application/octet-stream");
+  }
+  const QString markdown =
+      QStringLiteral("[%1](nyx-file:%2;size=%3;mime=%4)")
+          .arg(name, hash, QString::number(size), safe_mime);
+  showChatView();
+  QTimer::singleShot(0, this,
+                     [this, markdown]() { emit fileLinkReady(markdown); });
+}
+
+void NodeController::linkFolderToChat(const QString& hashHex,
+                                      const QString& folderName,
+                                      const QString& rootPath,
+                                      const QString& relativePath,
+                                      qulonglong size) {
+  const QString hash = hashHex.trimmed().toLower();
+  if (hash.size() != 64) {
+    showToast(QStringLiteral("Некорректный hash папки"), true);
+    return;
+  }
+  QString name = folderName.trimmed();
+  name.replace(QLatin1Char(']'), QLatin1Char('_'));
+  if (name.isEmpty()) name = QStringLiteral("Папка");
+  QString root = rootPath.trimmed();
+  root.replace(QLatin1Char(')'), QLatin1Char('_'));
+  QString rel = relativePath.trimmed();
+  rel.replace(QLatin1Char(')'), QLatin1Char('_'));
+  const QString markdown =
+      QStringLiteral(
+          "[%1](nyx-file:%2;size=%3;mime=application/x-nyx-directory;root=%4;rel=%5)")
+          .arg(name, hash, QString::number(size),
+               QString::fromUtf8(root.toUtf8().toPercentEncoding()),
+               QString::fromUtf8(rel.toUtf8().toPercentEncoding()));
+  showChatView();
+  QTimer::singleShot(0, this,
+                     [this, markdown]() { emit fileLinkReady(markdown); });
+}
+
+void NodeController::openFolderInResources(const QString& hashHex,
+                                           const QString& rootPath,
+                                           const QString& relativePath) {
+  setMainViewMode(1);
+  setFilesSection(1);
+  QString root = QUrl::fromPercentEncoding(rootPath.toUtf8()).trimmed();
+  QString rel = QUrl::fromPercentEncoding(relativePath.toUtf8()).trimmed();
+  if (root.isEmpty()) {
+    const QString hex = hashHex.trimmed().toLower();
+    for (const auto& e : service_.remote_files()) {
+      if (nyx::hash_hex(e.hash) != hex.toStdString()) continue;
+      root = QString::fromStdString(e.root_path);
+      rel = QString::fromStdString(e.relative_path);
+      break;
+    }
+    if (root.isEmpty()) {
+      for (const auto& e :
+           service_.local_files_for_scope(file_scope_group_id_.toStdString())) {
+        if (nyx::hash_hex(e.hash) != hex.toStdString()) continue;
+        root = QString::fromStdString(e.root_path);
+        rel = QString::fromStdString(e.relative_path);
+        break;
+      }
+    }
+  }
+  if (root.isEmpty()) {
+    showToast(QStringLiteral("Папка не найдена в ресурсах"), true);
+    return;
+  }
+  file_resources_root_ = root;
+  // Directory marker relative_path is the folder itself — browse into it.
+  file_remote_browse_path_ = rel;
+  if (fileExchangeReady()) {
+    service_.request_remote_files_at(file_scope_group_id_.toStdString(),
+                                     root.toStdString(), rel.toStdString());
+  }
+  refreshRemoteFileModel();
+  emit filesChanged();
+}
+
+void NodeController::pauseFileTransfer(const QString& hashHex,
+                                       bool paused) {
+  service_.pause_transfer(hashHex.toStdString(), paused);
+}
+
+void NodeController::cancelFileTransfer(const QString& hashHex) {
+  service_.cancel_transfer(hashHex.toStdString());
+}
+
+void NodeController::retryFileTransfer(const QString& hashHex) {
+  service_.retry_transfer(hashHex.toStdString());
+}
+
+void NodeController::moveFileTransfer(const QString& hashHex, int delta) {
+  service_.move_transfer(hashHex.toStdString(), delta);
+}
+
+void NodeController::importFiles() {
+  const QList<QUrl> urls = QFileDialog::getOpenFileUrls(
+      nullptr, QStringLiteral("Импортировать файлы"), QUrl(),
+      QStringLiteral("Все файлы (*.*)"));
+  if (urls.isEmpty()) return;
+  int imported = 0;
+  for (const QUrl& url : urls) {
+    QString source;
+    QString name;
+    QString mime = QStringLiteral("application/octet-stream");
+    bool temporary = false;
+#if defined(Q_OS_ANDROID)
+    if (url.scheme() == QLatin1String("content")) {
+      const auto info =
+          nyx_android::storage_document_info(url.toString());
+      name = QFileInfo(info.name).fileName();
+      if (name.isEmpty()) name = QStringLiteral("imported-file");
+      mime = info.mime;
+      const QString staging =
+          QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+          QStringLiteral("/import-staging");
+      QDir().mkpath(staging);
+      source = QDir(staging).filePath(
+          QString::number(QDateTime::currentMSecsSinceEpoch()) +
+          QLatin1Char('-') + name);
+      if (!nyx_android::copy_content_uri(url.toString(), source)) continue;
+      temporary = true;
+    } else
+#endif
+    {
+      source = url.toLocalFile();
+      name = QFileInfo(source).fileName();
+      mime = QMimeDatabase().mimeTypeForFile(source).name();
+    }
+    const auto object = service_.import_file_object(
+        source.toStdString(), name.toStdString(), mime.toStdString(),
+        file_scope_group_id_.toStdString());
+    if (temporary) QFile::remove(source);
+    if (object) ++imported;
+  }
+  refreshFileLists();
+  showToast(QStringLiteral("Импортировано файлов: %1").arg(imported),
+            imported == 0);
+}
+
+void NodeController::exportFile(const QString& hashHex,
+                                const QString& fileName,
+                                const QString& mime) {
+  const QString source = fileLocalPath(hashHex);
+  if (source.isEmpty()) {
+    showToast(QStringLiteral("Файл ещё не загружен"), true);
+    return;
+  }
+#if defined(Q_OS_ANDROID)
+  if (!nyx_android::export_file(source, fileName, mime)) {
+    showToast(QStringLiteral("Не удалось экспортировать файл"), true);
+  }
+#else
+  const QString destination = QFileDialog::getSaveFileName(
+      nullptr, QStringLiteral("Экспортировать файл"), fileName);
+  if (destination.isEmpty()) return;
+  QFile::remove(destination);
+  if (!QFile::copy(source, destination)) {
+    showToast(QStringLiteral("Не удалось экспортировать файл"), true);
+  }
+#endif
+}
+
 QString NodeController::pickChatMediaMarkdown() {
   const QString src = QFileDialog::getOpenFileName(
       nullptr, QStringLiteral("Фото или видео в сообщение"), QString(),
-      QStringLiteral("Media (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.mp4 *.webm *.mov *.mkv)"));
+      QStringLiteral("Media (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.mp4 *.webm *.mov *.mkv *.m4a *.ogg *.mp3 *.wav)"));
   if (src.isEmpty()) return {};
 
   QString work = src;
@@ -3455,28 +4356,14 @@ QString NodeController::pickChatMediaMarkdown() {
     }
   }
 
-  nyx::FileHash hash{};
-  if (!nyx::hash_file(work.toStdString(), hash)) {
-    showToast(QStringLiteral("Не удалось посчитать hash"), true);
-    if (work != src) QFile::remove(work);
-    return {};
+  const QString mime = QMimeDatabase().mimeTypeForFile(work).name();
+  QString name = QFileInfo(src).fileName();
+  if (is_image && !name.endsWith(QLatin1String(".jpg"), Qt::CaseInsensitive)) {
+    name = QFileInfo(src).completeBaseName() + QStringLiteral(".jpg");
   }
-  const QString hex = QString::fromStdString(nyx::to_hex(hash.data(), hash.size()));
-  QDir().mkpath(chatMediaDir());
-  const QString dest = chatMediaDir() + QLatin1Char('/') + hex + QLatin1Char('.') + ext;
-  if (QFile::exists(dest)) QFile::remove(dest);
-  if (!QFile::copy(work, dest)) {
-    // already exists / same file
-    if (!QFile::exists(dest)) {
-      showToast(QStringLiteral("Не удалось сохранить в chat_media"), true);
-      if (work != src) QFile::remove(work);
-      return {};
-    }
-  }
+  const QString md = importChatMediaMarkdown(work, mime, name);
   if (work != src) QFile::remove(work);
-  ensureChatMediaRootIndexed();
-  const QString caption = QFileInfo(src).completeBaseName();
-  return QStringLiteral("![%1](nyx-media:%2)").arg(caption, hex);
+  return md;
 }
 
 void NodeController::sendMessage(const QString& text) {
@@ -3489,8 +4376,12 @@ void NodeController::sendMessage(const QString& text) {
   ensureChatMediaRootIndexed();
   const auto blocks = nyx::parse_markdown_blocks(normalized);
   for (const auto& b : blocks) {
-    if (b.type != nyx::MdBlockType::Media || b.hash.empty()) continue;
-    const QString path = mediaLocalPath(QString::fromStdString(b.hash));
+    if ((b.type != nyx::MdBlockType::Media &&
+         b.type != nyx::MdBlockType::File) ||
+        b.hash.empty()) {
+      continue;
+    }
+    const QString path = fileLocalPath(QString::fromStdString(b.hash));
     if (!path.isEmpty()) service_.send_file(path.toStdString());
   }
   if (!service_.send_message(normalized, active_chat_key_.toStdString())) {
@@ -3635,7 +4526,8 @@ void NodeController::syncCallAudio() {
     // Open mic/speaker on the audio thread — never block the GUI event loop.
     call_audio_.setMuted(mic_muted);
     call_audio_.setSendFn([this](const std::vector<uint8_t>& packet) {
-      const bool ok = service_.send_call_media(nyx::CallMediaType::Opus, packet);
+      const bool ok = service_.send_call_media(nyx::CallMediaType::Opus, packet,
+                                               call_audio_.localVoiceLevel());
       if (!ok) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         // Grace: channel may not be ready for the first ~1.5s after accept.
@@ -3652,6 +4544,11 @@ void NodeController::syncCallAudio() {
     call_media_started_ms_ = QDateTime::currentMSecsSinceEpoch();
     call_audio_.start();  // marshals to call_audio_thread_
     if (video) {
+      const bool small_field =
+          service_.call_is_field_room() &&
+          service_.call_participants().size() <= 2;
+      call_video_.setTransmitEnabled(!service_.call_is_field_room() ||
+                                     small_field || call_audio_.localVoiceActive());
       call_video_.setSendFn([this](const QByteArray& frag) {
         const nyx::ByteBuffer buf(frag.begin(), frag.end());
         return service_.send_call_media(nyx::CallMediaType::Video, buf);
@@ -3921,8 +4818,19 @@ QVariantList NodeController::callRosterPeers() const {
   if (!callIsFieldRoom()) return {};
   QVariantList video = callVideoPeers();
   if (!video.isEmpty()) return video;
-  // Audio room / waiting for video peers: show field members when available.
   QVariantList out;
+  const auto self = service_.profile().public_key;
+  for (const auto& participant : service_.call_participants()) {
+    if (participant == self) continue;
+    const QString id =
+        QString::fromStdString(nyx::to_hex(participant.data(), participant.size()));
+    QVariantMap row;
+    row.insert(QStringLiteral("userId"), id);
+    row.insert(QStringLiteral("nickname"), resolveCallPeerName(id));
+    row.insert(QStringLiteral("focused"), id == call_video_.focusedPeerId());
+    out.append(row);
+  }
+  if (!out.isEmpty()) return out;
   for (const QVariant& v : field_info_members_) {
     const QVariantMap m = v.toMap();
     QVariantMap row;
@@ -4016,6 +4924,8 @@ void NodeController::switchCallCamera() {
 void NodeController::setCallFocusedPeer(const QString& peerIdHex) {
   const QString id = peerIdHex.trimmed().toLower();
   if (id.isEmpty()) return;
+  manual_call_focus_ = id;
+  manual_call_focus_until_ms_ = QDateTime::currentMSecsSinceEpoch() + 10000;
   call_video_.setFocusedPeerId(id);
   if (call_frames_) call_frames_->setPrimaryRemoteKey(id);
   const QImage img = call_video_.peerFrame(id);
@@ -4190,7 +5100,10 @@ void NodeController::startFieldHub(const QString& groupIdHex) {
     showToast(QStringLiteral("Неверный id поля"));
     return;
   }
-  showGroupInView(gid);
+  // Already viewing this field — don't rebuild chat UI / reload history.
+  if (active_chat_key_ != QStringLiteral("group:") + gid || !in_chat_) {
+    showGroupInView(gid);
+  }
   setGroupsDialogOpen(false);
   peer_status_text_ = QStringLiteral("открытие эфира…");
   emit chatChanged();
@@ -4239,7 +5152,7 @@ void NodeController::joinField(const QString& inviteHex) {
   emit listeningChanged();
   emit busyChanged();
   emit sessionsChanged();
-  refreshChatList();
+  QTimer::singleShot(0, this, [this]() { refreshChatList(); });
 }
 
 void NodeController::connectActiveField() {
@@ -4263,8 +5176,6 @@ void NodeController::connectActiveField() {
     showToast(QStringLiteral("Неверный id поля"));
     return;
   }
-
-  refreshGroupList();
 
   bool is_owner = false;
   QString invite;

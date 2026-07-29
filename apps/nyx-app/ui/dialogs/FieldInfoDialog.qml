@@ -61,7 +61,6 @@ Dialog {
     }
 
     onAboutToShow: {
-        node.refreshFieldRoster()
         loadEditorFromNode()
     }
 
@@ -520,7 +519,8 @@ Dialog {
         function onFieldInfoOpenChanged() {
             if (node.fieldInfoOpen) {
                 root.loadEditorFromNode()
-                root.open()
+                if (!root.opened)
+                    root.open()
             } else {
                 root.close()
             }

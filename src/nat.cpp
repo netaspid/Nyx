@@ -14,6 +14,10 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#if !defined(__ANDROID__)
+#include <ifaddrs.h>
+#include <net/if.h>
+#endif
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -38,6 +42,62 @@ void write_u32_be_to(ByteBuffer& buf, uint32_t v, std::size_t off) {
   buf[off + 2] = static_cast<uint8_t>((v >> 8) & 0xff);
   buf[off + 3] = static_cast<uint8_t>(v & 0xff);
 }
+
+#if !defined(_WIN32) && !defined(__ANDROID__)
+bool is_virtual_interface(const std::string& name) {
+  constexpr const char* prefixes[] = {
+      "br-",      "docker", "veth",    "virbr", "podman", "cni",
+      "flannel",  "zt",     "tailscale", "tun",  "tap",   "wg",
+      "outline",  "vpn",    "nordlynx", "ipsec"};
+  for (const char* prefix : prefixes) {
+    if (name.rfind(prefix, 0) == 0) return true;
+  }
+  return false;
+}
+
+std::string physical_lan_ipv4(const std::string& routed_ip) {
+  ifaddrs* interfaces = nullptr;
+  if (getifaddrs(&interfaces) != 0) return routed_ip;
+
+  std::string best;
+  int best_score = -1;
+  for (const ifaddrs* it = interfaces; it; it = it->ifa_next) {
+    if (!it->ifa_addr || it->ifa_addr->sa_family != AF_INET || !it->ifa_name) continue;
+    const unsigned int flags = it->ifa_flags;
+    if ((flags & IFF_UP) == 0 || (flags & (IFF_LOOPBACK | IFF_POINTOPOINT)) != 0) {
+      continue;
+    }
+#if defined(IFF_RUNNING)
+    if ((flags & IFF_RUNNING) == 0) continue;
+#endif
+    const std::string name = it->ifa_name;
+    if (is_virtual_interface(name)) continue;
+
+    char address[INET_ADDRSTRLEN] = {};
+    const auto* ipv4 = reinterpret_cast<const sockaddr_in*>(it->ifa_addr);
+    if (!inet_ntop(AF_INET, &ipv4->sin_addr, address, sizeof(address))) continue;
+    const std::string candidate = address;
+    if (candidate == "0.0.0.0" || candidate.rfind("169.254.", 0) == 0) continue;
+
+    int score = candidate == routed_ip ? 1000 : 0;
+    if ((flags & IFF_BROADCAST) != 0) score += 100;
+    if ((flags & IFF_MULTICAST) != 0) score += 50;
+    if (name.rfind("en", 0) == 0 || name.rfind("eth", 0) == 0 ||
+        name.rfind("wl", 0) == 0) {
+      score += 100;
+    }
+    if (candidate.rfind("192.168.", 0) == 0) score += 40;
+    else if (candidate.rfind("10.", 0) == 0) score += 20;
+    else if (candidate.rfind("172.", 0) == 0) score -= 40;
+    if (score > best_score) {
+      best_score = score;
+      best = candidate;
+    }
+  }
+  freeifaddrs(interfaces);
+  return best.empty() ? routed_ip : best;
+}
+#endif
 
 }  // namespace
 
@@ -96,7 +156,11 @@ std::string guess_lan_ipv4() {
   close(s);
   char buf[64] = {};
   inet_ntop(AF_INET, &local.sin_addr, buf, sizeof(buf));
+#if defined(__ANDROID__)
   return buf;
+#else
+  return physical_lan_ipv4(buf);
+#endif
 #endif
 }
 
@@ -174,11 +238,18 @@ std::optional<EndpointHint> stun_external_endpoint(UdpSocket& sock,
 
 EndpointHint make_public_hint(UdpSocket& sock, const std::string& fallback_host,
                               uint16_t port) {
+  const std::string lan =
+      fallback_host.empty() ? guess_lan_ipv4() : fallback_host;
+  // Same-WiFi peers break when we advertise a VPN/STUN public IP (no hairpin).
+  // Prefer a private LAN address whenever we have one.
+  if (is_lan_ipv4(lan) && lan != "127.0.0.1" && lan != "localhost") {
+    return make_hint(lan, port);
+  }
   if (auto stun = stun_external_endpoint(sock)) {
     stun->port = port;
     return *stun;
   }
-  return make_hint(fallback_host.empty() ? guess_lan_ipv4() : fallback_host, port);
+  return make_hint(lan.empty() ? guess_lan_ipv4() : lan, port);
 }
 
 bool is_lan_ipv4(const std::string& host) {

@@ -168,8 +168,13 @@ bool extract_payload(const std::vector<std::uint8_t>& blob, const std::string& t
       if (!write_file_bytes(full, f.data.data(), f.data.size(), err)) return false;
 #ifndef _WIN32
       const auto base = full.filename().string();
-      if (base == "nyx-app" || base == "nyx-node" || base == "nyx-rendezvous" ||
-          base == "nyx-uninstall" || base == "nyx-app-wrapper.sh") {
+      const auto rel = f.relative_path;
+      const bool under_tools =
+          rel.rfind("tools/", 0) == 0 || rel.rfind("tools\\", 0) == 0;
+      if (under_tools || base == "nyx-app" || base == "nyx-node" ||
+          base == "nyx-rendezvous" || base == "nyx-uninstall" ||
+          base == "nyx-app-wrapper.sh" || base == "mutool" || base == "pdfinfo" ||
+          base == "pdftoppm") {
         std::filesystem::permissions(full, std::filesystem::perms::owner_exec |
                                                  std::filesystem::perms::group_exec |
                                                  std::filesystem::perms::others_exec,

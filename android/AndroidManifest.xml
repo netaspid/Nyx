@@ -87,5 +87,11 @@
             android:name="org.nyx.app.NyxKeepAliveService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <provider
+            android:name="org.nyx.app.NyxFileProvider"
+            android:authorities="org.nyx.app.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

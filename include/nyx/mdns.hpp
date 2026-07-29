@@ -17,6 +17,10 @@
 
 namespace nyx {
 
+/** Extra IPv4 hosts that should receive unicast discovery beacons (e.g. Live DM peers). */
+void add_discovery_unicast_target(const std::string& ipv4);
+std::vector<std::string> discovery_unicast_targets();
+
 /** Узел, найденный в локальной сети. */
 struct LanPeer {
   std::string instance;
@@ -45,9 +49,10 @@ class MdnsLan {
   /** Опрос LAN, сбор ответов beacon Nyx. */
   static std::vector<LanPeer> browse(UdpSocket& socket, int timeout_ms = 3000);
 
-  /** Одно announce (для тестов). */
+  /** Одно announce (+ optional unicast to peers that miss ethernet multicast). */
   static bool send_announcement(UdpSocket& socket, const Profile& profile,
-                                uint16_t port, const std::string& host_ip);
+                                uint16_t port, const std::string& host_ip,
+                                const std::vector<std::string>& unicast_hosts = {});
 
   /** Разбор beacon-пакета (тесты). */
   static std::optional<LanPeer> parse_beacon(const ByteBuffer& data,

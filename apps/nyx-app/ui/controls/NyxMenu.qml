@@ -5,6 +5,7 @@ import QtQuick.Controls
 Menu {
     id: root
     required property var theme
+    property real menuWidth: 208
 
     palette.window: theme.bgSidebar
     palette.windowText: theme.textPrimary
@@ -14,7 +15,7 @@ Menu {
     palette.buttonText: theme.textPrimary
 
     background: Rectangle {
-        implicitWidth: 240
+        implicitWidth: root.menuWidth
         color: theme.bgSidebar
         border.color: theme.border
         border.width: 1
@@ -23,9 +24,12 @@ Menu {
 
     delegate: MenuItem {
         id: menuItem
-        implicitWidth: 240
-        implicitHeight: 36
-        padding: 10
+        implicitWidth: root.menuWidth
+        implicitHeight: 34
+        leftPadding: 12
+        rightPadding: 12
+        topPadding: 4
+        bottomPadding: 4
 
         contentItem: Text {
             text: menuItem.text

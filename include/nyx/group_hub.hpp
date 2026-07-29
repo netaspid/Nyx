@@ -61,7 +61,8 @@ class GroupHub {
   bool send_message(const std::string& text);
 
   bool send_call_frame(const ByteBuffer& frame, const UserId* skip_user = nullptr);
-  void distribute_call_mesh_intros(const CallId& call_id);
+  void distribute_call_mesh_intros(const CallId& call_id,
+                                   const std::vector<UserId>& participants);
 
   bool send_realtime_all(const ByteBuffer& data);
   void drain_realtime(const std::function<void(ByteBuffer)>& on_frame);
@@ -117,6 +118,19 @@ class GroupHub {
   bool download_local_file(const FileHash& hash, const std::string& dest_path,
                            std::string* saved_path = nullptr) const;
 
+  /** Asks a live member provider for a file (hub owner download via member link). */
+  bool request_file_from_provider(const FileHash& hash, const std::string& dest_path);
+
+  /** True while a provider download for this hash is in flight. */
+  bool provider_transfer_busy(const FileHash& hash) const;
+
+  void set_on_file_complete(FileTransferService::CompletionCallback cb) {
+    on_file_complete_ = std::move(cb);
+  }
+  void set_on_file_progress(FileTransferService::ProgressCallback cb) {
+    on_file_progress_ = std::move(cb);
+  }
+
  private:
   void send_file_access_policy(HubMember& member);
   HubMember* find_member(const std::string& host, uint16_t port);
@@ -136,7 +150,8 @@ class GroupHub {
   std::vector<FileEntry> merged_field_entries_for(const UserId& requester) const;
   HubMember* find_hash_provider(const FileHash& hash);
   void rebuild_hash_providers();
-  void relay_file_request(HubMember& provider, HubMember& requester, const FileHash& hash);
+  void relay_file_request(HubMember& provider, HubMember& requester,
+                          const FileHash& hash, const ByteBuffer& request);
 
   UdpSocket socket_;
   Profile owner_;
@@ -149,6 +164,8 @@ class GroupHub {
   DeliveryCallback on_delivery_;
   EventCallback on_event_;
   CallFrameCallback on_call_frame_;
+  FileTransferService::CompletionCallback on_file_complete_;
+  FileTransferService::ProgressCallback on_file_progress_;
   /** Исходящие owner-сообщения, ждущие Ack хотя бы от одного участника. */
   std::unordered_set<uint64_t> pending_member_acks_;
 
@@ -158,6 +175,7 @@ class GroupHub {
   std::unordered_map<HubMember*, std::unique_ptr<FileTransferService>> file_services_;
   std::unordered_map<UserId, std::vector<FileEntry>, UserIdHash> member_catalog_;
   std::unordered_map<UserId, std::vector<std::string>, UserIdHash> member_roots_;
+  std::unordered_map<UserId, uint64_t, UserIdHash> member_catalog_revisions_;
   std::unordered_map<std::string, UserId, std::hash<std::string>> hash_providers_;
 
   struct FileRelay {

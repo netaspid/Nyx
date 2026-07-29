@@ -894,7 +894,7 @@ void CallVideoIo::onEncodeTick() {
       local_dirty_ = false;
       emit_local = true;
     }
-    if (send_fn_) {
+    if (send_fn_ && transmit_enabled_.load(std::memory_order_acquire)) {
       if (!cam_on) {
         static qint64 s_last_black_ms = 0;
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -924,7 +924,9 @@ void CallVideoIo::onEncodeTick() {
     encode_busy_ = false;
     return;
   }
-  const bool keyframe = (frame_id_ % static_cast<uint16_t>(encodeFps())) == 0;
+  const bool keyframe =
+      force_keyframe_.exchange(false, std::memory_order_acq_rel) ||
+      (frame_id_ % static_cast<uint16_t>(encodeFps())) == 0;
   auto encoded =
       encoder_->encode_i420(i420.data(), encodeWidth(), encodeHeight(), keyframe);
   if (!encoded || encoded->empty()) {

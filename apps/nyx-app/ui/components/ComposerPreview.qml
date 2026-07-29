@@ -6,6 +6,7 @@ import "../js/MarkdownFormat.js" as Md
 Item {
     id: root
     required property var theme
+    property var node: null
     property string sourceText: ""
     property var revealedSpoilers: ({})
 
@@ -57,12 +58,17 @@ Item {
                     lang: blockCol.modelData.caption || ""
                     code: blockCol.modelData.text || ""
                     maxContentHeight: 120
+                    onCopyRequested: function(text) {
+                        if (root.node)
+                            root.node.copyToClipboard(text)
+                    }
                 }
 
                 Text {
                     visible: blockCol.modelData.type === "table"
                              || blockCol.modelData.type === "formula"
                              || blockCol.modelData.type === "media"
+                             || blockCol.modelData.type === "file"
                     width: parent.width
                     text: {
                         const b = blockCol.modelData
@@ -70,6 +76,12 @@ Item {
                         if (b.type === "formula")
                             return "<div style=\"text-align:center;\">"
                                    + Md.formulaToHtml(b.text) + "</div>"
+                        if (b.type === "file")
+                            return ((b.mime === "application/x-nyx-directory")
+                                    ? "📁 " : "📄 ")
+                                   + "<b>" + Md.escapeHtml(b.caption || qsTr("Файл"))
+                                   + "</b><br><small>" + Md.escapeHtml(b.mime || "")
+                                   + "</small>"
                         return "[" + Md.escapeHtml(b.caption || "media") + "]"
                     }
                     color: theme.bubbleTextOut

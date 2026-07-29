@@ -51,6 +51,7 @@ Item {
                         { label: "||", tip: qsTr("Спойлер"), action: "spoiler" },
                         { label: "`", tip: qsTr("Код"), action: "code" },
                         { label: "{ }", tip: qsTr("Блок кода"), action: "fence" },
+                        { label: "копи", tip: qsTr("Копируемый блок"), action: "copyblock" },
                         { label: ">", tip: qsTr("Цитата"), action: "quote" },
                         { label: "•", tip: qsTr("Список"), action: "ul" },
                         { label: "1.", tip: qsTr("Нумерованный"), action: "ol" },

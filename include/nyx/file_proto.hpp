@@ -30,6 +30,9 @@ enum class FileKind : uint8_t {
   PolicyPush = 9,
   /** Участник → hub: запрос актуальной политики ACL. */
   PolicyReq = 10,
+  Capabilities = 11,
+  RangeRequest = 12,
+  Cancel = 13,
 };
 
 constexpr std::size_t kFileChunkSize = 8192;
@@ -49,6 +52,34 @@ struct FileRequest {
 
   ByteBuffer encode() const;
   static std::optional<FileRequest> decode(const ByteBuffer& data);
+};
+
+struct FileCapabilities {
+  uint8_t version = 2;
+  uint32_t flags = 0;
+  uint8_t max_parallel = 1;
+
+  static constexpr uint32_t kResume = 1u << 0;
+  static constexpr uint32_t kCancel = 1u << 1;
+  static constexpr uint32_t kMultiTransfer = 1u << 2;
+
+  ByteBuffer encode() const;
+  static std::optional<FileCapabilities> decode(const ByteBuffer& data);
+};
+
+struct FileRangeRequest {
+  FileHash hash{};
+  uint64_t offset = 0;
+
+  ByteBuffer encode() const;
+  static std::optional<FileRangeRequest> decode(const ByteBuffer& data);
+};
+
+struct FileCancel {
+  FileHash hash{};
+
+  ByteBuffer encode() const;
+  static std::optional<FileCancel> decode(const ByteBuffer& data);
 };
 
 struct FileChunk {
@@ -86,7 +117,8 @@ ByteBuffer encode_list_response(const std::vector<FileEntry>& entries);
 
 /** Участник отправляет hub свой список файлов поля. */
 ByteBuffer encode_index_push(const std::vector<FileEntry>& entries,
-                             const std::vector<std::string>& root_paths = {});
+                             const std::vector<std::string>& root_paths = {},
+                             uint64_t revision = 0);
 
 std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& data);
 
@@ -94,6 +126,7 @@ std::optional<std::vector<FileEntry>> decode_list_response(const ByteBuffer& dat
 struct IndexPushPayload {
   std::vector<FileEntry> entries;
   std::vector<std::string> root_paths;
+  uint64_t revision = 0;
 };
 
 std::optional<IndexPushPayload> decode_index_push(const ByteBuffer& data);

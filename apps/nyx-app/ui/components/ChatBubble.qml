@@ -1,6 +1,9 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Effects
+import QtMultimedia
+import "."
 import "../js/MarkdownFormat.js" as Md
 
 /** Пузырь сообщения: блоки paragraph/table/formula/media/action. */
@@ -52,6 +55,11 @@ Item {
     width: listWidth
     height: (isAction ? actionBubble.implicitHeight : bubble.implicitHeight) + 10
 
+    function requestContextMenu(item, position) {
+        const p = item.mapToItem(Overlay.overlay, position.x, position.y)
+        bubbleRoot.contextRequested(Md.toPlainText(messageText), p.x, p.y)
+    }
+
     function handleLink(link) {
         const s = String(link)
         if (s.indexOf("nyx-spoiler:") === 0) {
@@ -90,6 +98,18 @@ Item {
         implicitHeight: actionCol.implicitHeight + padV * 2
         radius: theme ? theme.radiusBubble : 16
         color: theme ? theme.bubbleAction : "#243447"
+
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            onTapped: function(eventPoint) {
+                bubbleRoot.requestContextMenu(actionBubble, eventPoint.position)
+            }
+        }
+
+        TapHandler {
+            acceptedDevices: PointerDevice.TouchScreen | PointerDevice.Stylus
+            onLongPressed: bubbleRoot.requestContextMenu(actionBubble, point.position)
+        }
 
         Column {
             id: actionCol
@@ -155,6 +175,19 @@ Item {
         // Uniform radius: per-corner *Radius needs Qt 6.7+; Android kit is 6.5.3.
         radius: theme ? theme.radiusBubble : 16
 
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            onTapped: function(eventPoint) {
+                bubbleRoot.requestContextMenu(bubble, eventPoint.position)
+            }
+        }
+
+        TapHandler {
+            id: touchContextHandler
+            acceptedDevices: PointerDevice.TouchScreen | PointerDevice.Stylus
+            onLongPressed: bubbleRoot.requestContextMenu(bubble, point.position)
+        }
+
         Column {
             id: innerCol
             x: padH
@@ -177,6 +210,406 @@ Item {
                     required property var modelData
                     width: bubbleRoot.maxInnerW
                     spacing: 4
+
+                    Column {
+                        id: fileBlock
+                        width: parent.width
+                        spacing: 6
+                        visible: modelData.type === "file"
+                        property string hash: modelData.hash || ""
+                        property string fileName: modelData.caption || qsTr("Файл")
+                        property string mime: modelData.mime || "application/octet-stream"
+                        property var fileSize: modelData.size || 0
+                        property string folderRoot: modelData.root || ""
+                        property string folderRel: modelData.rel || ""
+                        property bool requested: false
+                        property bool isDirectory: mime === "application/x-nyx-directory"
+                        property bool isText: !isDirectory
+                                              && (mime.indexOf("text/") === 0
+                                                  || mime === "application/json")
+                        property bool isAudio: !isDirectory && mime.indexOf("audio/") === 0
+                        property bool isVoice: isAudio
+                                               && (fileName.toLowerCase()
+                                                   .indexOf("voice-message") === 0
+                                                   || fileName.toLowerCase() === "voice.m4a")
+                        property bool isVideo: !isDirectory && mime.indexOf("video/") === 0
+                        property bool isImage: !isDirectory && mime.indexOf("image/") === 0
+                        property bool isCircle: isVideo
+                                                && fileName.toLowerCase()
+                                                    .indexOf("circle-message") === 0
+                        property string localPath: {
+                            void fileRefresh.tick
+                            return bubbleRoot.node && hash.length && !isDirectory
+                                   ? bubbleRoot.node.fileLocalPath(hash) : ""
+                        }
+                        property int syncState: {
+                            void fileRefresh.tick
+                            return bubbleRoot.node && hash.length
+                                   ? bubbleRoot.node.fileSyncState(hash) : 0
+                        }
+                        property string previewText: localPath.length && isText
+                                                     ? bubbleRoot.node.fileTextPreview(hash) : ""
+
+                        Component.onCompleted: {
+                            if (!isDirectory
+                                    && (isImage || isVoice || isCircle
+                                        || (isText && fileSize <= 262144))
+                                    && bubbleRoot.node) {
+                                requested = true
+                                bubbleRoot.node.ensureFileAvailable(hash, fileName)
+                            }
+                        }
+
+                        Timer {
+                            id: fileRefresh
+                            property int tick: 0
+                            interval: 900
+                            repeat: true
+                            running: parent.requested && parent.localPath.length === 0
+                                     && !parent.isDirectory
+                            onTriggered: {
+                                tick++
+                                if (bubbleRoot.node)
+                                    bubbleRoot.node.ensureFileAvailable(parent.hash, parent.fileName)
+                            }
+                        }
+
+                        Rectangle {
+                            width: Math.min(parent.width, 320)
+                            visible: !fileBlock.isCircle
+                            implicitHeight: fileCardRow.implicitHeight + 14
+                            radius: 12
+                            color: Qt.rgba(0.22, 0.22, 0.22, 0.55)
+                            border.color: theme ? theme.border : "#44ffffff"
+
+                            RowLayout {
+                                id: fileCardRow
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 8
+                                spacing: 10
+
+                                Item {
+                                    Layout.preferredWidth: 40
+                                    Layout.preferredHeight: 40
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: 10
+                                        color: Qt.rgba(0.12, 0.12, 0.12, 0.65)
+                                    }
+                                    NyxIcon {
+                                        anchors.centerIn: parent
+                                        name: fileBlock.isDirectory ? "folder" : "file"
+                                        width: 22
+                                        height: 22
+                                    }
+                                    Rectangle {
+                                        width: 14
+                                        height: 14
+                                        radius: 7
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top
+                                        anchors.margins: -2
+                                        color: fileBlock.syncState === 2
+                                               ? "#43a047"
+                                               : (fileBlock.syncState === 1
+                                                  ? "#fb8c00" : "#78909c")
+                                        border.color: "#22000000"
+                                        NyxIcon {
+                                            anchors.centerIn: parent
+                                            name: fileBlock.syncState === 2
+                                                  ? "check"
+                                                  : (fileBlock.syncState === 1
+                                                     ? "refresh" : "lock")
+                                            width: 8
+                                            height: 8
+                                        }
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 3
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: fileBlock.fileName
+                                        color: theme ? theme.textPrimary : "#fff"
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: fileBlock.isDirectory
+                                              ? qsTr("Папка · %1").arg(
+                                                    fileBlock.fileSize > 0
+                                                    ? (fileBlock.fileSize + qsTr(" файлов"))
+                                                    : qsTr("просмотр"))
+                                              : (fileBlock.mime + " · "
+                                                 + Math.max(1, Math.round(fileBlock.fileSize / 1024))
+                                                 + " КБ")
+                                        color: theme ? theme.textSecondary : "#aaa"
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        visible: fileBlock.previewText.length > 0
+                                        text: fileBlock.previewText
+                                        color: theme ? theme.textPrimary : "#fff"
+                                        font.family: "monospace"
+                                        font.pixelSize: 11
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 8
+                                        elide: Text.ElideRight
+                                    }
+                                    Image {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: visible ? 140 : 0
+                                        visible: fileBlock.isImage
+                                                 && fileBlock.localPath.length > 0
+                                        source: visible
+                                                ? "file:///" + String(fileBlock.localPath)
+                                                      .replace(/\\/g, "/") : ""
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: bubbleRoot.node.openInAppMedia(
+                                                fileBlock.localPath, fileBlock.mime,
+                                                fileBlock.fileName)
+                                        }
+                                    }
+                                    VideoOutput {
+                                        id: fileVideoOutput
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: visible ? 140 : 0
+                                        visible: fileBlock.isVideo
+                                                 && fileBlock.localPath.length > 0
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: bubbleRoot.node.openInAppMedia(
+                                                fileBlock.localPath, fileBlock.mime,
+                                                fileBlock.fileName)
+                                        }
+                                    }
+                                    MediaPlayer {
+                                        id: filePlayer
+                                        source: fileBlock.localPath.length
+                                                ? "file:///" + String(fileBlock.localPath)
+                                                      .replace(/\\/g, "/") : ""
+                                        audioOutput: AudioOutput {}
+                                        videoOutput: fileVideoOutput
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: fileBlock.localPath.length > 0
+                                                 && (fileBlock.isAudio
+                                                     || fileBlock.isVideo)
+                                        spacing: 4
+                                        MediaPlaybackControls {
+                                            Layout.fillWidth: true
+                                            theme: bubbleRoot.theme
+                                            player: filePlayer
+                                            compact: true
+                                        }
+                                        IconButton {
+                                            visible: fileBlock.isVoice
+                                            theme: bubbleRoot.theme
+                                            name: "folder"
+                                            btnSize: 28
+                                            flat: true
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: qsTr("Открыть сохранённые голосовые")
+                                            onClicked: bubbleRoot.node.openChatMediaFolder("voice")
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        Button {
+                                            visible: fileBlock.isDirectory
+                                            text: qsTr("В ресурсы")
+                                            onClicked: {
+                                                if (bubbleRoot.node)
+                                                    bubbleRoot.node.openFolderInResources(
+                                                        fileBlock.hash,
+                                                        fileBlock.folderRoot,
+                                                        fileBlock.folderRel)
+                                            }
+                                        }
+                                        Button {
+                                            visible: fileBlock.isDirectory
+                                            text: qsTr("Скачать")
+                                            onClicked: {
+                                                if (bubbleRoot.node)
+                                                    bubbleRoot.node.downloadRemoteFolder(
+                                                        fileBlock.folderRoot,
+                                                        fileBlock.folderRel)
+                                            }
+                                        }
+                                        Button {
+                                            visible: !fileBlock.isDirectory
+                                                     && (fileBlock.localPath.length === 0
+                                                         || (!fileBlock.isAudio
+                                                             && !fileBlock.isVideo))
+                                            text: {
+                                                if (fileBlock.localPath.length === 0)
+                                                    return qsTr("Скачать")
+                                                if (fileBlock.isAudio)
+                                                    return qsTr("Слушать")
+                                                if (fileBlock.isImage || fileBlock.isVideo)
+                                                    return qsTr("Смотреть")
+                                                return qsTr("Открыть")
+                                            }
+                                            onClicked: {
+                                                const card = fileBlock
+                                                if (!card.localPath.length) {
+                                                    card.requested = true
+                                                    bubbleRoot.node.ensureFileAvailable(
+                                                        card.hash, card.fileName)
+                                                } else if (card.isImage) {
+                                                    bubbleRoot.node.openInAppMedia(
+                                                        card.localPath, card.mime, card.fileName)
+                                                } else {
+                                                    bubbleRoot.node.openLocalFile(
+                                                        card.localPath, card.mime)
+                                                }
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Label {
+                                            visible: fileBlock.requested
+                                                     && fileBlock.localPath.length === 0
+                                                     && !fileBlock.isDirectory
+                                            text: qsTr("Загрузка…")
+                                            color: theme ? theme.textSecondary : "#aaa"
+                                            font.pixelSize: 11
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Column {
+                            width: Math.min(parent.width, 220)
+                            spacing: 6
+                            visible: fileBlock.isCircle
+
+                            Item {
+                                id: circleViewport
+                                width: parent.width
+                                height: width
+
+                                Rectangle {
+                                    id: circleSurface
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: "#11151c"
+                                    clip: true
+                                    layer.enabled: true
+                                    layer.effect: MultiEffect {
+                                        maskEnabled: true
+                                        maskSource: circleMask
+                                    }
+
+                                    VideoOutput {
+                                        id: circleVideoOutput
+                                        anchors.fill: parent
+                                        fillMode: VideoOutput.PreserveAspectCrop
+                                    }
+                                }
+
+                                Rectangle {
+                                    id: circleMask
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: "white"
+                                    visible: false
+                                    layer.enabled: true
+                                }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: "transparent"
+                                    border.color: theme ? theme.border : "#55ffffff"
+                                    border.width: 2
+                                }
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 48
+                                    height: 48
+                                    radius: 24
+                                    color: "#aa000000"
+                                    visible: fileBlock.localPath.length === 0
+                                             || circlePlayer.playbackState
+                                                !== MediaPlayer.PlayingState
+                                    NyxIcon {
+                                        anchors.centerIn: parent
+                                        name: fileBlock.localPath.length === 0
+                                              ? "video" : "play"
+                                        width: 24
+                                        height: 24
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (!fileBlock.localPath.length) {
+                                            fileBlock.requested = true
+                                            bubbleRoot.node.ensureFileAvailable(
+                                                        fileBlock.hash,
+                                                        fileBlock.fileName)
+                                        } else if (circlePlayer.playbackState
+                                                   === MediaPlayer.PlayingState) {
+                                            circlePlayer.pause()
+                                        } else {
+                                            if (circlePlayer.duration > 0
+                                                    && circlePlayer.position
+                                                       >= circlePlayer.duration)
+                                                circlePlayer.position = 0
+                                            circlePlayer.play()
+                                        }
+                                    }
+                                }
+                            }
+
+                            MediaPlayer {
+                                id: circlePlayer
+                                source: fileBlock.localPath.length
+                                        ? "file:///" + String(fileBlock.localPath)
+                                              .replace(/\\/g, "/") : ""
+                                videoOutput: circleVideoOutput
+                                audioOutput: AudioOutput {}
+                            }
+
+                            RowLayout {
+                                width: parent.width
+                                visible: fileBlock.localPath.length > 0
+                                spacing: 4
+                                MediaPlaybackControls {
+                                    Layout.fillWidth: true
+                                    theme: bubbleRoot.theme
+                                    player: circlePlayer
+                                    compact: true
+                                }
+                                IconButton {
+                                    theme: bubbleRoot.theme
+                                    name: "folder"
+                                    btnSize: 28
+                                    flat: true
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: qsTr("Открыть сохранённые видеокружки")
+                                    onClicked: bubbleRoot.node.openChatMediaFolder("circle")
+                                }
+                            }
+                        }
+                    }
 
                     // media
                     Item {
@@ -217,13 +650,22 @@ Item {
                             Image {
                                 visible: mediaCol.path.length > 0
                                          && (!bubbleRoot.node || bubbleRoot.node.isImageMedia(mediaCol.hash))
-                                source: mediaCol.path.length
+                                source: visible && mediaCol.path.length
                                         ? ("file:///" + String(mediaCol.path).replace(/\\/g, "/"))
                                         : ""
                                 width: Math.min(parent.width, 280)
                                 fillMode: Image.PreserveAspectFit
                                 asynchronous: true
                                 sourceSize.width: 560
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (bubbleRoot.node && mediaCol.path.length)
+                                            bubbleRoot.node.openInAppMedia(
+                                                mediaCol.path, "image/jpeg", mediaCol.caption)
+                                    }
+                                }
                             }
 
                             Rectangle {
@@ -243,9 +685,9 @@ Item {
                                         elide: Text.ElideRight
                                     }
                                     Button {
-                                        text: qsTr("Открыть")
-                                        onClicked: Qt.openUrlExternally(
-                                            "file:///" + String(mediaCol.path).replace(/\\/g, "/"))
+                                        text: qsTr("Смотреть")
+                                        onClicked: bubbleRoot.node.openInAppMedia(
+                                            mediaCol.path, "video/mp4", mediaCol.caption)
                                     }
                                 }
                             }
@@ -274,6 +716,10 @@ Item {
                         lang: modelData.caption || ""
                         code: modelData.text || ""
                         maxContentHeight: 320
+                        onCopyRequested: function(text) {
+                            if (bubbleRoot.node)
+                                bubbleRoot.node.copyToClipboard(text)
+                        }
                     }
 
                     // paragraph with Telegram-spoilers
@@ -378,4 +824,6 @@ Item {
             }
         }
     }
+
+    signal contextRequested(string plainText, real sceneX, real sceneY)
 }

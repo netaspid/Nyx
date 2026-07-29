@@ -5,6 +5,9 @@
 #include "nyx/app.hpp"
 #include "nyx/file_hash.hpp"
 #include "nyx/group.hpp"
+#include "nyx/identity.hpp"
+#include "nyx/mdns.hpp"
+#include "nyx/nat.hpp"
 #include "nyx/paths.hpp"
 #include "nyx/rendezvous_pool.hpp"
 
@@ -55,18 +58,25 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
 
   std::string rendezvous_host;
   uint16_t rendezvous_port = 0;
-  if (!parse_rendezvous(rendezvous_host, rendezvous_port)) {
+  const bool need_rv = network_config_.mode != nyx::DiscoveryMode::LanOnly;
+  if (need_rv && !parse_rendezvous(rendezvous_host, rendezvous_port)) {
     emit_status("неверный адрес rendezvous");
     finish_session(session, SessionState::Offline);
     return;
   }
 
   nyx::RendezvousPool rv(std::move(socket));
-  rv.set_servers(network_config_.rendezvous_servers);
-  if (!rv.register_token(group->invite_token)) {
-    emit_status("rendezvous не отвечает — не удалось объявить эфир");
-    finish_session(session, SessionState::Offline);
-    return;
+  if (need_rv) {
+    rv.set_servers(network_config_.rendezvous_servers);
+  }
+  bool rv_ok = true;
+  if (need_rv) {
+    rv_ok = rv.register_token(group->invite_token);
+    if (!rv_ok) {
+      emit_status("rendezvous не отвечает — эфир всё равно открыт в LAN");
+    }
+  } else {
+    emit_status("эфир в режиме LAN-only");
   }
 
   emit_status("эфир «" + group->name + "», invite: " +
@@ -86,8 +96,61 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
         emit_delivery(session, message_id, status == nyx::DeliveryStatus::Delivered);
       });
   session->group_hub->set_on_event([this](const std::string& text) { emit_status(text); });
+  session->group_hub->set_on_file_progress(
+      [this, session](const nyx::FileHash& hash, uint64_t done, uint64_t total) {
+        {
+          std::lock_guard lock(session->download_mutex);
+          const std::string hex = nyx::hash_hex(hash);
+          for (auto& item : session->download_queue) {
+            if (item.hash_hex != hex) continue;
+            item.state = "active";
+            item.progress =
+                total == 0 ? 0 : static_cast<int>((done * 100) / total);
+            break;
+          }
+        }
+        save_download_queue(session);
+        emit_transfer_queue_changed();
+      });
+  session->group_hub->set_on_file_complete(
+      [this, session](const nyx::FileHash& hash, bool success, const std::string&,
+                      const std::string& error) {
+        const std::string hex = nyx::hash_hex(hash);
+        {
+          std::lock_guard lock(session->download_mutex);
+          auto it = std::find_if(
+              session->download_queue.begin(), session->download_queue.end(),
+              [&](const FileDownloadRequest& item) {
+                return item.hash_hex == hex;
+              });
+          if (it != session->download_queue.end()) {
+            if (success) {
+              session->download_queue.erase(it);
+            } else {
+              it->state = "failed";
+              it->error = error.empty() ? "нет источников" : error;
+            }
+          }
+        }
+        save_download_queue(session);
+        emit_transfer_queue_changed();
+      });
+  load_download_queue(session);
   wire_call_handlers(session);
   sync_live_group_from_session(session);
+
+  // Advertise hub on LAN so members can join when rendezvous UDP is blocked (VPN).
+  if (network_config_.mode != nyx::DiscoveryMode::Internet) {
+    nyx::Profile hub_profile = profile;
+    hub_profile.nickname = profile.nickname + "-field";
+    session->mdns = std::make_unique<nyx::MdnsLan>();
+    const std::string lan_ip = nyx::guess_lan_ipv4();
+    session->mdns->start_advertising(session->group_hub->socket(), hub_profile,
+                                     session->group_hub->socket().local_port(), lan_ip);
+    emit_status(std::string("эфир LAN ") + lan_ip + ':' +
+                std::to_string(session->group_hub->socket().local_port()) +
+                (rv_ok ? "" : " (без rendezvous)"));
+  }
 
   emit_chat_ready(session, group->name, ConnectionVia::Group, {}, nyx::ConversationKind::Group,
                   session->ref_id_hex);
@@ -156,7 +219,8 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
 
   std::string rendezvous_host;
   uint16_t rendezvous_port = 0;
-  if (!parse_rendezvous(rendezvous_host, rendezvous_port)) {
+  const bool have_rv = parse_rendezvous(rendezvous_host, rendezvous_port);
+  if (!have_rv && network_config_.mode == nyx::DiscoveryMode::Internet) {
     emit_status("неверный rendezvous");
     bind_group_session_key();
     finish_session(session, SessionState::Offline);
@@ -164,7 +228,9 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   }
 
   nyx::RendezvousPool rv(std::move(socket));
-  rv.set_servers(network_config_.rendezvous_servers);
+  if (have_rv) {
+    rv.set_servers(network_config_.rendezvous_servers);
+  }
 
   auto connect_with_lookup = [&](nyx::RendezvousPool& pool) -> bool {
     auto hint = pool.lookup(token);
@@ -177,27 +243,82 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
     return true;
   };
 
+  auto connect_lan_direct = [&](const std::string& host, uint16_t port) -> bool {
+    emit_status("LAN: подключение к эфиру " + host + ':' + std::to_string(port) + "...");
+    nyx::UdpSocket dial;
+    if (!dial.bind("0.0.0.0", 0)) return false;
+    auto conn = nyx::Connection::connect_initiator(std::move(dial), host, port);
+    if (!conn) return false;
+    session->connection = std::make_unique<nyx::Connection>(std::move(*conn));
+    return true;
+  };
+
+  const std::string owner_short =
+      group ? nyx::short_user_id(group->owner_id) : std::string{};
+
+  auto try_lan_hubs = [&](int browse_ms) -> bool {
+    emit_status("эфир через LAN…");
+    const auto peers = browse_lan_peers(browse_ms);
+    std::vector<nyx::LanPeer> hubs;
+    for (const auto& p : peers) {
+      if (p.instance.size() < 6 ||
+          p.instance.compare(p.instance.size() - 6, 6, "-field") != 0) {
+        continue;
+      }
+      // Prefer the owner of this field when roster is known.
+      if (!owner_short.empty() && p.user_id_short != owner_short) continue;
+      hubs.push_back(p);
+    }
+    // If owner filter emptied the list (old beacon / mismatch), still try any *-field.
+    if (hubs.empty()) {
+      for (const auto& p : peers) {
+        if (p.instance.size() >= 6 &&
+            p.instance.compare(p.instance.size() - 6, 6, "-field") == 0) {
+          hubs.push_back(p);
+        }
+      }
+    }
+    for (const auto& p : hubs) {
+      if (!session->running.load()) break;
+      if (p.host.empty() || p.port == 0) continue;
+      if (connect_lan_direct(p.host, p.port)) return true;
+      session->connection.reset();
+    }
+    return false;
+  };
+
   bool connected = false;
-  for (int attempt = 1; attempt <= 4 && session->running.load(); ++attempt) {
-    if (attempt > 1) {
-      emit_status("повтор lookup (" + std::to_string(attempt) + "/4)…");
-      std::this_thread::sleep_for(std::chrono::milliseconds(500 * attempt));
-      nyx::UdpSocket retry_socket;
-      if (!retry_socket.bind("0.0.0.0", 0)) continue;
-      nyx::RendezvousPool retry_pool(std::move(retry_socket));
-      retry_pool.set_servers(network_config_.rendezvous_servers);
-      if (connect_with_lookup(retry_pool)) {
+  // Same Wi‑Fi first: rendezvous UDP often dead behind VPN, and LAN is faster to fail/succeed.
+  if (network_config_.mode != nyx::DiscoveryMode::Internet) {
+    connected = try_lan_hubs(3200);
+  }
+
+  if (!connected && have_rv && network_config_.mode != nyx::DiscoveryMode::LanOnly) {
+    for (int attempt = 1; attempt <= 2 && session->running.load(); ++attempt) {
+      if (attempt > 1) {
+        emit_status("повтор lookup (" + std::to_string(attempt) + "/2)…");
+        std::this_thread::sleep_for(std::chrono::milliseconds(400 * attempt));
+        nyx::UdpSocket retry_socket;
+        if (!retry_socket.bind("0.0.0.0", 0)) continue;
+        nyx::RendezvousPool retry_pool(std::move(retry_socket));
+        retry_pool.set_servers(network_config_.rendezvous_servers);
+        if (connect_with_lookup(retry_pool)) {
+          connected = true;
+          break;
+        }
+      } else if (connect_with_lookup(rv)) {
         connected = true;
         break;
       }
-    } else if (connect_with_lookup(rv)) {
-      connected = true;
-      break;
     }
   }
 
+  if (!connected && network_config_.mode != nyx::DiscoveryMode::Internet) {
+    connected = try_lan_hubs(3500);
+  }
+
   if (!connected || !session->connection) {
-    emit_status("эфир не найден — владелец online и тот же rendezvous?");
+    emit_status("эфир не найден — владелец online в той же Wi‑Fi / тот же rendezvous?");
     bind_group_session_key();
     finish_session(session, SessionState::Offline);
     return;
@@ -300,6 +421,8 @@ void NodeService::run_group_join(std::shared_ptr<NetSession> session, std::strin
   session->files = std::make_unique<nyx::FileTransferService>(
       *session->connection, file_index_, nyx::default_downloads_dir());
   session->files->set_share_scope(session->share_scope);
+  session->files->announce_capabilities();
+  load_download_queue(session);
   wire_file_transfer(session, *session->files);
   publish_field_index();
   request_file_access_policy();

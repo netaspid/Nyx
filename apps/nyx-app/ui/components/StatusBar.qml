@@ -2,15 +2,16 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Нижняя строка статуса: сессии, диагностика, advanced connect. */
+/** Status line under main content. */
 Rectangle {
     id: root
     required property var theme
     property var node: null
     property string text: ""
     property bool busy: false
+    property bool compact: false
 
-    implicitHeight: 30
+    implicitHeight: compact ? 26 : 30
     color: theme.bgApp
 
     Rectangle {
@@ -53,7 +54,7 @@ Rectangle {
         }
 
         ToolButton {
-            visible: node !== null
+            visible: node !== null && !root.compact
             text: qsTr("Сеть")
             font.pixelSize: 11
             implicitHeight: 22
@@ -73,7 +74,7 @@ Rectangle {
         }
 
         ToolButton {
-            visible: node !== null && node.inChat
+            visible: node !== null && node.inChat && !root.compact
             text: qsTr("Откл.")
             font.pixelSize: 11
             implicitHeight: 22

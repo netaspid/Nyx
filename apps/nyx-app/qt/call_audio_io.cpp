@@ -5,6 +5,8 @@
 #include <QAudioFormat>
 #include <QAudioSink>
 #include <QAudioSource>
+#include <QDateTime>
+#include <QDebug>
 #include <QMediaDevices>
 #include <QMetaObject>
 #include <QThread>
@@ -12,9 +14,15 @@
 #include <QVariantMap>
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cmath>
 #include <memory>
+
+#if defined(NYX_HAS_PULSE_SIMPLE)
+#include <pulse/error.h>
+#include <pulse/simple.h>
+#endif
 
 #if defined(Q_OS_ANDROID)
 #include <android/log.h>
@@ -22,8 +30,7 @@
   __android_log_print(ANDROID_LOG_INFO, "NyxAudio", __VA_ARGS__)
 #else
 #define NYX_AUDIO_LOG(...) \
-  do {                     \
-  } while (0)
+  qInfo().noquote() << QStringLiteral("NyxAudio:") << QString::asprintf(__VA_ARGS__)
 #endif
 
 #if defined(NYX_HAS_QT_MULTIMEDIA)
@@ -119,45 +126,65 @@ QAudioFormat makeVoipFormat(const QAudioDevice& dev) {
   return near;
 }
 
+QAudioFormat makeCaptureFormat(const QAudioDevice& dev) {
+  if (dev.isNull()) return makeVoipFormat(dev);
+  QAudioFormat native = dev.preferredFormat();
+  if (native.sampleRate() > 0 && native.channelCount() > 0 &&
+      native.sampleFormat() != QAudioFormat::Unknown &&
+      dev.isFormatSupported(native)) {
+    return native;
+  }
+  return makeVoipFormat(dev);
+}
+
 std::vector<int16_t> audioBytesToMono16(const QByteArray& bytes, const QAudioFormat& fmt) {
   const int channels = std::max(1, fmt.channelCount());
   const int bytes_per_sample = fmt.bytesPerSample();
   if (bytes_per_sample <= 0) return {};
   const int frames = bytes.size() / (bytes_per_sample * channels);
   if (frames <= 0) return {};
-  std::vector<int16_t> mono(static_cast<std::size_t>(frames));
-
-  for (int i = 0; i < frames; ++i) {
-    int64_t sum = 0;
-    for (int c = 0; c < channels; ++c) {
-      const int index = i * channels + c;
-      int32_t sample = 0;
-      switch (fmt.sampleFormat()) {
-        case QAudioFormat::Int16:
-          sample = reinterpret_cast<const int16_t*>(bytes.constData())[index];
-          break;
-        case QAudioFormat::Int32:
-          sample = reinterpret_cast<const int32_t*>(bytes.constData())[index] >> 16;
-          break;
-        case QAudioFormat::Float: {
-          const float value = reinterpret_cast<const float*>(bytes.constData())[index];
-          sample = static_cast<int32_t>(
-              std::clamp(value, -1.0f, 1.0f) * static_cast<float>(INT16_MAX));
-          break;
-        }
-        case QAudioFormat::UInt8:
-          sample = (static_cast<int32_t>(
-                        reinterpret_cast<const uint8_t*>(bytes.constData())[index]) -
-                    128)
-                   << 8;
-          break;
-        default:
-          return {};
+  auto sample_at = [&](int index) -> int32_t {
+    switch (fmt.sampleFormat()) {
+      case QAudioFormat::Int16:
+        return reinterpret_cast<const int16_t*>(bytes.constData())[index];
+      case QAudioFormat::Int32:
+        return reinterpret_cast<const int32_t*>(bytes.constData())[index] >> 16;
+      case QAudioFormat::Float: {
+        const float value = reinterpret_cast<const float*>(bytes.constData())[index];
+        if (!std::isfinite(value)) return 0;
+        return static_cast<int32_t>(
+            std::clamp(value, -1.0f, 1.0f) * static_cast<float>(INT16_MAX));
       }
-      sum += sample;
+      case QAudioFormat::UInt8:
+        return (static_cast<int32_t>(
+                    reinterpret_cast<const uint8_t*>(bytes.constData())[index]) -
+                128)
+               << 8;
+      default:
+        return 0;
     }
-    mono[static_cast<std::size_t>(i)] =
-        static_cast<int16_t>(std::clamp<int64_t>(sum / channels, INT16_MIN, INT16_MAX));
+  };
+  if (fmt.sampleFormat() == QAudioFormat::Unknown) return {};
+
+  int selected_channel = 0;
+  if (channels > 1) {
+    std::vector<double> energy(static_cast<std::size_t>(channels), 0.0);
+    const int inspect_frames = std::min(frames, 4096);
+    for (int i = 0; i < inspect_frames; ++i) {
+      for (int c = 0; c < channels; ++c) {
+        const double sample = sample_at(i * channels + c);
+        energy[static_cast<std::size_t>(c)] += sample * sample;
+      }
+    }
+    selected_channel = static_cast<int>(
+        std::max_element(energy.begin(), energy.end()) - energy.begin());
+  }
+
+  std::vector<int16_t> mono(static_cast<std::size_t>(frames));
+  for (int i = 0; i < frames; ++i) {
+    mono[static_cast<std::size_t>(i)] = static_cast<int16_t>(
+        std::clamp<int32_t>(sample_at(i * channels + selected_channel),
+                            INT16_MIN, INT16_MAX));
   }
   return mono;
 }
@@ -284,30 +311,81 @@ bool CallAudioIo::openDevices() {
   NYX_AUDIO_LOG("openDevices ok (android AudioRecord+AudioTrack)");
   return true;
 #else
-  source_.reset();
-  source_dev_ = nullptr;
+  const auto close_input = [this]() {
+    if (source_) {
+      source_->stop();
+      source_.reset();
+    }
+    source_dev_ = nullptr;
+#if defined(NYX_HAS_PULSE_SIMPLE)
+    if (pulse_capture_) {
+      pa_simple_free(static_cast<pa_simple*>(pulse_capture_));
+      pulse_capture_ = nullptr;
+    }
+#endif
+  };
+  close_input();
   bool opened_in = false;
+
+#if defined(NYX_HAS_PULSE_SIMPLE)
+  const pa_sample_spec pulse_spec{
+      PA_SAMPLE_S16LE, static_cast<uint32_t>(nyx::kCallAudioSampleRate), 1};
+  pa_buffer_attr pulse_attr{};
+  pulse_attr.maxlength = static_cast<uint32_t>(-1);
+  pulse_attr.tlength = static_cast<uint32_t>(-1);
+  pulse_attr.prebuf = static_cast<uint32_t>(-1);
+  pulse_attr.minreq = static_cast<uint32_t>(-1);
+  pulse_attr.fragsize =
+      static_cast<uint32_t>(nyx::kCallAudioFrameSamples * sizeof(int16_t));
   for (const QAudioDevice& in_dev : inputCandidates(preferred_input_id_)) {
     if (in_dev.isNull()) continue;
-    const QAudioFormat in_fmt = makeVoipFormat(in_dev);
-    if (in_fmt.sampleFormat() == QAudioFormat::Unknown) continue;
-    auto src = std::make_unique<QAudioSource>(in_dev, in_fmt);
-    const int bytes_20ms_in =
-        in_fmt.bytesForDuration(nyx::kCallAudioFrameMs * 1000);
-    src->setBufferSize(std::max(bytes_20ms_in * 10, 8192));
-    QIODevice* dev = src->start();
-    if (!dev) {
-      NYX_AUDIO_LOG("openDevices: input failed id=%s", qPrintable(QString::fromUtf8(in_dev.id())));
+    const QByteArray device_id = in_dev.id();
+    int pulse_error = 0;
+    pa_simple* capture = pa_simple_new(
+        nullptr, "Nyx", PA_STREAM_RECORD,
+        device_id.isEmpty() ? nullptr : device_id.constData(), "Voice capture",
+        &pulse_spec, nullptr, &pulse_attr, &pulse_error);
+    if (!capture) {
+      NYX_AUDIO_LOG("openDevices: PulseAudio input failed id=%s error=%s",
+                    device_id.constData(), pa_strerror(pulse_error));
       continue;
     }
-    source_ = std::move(src);
-    source_dev_ = dev;
-    preferred_input_id_ = QString::fromUtf8(in_dev.id());
-    capture_rate_ = in_fmt.sampleRate();
+    pulse_capture_ = capture;
+    preferred_input_id_ = QString::fromUtf8(device_id);
+    capture_rate_ = nyx::kCallAudioSampleRate;
     opened_in = true;
-    NYX_AUDIO_LOG("openDevices: input ok desc=%s rate=%d ch=%d",
-                  qPrintable(in_dev.description()), capture_rate_, in_fmt.channelCount());
+    NYX_AUDIO_LOG("openDevices: PulseAudio input ok desc=%s id=%s",
+                  qPrintable(in_dev.description()), device_id.constData());
     break;
+  }
+#endif
+
+  if (!opened_in) {
+    for (const QAudioDevice& in_dev : inputCandidates(preferred_input_id_)) {
+      if (in_dev.isNull()) continue;
+      const QAudioFormat in_fmt = makeCaptureFormat(in_dev);
+      if (in_fmt.sampleFormat() == QAudioFormat::Unknown) continue;
+      auto src = std::make_unique<QAudioSource>(in_dev, in_fmt);
+      const int bytes_20ms_in =
+          in_fmt.bytesForDuration(nyx::kCallAudioFrameMs * 1000);
+      src->setBufferSize(std::max(bytes_20ms_in * 10, 8192));
+      QIODevice* dev = src->start();
+      if (!dev) {
+        NYX_AUDIO_LOG("openDevices: input failed id=%s",
+                      qPrintable(QString::fromUtf8(in_dev.id())));
+        continue;
+      }
+      source_ = std::move(src);
+      source_dev_ = dev;
+      preferred_input_id_ = QString::fromUtf8(in_dev.id());
+      capture_rate_ = in_fmt.sampleRate();
+      opened_in = true;
+      NYX_AUDIO_LOG("openDevices: input ok desc=%s rate=%d ch=%d format=%d",
+                    qPrintable(in_dev.description()), capture_rate_,
+                    in_fmt.channelCount(),
+                    static_cast<int>(in_fmt.sampleFormat()));
+      break;
+    }
   }
   if (!opened_in) {
     NYX_AUDIO_LOG("openDevices: no usable input device");
@@ -324,16 +402,12 @@ bool CallAudioIo::openDevices() {
   const QAudioDevice out_dev = findOutput(preferred_output_id_);
   if (out_dev.isNull()) {
     NYX_AUDIO_LOG("openDevices: null output device");
-    source_->stop();
-    source_.reset();
-    source_dev_ = nullptr;
+    close_input();
     return false;
   }
   const QAudioFormat out_fmt = makeVoipFormat(out_dev);
   if (out_fmt.sampleFormat() != QAudioFormat::Int16) {
-    source_->stop();
-    source_.reset();
-    source_dev_ = nullptr;
+    close_input();
     return false;
   }
   preferred_output_id_ = QString::fromUtf8(out_dev.id());
@@ -346,9 +420,7 @@ bool CallAudioIo::openDevices() {
   sink_dev_ = sink_->start();
   if (!sink_dev_) {
     NYX_AUDIO_LOG("openDevices: sink start failed");
-    source_->stop();
-    source_.reset();
-    source_dev_ = nullptr;
+    close_input();
     sink_.reset();
     return false;
   }
@@ -368,7 +440,7 @@ bool CallAudioIo::start() {
     return true;  // async — caller must not assume devices are open yet
   }
   if (running_.load(std::memory_order_acquire)) return true;
-  if (!encoder_.ok() || !decoder_.ok()) {
+  if (!encoder_.ok()) {
     NYX_AUDIO_LOG("start: opus not ok");
     return false;
   }
@@ -386,9 +458,9 @@ bool CallAudioIo::start() {
   timer_->start();
   // Drain packets that arrived before the audio thread finished opening devices.
   while (!pending_remote_.empty()) {
-    const QByteArray pkt = pending_remote_.front();
+    const auto [peer, pkt] = pending_remote_.front();
     pending_remote_.pop_front();
-    onRemoteOpus(pkt);
+    onRemoteOpus(peer, pkt);
   }
   NYX_AUDIO_LOG("start ok");
   return true;
@@ -407,6 +479,12 @@ void CallAudioIo::stop() {
     source_->stop();
     source_.reset();
   }
+#if defined(NYX_HAS_PULSE_SIMPLE)
+  if (pulse_capture_) {
+    pa_simple_free(static_cast<pa_simple*>(pulse_capture_));
+    pulse_capture_ = nullptr;
+  }
+#endif
   if (sink_) {
     sink_->stop();
     sink_.reset();
@@ -424,6 +502,15 @@ void CallAudioIo::stop() {
   capture_pcm_.clear();
   opus_pcm_.clear();
   pending_remote_.clear();
+  remote_peers_.clear();
+  dominant_speaker_.clear();
+  dominant_since_ms_ = 0;
+  dominant_last_voice_ms_ = 0;
+  local_voice_last_ms_ = 0;
+  local_voice_level_.store(0, std::memory_order_release);
+  if (local_voice_active_.exchange(false, std::memory_order_acq_rel)) {
+    emit localVoiceActiveChanged(false);
+  }
   android_cap_scratch_.clear();
   mic_level_.store(0.f, std::memory_order_release);
   if (was_mic_test) {
@@ -466,6 +553,24 @@ void CallAudioIo::pushCapturePcm(const int16_t* samples, int count) {
   }
 
   while (static_cast<int>(opus_pcm_.size()) >= nyx::kCallAudioFrameSamples) {
+    double energy = 0.0;
+    for (int i = 0; i < nyx::kCallAudioFrameSamples; ++i) {
+      const double sample = static_cast<double>(opus_pcm_[static_cast<std::size_t>(i)]) /
+                            32768.0;
+      energy += sample * sample;
+    }
+    const float rms =
+        static_cast<float>(std::sqrt(energy / nyx::kCallAudioFrameSamples));
+    local_voice_level_.store(
+        static_cast<uint8_t>(std::clamp(rms * 700.0f, 0.0f, 255.0f)),
+        std::memory_order_release);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (rms >= 0.015f) local_voice_last_ms_ = now;
+    const bool voice = now - local_voice_last_ms_ <= 300 &&
+                       !muted_.load(std::memory_order_acquire);
+    if (local_voice_active_.exchange(voice, std::memory_order_acq_rel) != voice) {
+      emit localVoiceActiveChanged(voice);
+    }
     if (muted_.load(std::memory_order_acquire)) {
       std::fill(opus_pcm_.begin(), opus_pcm_.begin() + nyx::kCallAudioFrameSamples, 0);
     }
@@ -479,6 +584,7 @@ void CallAudioIo::pushCapturePcm(const int16_t* samples, int count) {
 
 void CallAudioIo::onCaptureReady() {
   if (!running_.load(std::memory_order_acquire)) return;
+  if (!mic_test_.load(std::memory_order_acquire)) mixRemoteAudio();
   if (!send_fn_ && !mic_test_.load(std::memory_order_acquire)) return;
 
 #if defined(Q_OS_ANDROID)
@@ -491,6 +597,20 @@ void CallAudioIo::onCaptureReady() {
       if (n <= 0) break;
       pushCapturePcm(android_cap_scratch_.data(), n);
     }
+    return;
+  }
+#endif
+
+#if defined(NYX_HAS_PULSE_SIMPLE)
+  if (pulse_capture_) {
+    std::array<int16_t, nyx::kCallAudioFrameSamples> pulse_pcm{};
+    int pulse_error = 0;
+    if (pa_simple_read(static_cast<pa_simple*>(pulse_capture_), pulse_pcm.data(),
+                       pulse_pcm.size() * sizeof(int16_t), &pulse_error) < 0) {
+      NYX_AUDIO_LOG("PulseAudio capture read failed: %s", pa_strerror(pulse_error));
+      return;
+    }
+    pushCapturePcm(pulse_pcm.data(), static_cast<int>(pulse_pcm.size()));
     return;
   }
 #endif
@@ -585,42 +705,56 @@ void CallAudioIo::playSpeakerTestTone() {
 #endif
 }
 
-void CallAudioIo::onRemoteOpus(const QByteArray& packet) {
+void CallAudioIo::onRemoteOpus(const QString& peerId, const QByteArray& packet) {
   if (!ensureOnAudioThread("onRemoteOpus")) {
-    QMetaObject::invokeMethod(this, [this, packet]() { onRemoteOpus(packet); },
+    QMetaObject::invokeMethod(this, [this, peerId, packet]() { onRemoteOpus(peerId, packet); },
                               Qt::QueuedConnection);
     return;
   }
   if (packet.isEmpty()) return;
+  const QString key = peerId.isEmpty() ? QStringLiteral("direct") : peerId;
   if (!running_.load(std::memory_order_acquire)) {
-    pending_remote_.push_back(packet);
+    pending_remote_.emplace_back(key, packet);
     while (pending_remote_.size() > 80) pending_remote_.pop_front();
     return;
   }
-  auto pcm = decoder_.decode(reinterpret_cast<const uint8_t*>(packet.constData()),
-                             static_cast<std::size_t>(packet.size()));
+  auto& peer = remote_peers_[key];
+  if (!peer.decoder) peer.decoder = std::make_unique<nyx::OpusDecoderWrap>();
+  if (!peer.decoder->ok()) return;
+  auto pcm = peer.decoder->decode(reinterpret_cast<const uint8_t*>(packet.constData()),
+                                  static_cast<std::size_t>(packet.size()));
   if (!pcm || pcm->empty()) {
     NYX_AUDIO_LOG("onRemoteOpus decode failed bytes=%d", int(packet.size()));
     return;
   }
 
+  double energy = 0.0;
+  for (int16_t sample : *pcm) {
+    const double normalized = static_cast<double>(sample) / 32768.0;
+    energy += normalized * normalized;
+  }
+  peer.level = static_cast<float>(std::sqrt(energy / static_cast<double>(pcm->size())));
+  peer.last_packet_ms = QDateTime::currentMSecsSinceEpoch();
+  peer.jitter.push_back(std::move(*pcm));
+  while (peer.jitter.size() > 8) peer.jitter.pop_front();
+}
+
+void CallAudioIo::writePlayback(const std::vector<int16_t>& pcm) {
+  if (pcm.empty()) return;
   if (use_android_voice_track_) {
-    // Always 48 kHz mono into AudioTrack VOICE_COMMUNICATION.
-    nyx_android::voice_playback_write(pcm->data(), static_cast<int>(pcm->size()));
+    nyx_android::voice_playback_write(pcm.data(), static_cast<int>(pcm.size()));
     return;
   }
-
   if (!sink_dev_) return;
-
   if (playback_rate_ == nyx::kCallAudioSampleRate &&
       sink_->format().channelCount() == 1) {
-    sink_dev_->write(reinterpret_cast<const char*>(pcm->data()),
-                     static_cast<qint64>(pcm->size() * sizeof(int16_t)));
+    sink_dev_->write(reinterpret_cast<const char*>(pcm.data()),
+                     static_cast<qint64>(pcm.size() * sizeof(int16_t)));
     return;
   }
 
   std::vector<int16_t> play;
-  resampleMono(pcm->data(), static_cast<int>(pcm->size()), nyx::kCallAudioSampleRate, &play,
+  resampleMono(pcm.data(), static_cast<int>(pcm.size()), nyx::kCallAudioSampleRate, &play,
                playback_rate_);
   const int ch = std::max(1, sink_->format().channelCount());
   if (ch == 1) {
@@ -637,6 +771,63 @@ void CallAudioIo::onRemoteOpus(const QByteArray& packet) {
                    static_cast<qint64>(interleaved.size() * sizeof(int16_t)));
 }
 
+void CallAudioIo::mixRemoteAudio() {
+  const qint64 now = QDateTime::currentMSecsSinceEpoch();
+  std::vector<const std::vector<int16_t>*> frames;
+  QString strongest;
+  float strongest_level = 0.012f;
+
+  for (auto it = remote_peers_.begin(); it != remote_peers_.end();) {
+    auto& peer = it->second;
+    if (now - peer.last_packet_ms > 3000) {
+      it = remote_peers_.erase(it);
+      continue;
+    }
+    if (peer.level > strongest_level && now - peer.last_packet_ms < 250) {
+      strongest_level = peer.level;
+      strongest = it->first;
+    }
+    if (!peer.primed && peer.jitter.size() >= 2) peer.primed = true;
+    if (peer.primed && !peer.jitter.empty()) frames.push_back(&peer.jitter.front());
+    ++it;
+  }
+
+  if (strongest == dominant_speaker_ && !strongest.isEmpty()) {
+    dominant_last_voice_ms_ = now;
+  } else if (strongest.isEmpty()) {
+    if (!dominant_speaker_.isEmpty() && now - dominant_last_voice_ms_ >= 600) {
+      dominant_speaker_.clear();
+      dominant_since_ms_ = now;
+      emit dominantSpeakerChanged({});
+    }
+  } else if (dominant_speaker_.isEmpty() || now - dominant_since_ms_ >= 350) {
+      dominant_speaker_ = strongest;
+      dominant_since_ms_ = now;
+      dominant_last_voice_ms_ = now;
+      emit dominantSpeakerChanged(dominant_speaker_);
+  }
+
+  if (frames.empty()) return;
+  std::vector<int32_t> accum(static_cast<std::size_t>(nyx::kCallAudioFrameSamples), 0);
+  for (const auto* frame : frames) {
+    const std::size_t n = std::min(accum.size(), frame->size());
+    for (std::size_t i = 0; i < n; ++i) accum[i] += (*frame)[i];
+  }
+  const double gain = 1.0 / std::sqrt(static_cast<double>(frames.size()));
+  double peak = 1.0;
+  for (int32_t sample : accum) peak = std::max(peak, std::abs(sample * gain));
+  const double limiter = peak > 32000.0 ? 32000.0 / peak : 1.0;
+  std::vector<int16_t> mixed(accum.size());
+  for (std::size_t i = 0; i < accum.size(); ++i) {
+    mixed[i] = static_cast<int16_t>(
+        std::clamp(accum[i] * gain * limiter, -32768.0, 32767.0));
+  }
+  for (auto& [_, peer] : remote_peers_) {
+    if (peer.primed && !peer.jitter.empty()) peer.jitter.pop_front();
+  }
+  writePlayback(mixed);
+}
+
 #else
 
 CallAudioIo::CallAudioIo(QObject* parent) : QObject(parent) {}
@@ -646,7 +837,9 @@ bool CallAudioIo::start() { return false; }
 void CallAudioIo::stop() {}
 void CallAudioIo::setMuted(bool) {}
 void CallAudioIo::onCaptureReady() {}
-void CallAudioIo::onRemoteOpus(const QByteArray&) {}
+void CallAudioIo::onRemoteOpus(const QString&, const QByteArray&) {}
+void CallAudioIo::mixRemoteAudio() {}
+void CallAudioIo::writePlayback(const std::vector<int16_t>&) {}
 void CallAudioIo::setPreferredInputId(const QString&) {}
 void CallAudioIo::setPreferredOutputId(const QString&) {}
 QVariantList CallAudioIo::listInputDevices() { return {}; }

@@ -22,7 +22,8 @@ enum class GroupRole : uint8_t {
 };
 
 inline bool can_start_field_call(GroupRole role) {
-  return role == GroupRole::Owner || role == GroupRole::Host;
+  return role == GroupRole::Owner || role == GroupRole::Host ||
+         role == GroupRole::Member;
 }
 
 /** Участник поля в локальном roster. */

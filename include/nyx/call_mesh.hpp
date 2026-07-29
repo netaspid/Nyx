@@ -16,9 +16,16 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <set>
 #include <vector>
 
 namespace nyx {
+
+std::vector<UserId> select_call_relays(
+    std::vector<std::pair<UserId, uint16_t>> candidates,
+    std::size_t participant_count);
+std::vector<UserId> call_relay_targets(const UserId& leaf,
+                                       const std::vector<UserId>& relays);
 
 class CallMesh {
  public:
@@ -44,6 +51,9 @@ class CallMesh {
   bool send_realtime(const ByteBuffer& data);
   bool send_realtime_video(const ByteBuffer& data);
   bool send_realtime_to(const UserId& peer, const ByteBuffer& data);
+  bool send_realtime_except(const UserId& skip, const ByteBuffer& data);
+  void retain_peers(const std::set<UserId>& allowed);
+  std::vector<UserId> established_peers() const;
 
   void set_on_realtime(RealtimeCallback cb);
 

@@ -28,11 +28,18 @@ std::size_t BlobReader::read_at(uint64_t offset, ByteBuffer& out, std::size_t ma
 
 BlobWriter::BlobWriter(std::string path) : path_(std::move(path)) {}
 
-bool BlobWriter::open() {
+bool BlobWriter::open(bool truncate) {
   const auto fs_path = path_from_utf8(path_);
-  file_.open(fs_path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
+  auto mode = std::ios::binary | std::ios::in | std::ios::out;
+  if (truncate) mode |= std::ios::trunc;
+  file_.open(fs_path, mode);
   if (file_) return true;
-  file_.open(fs_path, std::ios::binary | std::ios::out | std::ios::trunc);
+  file_.clear();
+  file_.open(fs_path, std::ios::binary | std::ios::out |
+                          (truncate ? std::ios::trunc : std::ios::app));
+  if (!file_) return false;
+  file_.close();
+  file_.open(fs_path, std::ios::binary | std::ios::in | std::ios::out);
   return static_cast<bool>(file_);
 }
 

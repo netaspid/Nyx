@@ -38,8 +38,14 @@ set(ENABLE_DOCS OFF CACHE BOOL "" FORCE)
 set(ENABLE_APP OFF CACHE BOOL "" FORCE)
 set(CONFIG_AV1_ENCODER 1 CACHE STRING "" FORCE)
 set(CONFIG_AV1_DECODER 1 CACHE STRING "" FORCE)
-if(ANDROID)
+if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
   set(AOM_TARGET_CPU "arm64" CACHE STRING "" FORCE)
+elseif(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+  set(AOM_TARGET_CPU "armv7" CACHE STRING "" FORCE)
+elseif(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+  set(AOM_TARGET_CPU "x86_64" CACHE STRING "" FORCE)
+elseif(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
+  set(AOM_TARGET_CPU "x86" CACHE STRING "" FORCE)
 else()
   set(AOM_TARGET_CPU "generic" CACHE STRING "" FORCE)
 endif()
@@ -211,11 +217,14 @@ if(NYX_BUILD_GUI)
     qt_add_executable(nyx-app
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
+      apps/nyx-app/qt/document_viewer.cpp
       apps/nyx-app/qt/win_chrome.cpp
       apps/nyx-app/qt/android_platform.cpp
       apps/nyx-app/qt/call_audio_io.cpp
       apps/nyx-app/qt/call_video_io.cpp
       apps/nyx-app/qt/call_frame_provider.cpp
+      apps/nyx-app/qt/chat_media_recorder.cpp
+      apps/nyx-app/qt/chat_video_recorder.cpp
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp
@@ -284,6 +293,18 @@ if(NYX_BUILD_GUI)
     elseif(TARGET Qt6::Multimedia)
       target_link_libraries(nyx-app PRIVATE Qt6::Multimedia)
       target_compile_definitions(nyx-app PRIVATE NYX_HAS_QT_MULTIMEDIA=1)
+      if(UNIX AND NOT APPLE)
+        find_path(NYX_PULSE_INCLUDE_DIR pulse/simple.h)
+        find_library(NYX_PULSE_SIMPLE_LIBRARY pulse-simple)
+        find_library(NYX_PULSE_LIBRARY pulse)
+        if(NYX_PULSE_INCLUDE_DIR AND NYX_PULSE_SIMPLE_LIBRARY AND NYX_PULSE_LIBRARY)
+          target_include_directories(nyx-app PRIVATE "${NYX_PULSE_INCLUDE_DIR}")
+          target_link_libraries(nyx-app PRIVATE
+            "${NYX_PULSE_SIMPLE_LIBRARY}"
+            "${NYX_PULSE_LIBRARY}")
+          target_compile_definitions(nyx-app PRIVATE NYX_HAS_PULSE_SIMPLE=1)
+        endif()
+      endif()
     endif()
     if(WIN32)
       set_target_properties(nyx-app PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -334,7 +355,7 @@ if(NYX_BUILD_GUI)
 
       add_executable(nyx-setup-stub apps/nyx-setup/main.cpp apps/nyx-setup/setup_util.cpp)
       target_include_directories(nyx-setup-stub PRIVATE apps/nyx-setup)
-      target_link_libraries(nyx-setup-stub PRIVATE shell32 ole32 comctl32 shlwapi)
+      target_link_libraries(nyx-setup-stub PRIVATE shell32 ole32 comctl32 shlwapi advapi32)
       target_compile_options(nyx-setup-stub PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
       set_target_properties(nyx-setup-stub PROPERTIES
         WIN32_EXECUTABLE TRUE
@@ -455,6 +476,8 @@ if(NYX_BUILD_GUI)
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy-installer-runtime.cmake
         COMMAND ${CMAKE_COMMAND} -DROOT=${NYX_INSTALLER_STAGING}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/materialize-lib-symlinks.cmake
+        COMMAND ${CMAKE_COMMAND} -DDST=${NYX_INSTALLER_STAGING}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/bundle-doc-tools-linux.cmake
         COMMAND ${NYX_INSTALLER_DIR}/run-pack-installer.sh
         DEPENDS nyx-app nyx-node nyx-rendezvous nyx-setup-stub-linux nyx-uninstall nyx-installer-pack
         COMMENT "NyxSetup"

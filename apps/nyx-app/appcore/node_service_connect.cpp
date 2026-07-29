@@ -335,15 +335,9 @@ void NodeService::run_connect_peer(std::shared_ptr<NetSession> session, std::str
   const auto profile = load_profile();
   emit_status("подключение к " + host + ':' + std::to_string(port) + "...");
 
-  // Persist LAN endpoint so auto-reconnect works after app restart (no invite token yet).
-  if (session) {
-    nyx::SessionIntent intent;
-    intent.kind = nyx::SessionIntentKind::Direct;
-    intent.key = session->id;
-    intent.invite_hex = "lan://" + host + ":" + std::to_string(port);
-    intent.enabled = true;
-    enable_session_intent(std::move(intent));
-  }
+  // Do not persist dm:pending + lan://host:port here — inbox ports are ephemeral and
+  // auto-reconnect would keep dialing a dead port. remember_intent_for_session() after
+  // Hello stores dm:<peer> with token (or a fresh lan:// only as last resort).
 
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
@@ -395,21 +389,9 @@ void NodeService::run_browse(int timeout_ms) {
 }
 
 void NodeService::run_lan_scan(int timeout_ms) {
-  nyx::UdpSocket socket;
-  std::string err;
-  if (!nyx::MdnsLan::setup_socket(socket, &err)) {
-    emit_status(err.empty() ? "LAN: не удалось войти в multicast"
-                            : ("LAN: " + err + " (проверьте Wi‑Fi / VPN)"));
-    // Do not clear existing peers on join failure.
-    return;
-  }
-
-  const auto peers = nyx::MdnsLan::browse(socket, timeout_ms);
-
-  std::vector<nyx::LanPeer> out;
-  out.reserve(peers.size());
-  for (const auto& p : peers) {
-    out.push_back(p);
+  const auto peers = browse_lan_peers(timeout_ms);
+  if (peers.empty()) {
+    // browse_lan_peers already emitted join errors when setup fails.
   }
 
   LanPeersCallback cb;
@@ -417,7 +399,61 @@ void NodeService::run_lan_scan(int timeout_ms) {
     std::lock_guard lock(cb_mutex_);
     cb = on_lan_peers_;
   }
-  if (cb) cb(out);
+  if (cb) cb(peers);
+}
+
+std::vector<nyx::LanPeer> NodeService::browse_lan_peers(int timeout_ms) {
+  nyx::UdpSocket socket;
+  std::string err;
+  if (!nyx::MdnsLan::setup_socket(socket, &err)) {
+    emit_status(err.empty() ? "LAN: не удалось войти в multicast"
+                            : ("LAN: " + err + " (проверьте Wi‑Fi / VPN)"));
+    return {};
+  }
+  return nyx::MdnsLan::browse(socket, timeout_ms);
+}
+
+bool NodeService::try_connect_via_lan(const std::string& user_id_hex) {
+  const std::string uid = user_id_hex;
+  if (uid.size() < 8) return false;
+  const std::string dm_key = make_dm_session_id(uid);
+  if (is_session_up(dm_key)) return true;
+  const std::string short_id = uid.substr(0, 8);
+  const auto peers = browse_lan_peers(800);
+  std::vector<const nyx::LanPeer*> matches;
+  for (const auto& p : peers) {
+    if (p.user_id_short != short_id) continue;
+    // Skip field-hub beacons for DM dial.
+    if (p.instance.size() >= 6 &&
+        p.instance.compare(p.instance.size() - 6, 6, "-field") == 0) {
+      continue;
+    }
+    matches.push_back(&p);
+  }
+  if (matches.empty()) return false;
+  for (const auto* p : matches) {
+    if (p->host.empty() || p->port == 0) continue;
+    emit_status("LAN: найден " + p->instance + " " + p->host + ':' +
+                std::to_string(p->port));
+    if (start_connect_peer(p->host, p->port)) return true;
+  }
+  return false;
+}
+
+void NodeService::dial_dm_async(std::string peer_hex, std::string token_hex,
+                                std::string lan_host, uint16_t lan_port, bool quiet) {
+  std::thread([this, peer_hex = std::move(peer_hex), token_hex = std::move(token_hex),
+               lan_host = std::move(lan_host), lan_port, quiet]() {
+    if (!peer_hex.empty()) {
+      if (is_session_up(make_dm_session_id(peer_hex))) return;
+      if (try_connect_via_lan(peer_hex)) return;
+    }
+    if (token_hex.size() == 64) {
+      start_connect_token(token_hex, quiet);
+      return;
+    }
+    if (!lan_host.empty() && lan_port > 0) start_connect_peer(lan_host, lan_port);
+  }).detach();
 }
 
 bool NodeService::start_listen(bool lan_advertise) {

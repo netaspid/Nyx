@@ -217,8 +217,12 @@ std::vector<nyx::ShareRoot> NodeService::all_share_roots() const {
 }
 
 std::vector<nyx::FileEntry> NodeService::local_files_at_root(
-    const std::string& share_root_path, const std::string& parent_rel) const {
-  return file_index_.listing_at_root(nyx::normalize_utf8_path(share_root_path), parent_rel);
+    const std::string& share_root_path, const std::string& parent_rel,
+    const std::string& scope_group_id_hex) const {
+  const nyx::GroupId scope = scope_from_hex(scope_group_id_hex);
+  const nyx::GroupId* scope_ptr = &scope;
+  return file_index_.listing_at_root(nyx::normalize_utf8_path(share_root_path),
+                                     parent_rel, scope_ptr);
 }
 
 void NodeService::publish_field_index() {

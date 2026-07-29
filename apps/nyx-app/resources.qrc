@@ -4,6 +4,10 @@
     <file>ui/Theme.qml</file>
     <file>ui/components/AvatarBadge.qml</file>
     <file>ui/components/ChatBubble.qml</file>
+    <file>ui/components/ChatMediaPlayer.qml</file>
+    <file>ui/components/MediaPlaybackControls.qml</file>
+    <file>ui/components/DocumentViewer.qml</file>
+    <file>ui/components/ChatMediaCapture.qml</file>
     <file>ui/components/ChatListItem.qml</file>
     <file>ui/components/NyxLogo.qml</file>
     <file>ui/components/NyxIcon.qml</file>
@@ -14,6 +18,7 @@
     <file>ui/controls/NyxCheckBox.qml</file>
     <file>ui/controls/NyxTextField.qml</file>
     <file>ui/panels/ChatListPanel.qml</file>
+    <file>ui/panels/MobileNavBar.qml</file>
     <file>ui/panels/ChatView.qml</file>
     <file>ui/panels/MainContentPanel.qml</file>
     <file>ui/panels/FilesPanel.qml</file>
@@ -36,6 +41,7 @@
     <file>ui/components/ToastHost.qml</file>
     <file>ui/controls/NyxComboBox.qml</file>
     <file>ui/controls/NyxMenu.qml</file>
+    <file>ui/controls/NyxMenuItem.qml</file>
     <file>ui/controls/NyxSegmentTabButton.qml</file>
     <file>ui/AccountGate.qml</file>
     <file>ui/dialogs/SettingsDialog.qml</file>
@@ -55,6 +61,9 @@
     <file alias="nyx-256.png">resources/icons/nyx-256.png</file>
     <file alias="nyx-512.png">resources/icons/nyx-512.png</file>
     <file alias="send.svg">resources/icons/send.svg</file>
+    <file alias="stop.svg">resources/icons/stop.svg</file>
+    <file alias="play.svg">resources/icons/play.svg</file>
+    <file alias="pause.svg">resources/icons/pause.svg</file>
     <file alias="attach.svg">resources/icons/attach.svg</file>
     <file alias="search.svg">resources/icons/search.svg</file>
     <file alias="settings.svg">resources/icons/settings.svg</file>
@@ -74,6 +83,9 @@
     <file alias="expand.svg">resources/icons/expand.svg</file>
     <file alias="collapse.svg">resources/icons/collapse.svg</file>
     <file alias="people.svg">resources/icons/people.svg</file>
+    <file alias="chat.svg">resources/icons/chat.svg</file>
+    <file alias="field.svg">resources/icons/field.svg</file>
+    <file alias="link.svg">resources/icons/link.svg</file>
     <file alias="emoji.svg">resources/icons/emoji.svg</file>
     <file alias="lock.svg">resources/icons/lock.svg</file>
     <file alias="chevron.svg">resources/icons/chevron.svg</file>

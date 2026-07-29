@@ -82,6 +82,24 @@ static bool is_media_line(const std::string& line, std::string& caption, std::st
   return is_hex64(hash);
 }
 
+static bool is_file_line(const std::string& line, MdBlock& block) {
+  static const std::regex re(
+      R"(^\[([^\]]*)\]\(nyx-file:([a-fA-F0-9]{64});size=([0-9]+);mime=([A-Za-z0-9.+/_-]+)(?:;root=([^;)]*);rel=([^)]*))?\)\s*$)");
+  std::smatch match;
+  if (!std::regex_match(line, match, re)) return false;
+  block.type = MdBlockType::File;
+  block.caption = match[1].str();
+  block.hash = match[2].str();
+  block.mime = match[4].str();
+  block.text = match[5].matched ? (match[5].str() + "\n" + match[6].str()) : "";
+  try {
+    block.size = std::stoull(match[3].str());
+  } catch (const std::exception&) {
+    return false;
+  }
+  return is_hex64(block.hash);
+}
+
 static bool is_table_sep_line(const std::string& line) {
   const std::string t = trim_copy(line);
   if (t.empty() || t.find('|') == std::string::npos) return false;
@@ -292,6 +310,12 @@ std::vector<MdBlock> parse_markdown_blocks(const std::string& src) {
       b.hash = hash;
       b.caption = cap;
       blocks.push_back(std::move(b));
+      continue;
+    }
+    MdBlock file_block;
+    if (is_file_line(trim_copy(line), file_block)) {
+      flush_para(para);
+      blocks.push_back(std::move(file_block));
       continue;
     }
 

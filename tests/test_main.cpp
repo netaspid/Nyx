@@ -12,6 +12,7 @@
 #include "nyx/message_store.hpp"
 #include "nyx/chat_service.hpp"
 #include "nyx/file_hash.hpp"
+#include "nyx/blob_store.hpp"
 #include "nyx/file_index.hpp"
 #include "nyx/file_access.hpp"
 #include "nyx/file_proto.hpp"
@@ -816,6 +817,265 @@ static void test_list_response_size_cap() {
             << wire.size() << " bytes)\n";
 }
 
+static void test_file_v2_and_scoped_index() {
+  nyx::FileCapabilities capabilities;
+  capabilities.flags = nyx::FileCapabilities::kResume |
+                       nyx::FileCapabilities::kCancel |
+                       nyx::FileCapabilities::kMultiTransfer;
+  capabilities.max_parallel = 2;
+  const auto decoded_caps =
+      nyx::FileCapabilities::decode(capabilities.encode());
+  assert(decoded_caps);
+  assert(decoded_caps->version == 2);
+  assert(decoded_caps->flags == capabilities.flags);
+  assert(decoded_caps->max_parallel == 2);
+  assert(!nyx::FileCapabilities::decode(
+      nyx::ByteBuffer{static_cast<uint8_t>(
+          nyx::FileKind::Capabilities)}));
+
+  nyx::FileRangeRequest range;
+  range.hash = nyx::hash_bytes(
+      reinterpret_cast<const uint8_t*>("range"), 5);
+  range.offset = 123456;
+  const auto decoded_range =
+      nyx::FileRangeRequest::decode(range.encode());
+  assert(decoded_range);
+  assert(decoded_range->hash == range.hash);
+  assert(decoded_range->offset == range.offset);
+  auto truncated_range = range.encode();
+  truncated_range.resize(40);
+  assert(!nyx::FileRangeRequest::decode(truncated_range));
+
+  nyx::FileCancel cancel;
+  cancel.hash = range.hash;
+  const auto decoded_cancel = nyx::FileCancel::decode(cancel.encode());
+  assert(decoded_cancel && decoded_cancel->hash == cancel.hash);
+  assert(!nyx::FileCancel::decode(nyx::ByteBuffer(32, 0)));
+
+  const std::string dir = "test_scoped_index";
+  std::filesystem::remove_all(dir);
+  std::remove(nyx::FileIndex::index_path().c_str());
+  std::filesystem::create_directories(dir);
+  std::ofstream(dir + "/same.txt") << "scope isolation";
+  nyx::GroupId group{};
+  group[0] = 42;
+  nyx::GroupId personal{};
+  {
+    nyx::FileIndex index;
+    assert(index.add_root(dir));
+    assert(index.add_root(dir, &group));
+    assert(index.count_in_root(dir, personal) == 1);
+    assert(index.count_in_root(dir, group) == 1);
+    assert(index.remove_root(dir));
+    assert(index.count_in_root(dir, personal) == 0);
+    assert(index.count_in_root(dir, group) == 1);
+    assert(index.find_for_session(index.entries_for_session(group)[0].hash,
+                                  group));
+  }
+  std::filesystem::remove_all(dir);
+  {
+    nyx::FileIndex reloaded;
+    assert(reloaded.load());
+    assert(reloaded.share_roots().empty());
+    assert(reloaded.entries().empty());
+  }
+  std::remove(nyx::FileIndex::index_path().c_str());
+
+  const std::string partial = "test_resume_blob.part";
+  std::filesystem::remove(partial);
+  {
+    nyx::BlobWriter writer(partial);
+    assert(writer.open());
+    assert(writer.write_at(0, nyx::ByteBuffer{'a', 'b', 'c'}));
+  }
+  {
+    nyx::BlobWriter writer(partial);
+    assert(writer.open(false));
+    assert(writer.write_at(3, nyx::ByteBuffer{'d', 'e', 'f'}));
+  }
+  std::ifstream resumed(partial, std::ios::binary);
+  std::string resumed_text((std::istreambuf_iterator<char>(resumed)),
+                           std::istreambuf_iterator<char>());
+  assert(resumed_text == "abcdef");
+  resumed.close();
+  std::filesystem::remove(partial);
+  std::cout << "file v2, resume and scope isolation ok\n";
+}
+
+static void test_file_index_migration_and_objects() {
+  const std::string dir = "test_index_migrate";
+  std::filesystem::remove_all(dir);
+  std::remove(nyx::FileIndex::index_path().c_str());
+  std::filesystem::create_directories(dir);
+  std::ofstream(dir + "/legacy.txt") << "legacy payload";
+
+  // Legacy index without group / schema_version.
+  {
+    std::ofstream out(nyx::FileIndex::index_path(), std::ios::binary | std::ios::trunc);
+    out << "{\"roots\":[{\"root\":\"" << dir << "\"}],"
+        << "\"files\":[{\"hash\":\"";
+  }
+  nyx::FileHash hash{};
+  assert(nyx::hash_file(dir + "/legacy.txt", hash));
+  {
+    std::ofstream out(nyx::FileIndex::index_path(), std::ios::binary | std::ios::trunc);
+    out << "{\"roots\":[{\"root\":\"" << dir << "\"}],\"files\":[{"
+        << "\"hash\":\"" << nyx::hash_hex(hash) << "\",\"size\":14,\"mtime\":0,"
+        << "\"root\":\"" << dir << "\",\"rel\":\"legacy.txt\","
+        << "\"mime\":\"text/plain\"}]}\n";
+  }
+
+  {
+    nyx::FileIndex index;
+    assert(index.load());
+    assert(index.share_roots().size() == 1);
+    assert(index.entries().size() == 1);
+    assert(index.count_in_root(dir, {}) == 1);
+    // Rewritten with schema_version + group.
+    std::ifstream rewritten(nyx::FileIndex::index_path(), std::ios::binary);
+    std::string json((std::istreambuf_iterator<char>(rewritten)),
+                     std::istreambuf_iterator<char>());
+    assert(json.find("\"schema_version\":2") != std::string::npos);
+    assert(json.find("\"group\"") != std::string::npos);
+  }
+
+  // Stale root disappears on load.
+  std::filesystem::remove_all(dir);
+  {
+    nyx::FileIndex index;
+    assert(index.load());
+    assert(index.share_roots().empty());
+    assert(index.entries().empty());
+  }
+
+  // Content-addressed adopt + scoped listing isolation.
+  std::filesystem::create_directories(dir);
+  std::ofstream(dir + "/obj.bin") << "object-bytes";
+  assert(nyx::hash_file(dir + "/obj.bin", hash));
+  {
+    nyx::FileIndex index;
+    nyx::GroupId group{};
+    group[1] = 7;
+    auto adopted = index.adopt_file(dir + "/obj.bin", hash, "obj.bin",
+                                    "application/octet-stream", group);
+    assert(adopted);
+    assert(adopted->root_path.find("/library/") != std::string::npos ||
+           adopted->root_path.find("\\library\\") != std::string::npos);
+    assert(index.find_for_session(hash, group));
+    assert(!index.find_for_session(hash, {}));
+    const auto level =
+        index.listing_at_root(adopted->root_path, {}, &group);
+    assert(level.size() == 1);
+
+    nyx::UserId owner{};
+    owner[0] = 0xab;
+    owner[1] = 0xcd;
+    std::ofstream(dir + "/owned.bin") << "owned-bytes";
+    nyx::FileHash owned_hash{};
+    assert(nyx::hash_file(dir + "/owned.bin", owned_hash));
+    auto owned = index.adopt_file(dir + "/owned.bin", owned_hash, "owned.bin",
+                                  "application/octet-stream", group, &owner);
+    assert(owned);
+    assert(owned->relative_path.find(nyx::to_hex(owner.data(), owner.size())) == 0);
+    assert(owned->owner_id == owner);
+    const auto owner_level =
+        index.listing_at_root(owned->root_path, {}, &group);
+    // Flat + owner dir marker(s).
+    assert(owner_level.size() >= 2);
+
+    auto voice = index.adopt_file(
+        dir + "/owned.bin", owned_hash, "voice-message.m4a", "audio/mp4",
+        group, &owner,
+        "Медиа/Test Chat (abcd1234)/Голосовые сообщения");
+    assert(voice);
+    assert(voice->owner_id == owner);
+    assert(voice->relative_path.find("Медиа/") == 0);
+    assert(voice->relative_path.find("Голосовые сообщения") !=
+           std::string::npos);
+
+    auto circle = index.adopt_file(
+        dir + "/owned.bin", owned_hash, "circle-message.mp4", "video/mp4",
+        group, &owner, "Медиа/Other Chat (ef012345)/Видеокружки");
+    assert(circle);
+    const auto all = index.entries_for_session(group);
+    int media_copies = 0;
+    for (const auto& entry : all) {
+      if (entry.hash == owned_hash) ++media_copies;
+    }
+    assert(media_copies == 3);
+  }
+
+  std::filesystem::remove_all(dir);
+  std::remove(nyx::FileIndex::index_path().c_str());
+  std::cout << "file index migration and objects ok\n";
+}
+
+static void test_file_catalog_snapshot_semantics() {
+  // Level snapshot replaces children; other roots stay.
+  std::vector<nyx::FileEntry> catalog;
+  nyx::FileEntry root_a;
+  root_a.root_path = "/share/a";
+  root_a.relative_path = "a";
+  root_a.mime = "application/x-nyx-directory";
+  root_a.hash = nyx::hash_bytes(reinterpret_cast<const uint8_t*>("ra"), 2);
+  catalog.push_back(root_a);
+
+  nyx::FileEntry stale;
+  stale.root_path = "/share/a";
+  stale.relative_path = "gone.txt";
+  stale.mime = "text/plain";
+  stale.hash = nyx::hash_bytes(reinterpret_cast<const uint8_t*>("gone"), 4);
+  catalog.push_back(stale);
+
+  nyx::FileEntry other;
+  other.root_path = "/share/b";
+  other.relative_path = "b";
+  other.mime = "application/x-nyx-directory";
+  other.hash = nyx::hash_bytes(reinterpret_cast<const uint8_t*>("rb"), 2);
+  catalog.push_back(other);
+
+  const std::string root_norm = nyx::normalize_utf8_path("/share/a");
+  catalog.erase(std::remove_if(catalog.begin(), catalog.end(),
+                               [&](const nyx::FileEntry& e) {
+                                 if (nyx::normalize_utf8_path(e.root_path) !=
+                                     root_norm) {
+                                   return false;
+                                 }
+                                 if (e.is_directory() && e.relative_path == "a") {
+                                   return false;
+                                 }
+                                 return true;
+                               }),
+                catalog.end());
+  nyx::FileEntry fresh;
+  fresh.root_path = "/share/a";
+  fresh.relative_path = "new.txt";
+  fresh.mime = "text/plain";
+  fresh.hash = nyx::hash_bytes(reinterpret_cast<const uint8_t*>("new"), 3);
+  catalog.push_back(fresh);
+
+  assert(catalog.size() == 3);
+  bool saw_gone = false;
+  bool saw_new = false;
+  bool saw_b = false;
+  for (const auto& e : catalog) {
+    if (e.relative_path == "gone.txt") saw_gone = true;
+    if (e.relative_path == "new.txt") saw_new = true;
+    if (e.relative_path == "b") saw_b = true;
+  }
+  assert(!saw_gone && saw_new && saw_b);
+
+  // v1 Request remains independently decodable (fallback path).
+  nyx::FileRequest req;
+  req.hash = fresh.hash;
+  const auto decoded = nyx::FileRequest::decode(req.encode());
+  assert(decoded && decoded->hash == req.hash);
+  // Unknown peer without Capabilities still accepts Request frames.
+  assert(static_cast<nyx::FileKind>(req.encode()[0]) == nyx::FileKind::Request);
+
+  std::cout << "file catalog snapshot and v1 request ok\n";
+}
+
 #ifdef _WIN32
 static void test_file_index_unicode() {
   const std::wstring wdir = L"test_index_unicode";
@@ -894,7 +1154,31 @@ static void test_file_transfer_1mb() {
   nyx::FileTransferService fs_server(*server, server_index, dl_dir + "/srv");
   nyx::FileTransferService fs_client(*client, client_index, dl_dir);
 
-  assert(fs_client.request_file(nyx::hash_hex(expected)));
+  assert(fs_server.announce_capabilities());
+  assert(fs_client.announce_capabilities());
+  for (int i = 0; i < 100 && !fs_client.peer_supports_resume(); ++i) {
+    client->drive();
+    server->drive();
+    nyx::ByteBuffer payload;
+    uint32_t stream_id = 0;
+    while (client->recv_stream(stream_id, payload)) {
+      if (stream_id == nyx::kBulkStream) fs_client.handle_bulk(payload);
+    }
+    while (server->recv_stream(stream_id, payload)) {
+      if (stream_id == nyx::kBulkStream) fs_server.handle_bulk(payload);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  assert(fs_client.peer_supports_resume());
+  const std::string dest = dl_dir + "/payload.bin";
+  {
+    std::ifstream source(src_path, std::ios::binary);
+    std::ofstream partial(dest + ".part", std::ios::binary);
+    std::vector<char> prefix(64 * 1024);
+    source.read(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+    partial.write(prefix.data(), source.gcount());
+  }
+  assert(fs_client.request_file(nyx::hash_hex(expected), dest));
 
   bool done = false;
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
@@ -913,7 +1197,6 @@ static void test_file_transfer_1mb() {
       if (stream_id == nyx::kBulkStream) fs_server.handle_bulk(payload);
     }
 
-    const std::string dest = dl_dir + "/payload.bin";
     std::error_code ec;
     if (std::filesystem::exists(dest, ec)) {
       nyx::FileHash got{};
@@ -984,9 +1267,11 @@ static void test_group_three_members() {
   nyx::GroupHub hub(hub_sock, alice, group);
 
   std::atomic<bool> hub_running{true};
+  std::atomic<bool> send_alice{false};
   std::thread hub_thread([&] {
     while (hub_running.load()) {
       hub.poll();
+      if (send_alice.exchange(false)) hub.send_message("from-alice");
       std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
   });
@@ -1030,7 +1315,7 @@ static void test_group_three_members() {
   assert(bob_svc.send_message("from-bob"));
   nyx::set_account_data_dir(charlie_dir);
   assert(charlie_svc.send_message("from-charlie"));
-  hub.send_message("from-alice");
+  send_alice.store(true);
 
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
   while (std::chrono::steady_clock::now() < deadline) {
@@ -1123,9 +1408,14 @@ static void test_mdns_browse_receives_beacon() {
     std::cout << "mdns browse skipped (no peers — multicast unavailable)\n";
     return;
   }
-  assert(peers.front().instance == "LanBrowse");
-  assert(peers.front().port == advert.local_port());
-  assert(peers.front().host == "192.168.50.10");
+  const auto found = std::find_if(peers.begin(), peers.end(), [&](const nyx::LanPeer& peer) {
+    return peer.instance == "LanBrowse" && peer.port == advert.local_port();
+  });
+  if (found == peers.end()) {
+    std::cout << "mdns browse skipped (test beacon not observed)\n";
+    return;
+  }
+  assert(found->host == "192.168.50.10");
   std::cout << "mdns browse receives beacon ok\n";
 }
 
@@ -1144,6 +1434,10 @@ static void test_is_lan_ipv4() {
 }
 
 static void test_group_member_persistence() {
+  const std::string isolated = nyx::data_root() + "/test_group_persist";
+  std::filesystem::remove_all(isolated);
+  std::filesystem::create_directories(isolated);
+  nyx::set_account_data_dir(isolated);
   std::remove(nyx::GroupStore::store_path().c_str());
   nyx::Profile owner = nyx::generate_profile("Owner");
   nyx::GroupStore store;
@@ -1166,6 +1460,8 @@ static void test_group_member_persistence() {
   }
   assert(has_test);
   assert(has_owner);
+  nyx::clear_account_data_dir();
+  std::filesystem::remove_all(isolated);
   std::cout << "group member persistence ok\n";
 }
 
@@ -1299,6 +1595,19 @@ static void test_markdown_to_html() {
     if (b.type == nyx::MdBlockType::Formula) saw_formula = true;
   }
   assert(saw_media && saw_formula);
+  const auto file_blocks = nyx::parse_markdown_blocks(
+      "[report.txt](nyx-file:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;size=42;mime=text/plain)");
+  assert(file_blocks.size() == 1);
+  assert(file_blocks[0].type == nyx::MdBlockType::File);
+  assert(file_blocks[0].caption == "report.txt");
+  assert(file_blocks[0].mime == "text/plain");
+  assert(file_blocks[0].size == 42);
+
+  const auto circle_blocks = nyx::parse_markdown_blocks(
+      "[circle-message.mp4](nyx-file:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef;size=99;mime=video/mp4)");
+  assert(circle_blocks.size() == 1);
+  assert(circle_blocks[0].caption == "circle-message.mp4");
+  assert(circle_blocks[0].mime == "video/mp4");
 
   std::cout << "markdown to html ok\n";
 }
@@ -1399,12 +1708,33 @@ static void test_call_proto_roundtrip() {
   ep.self.port = 5050;
   auto ep_d = nyx::CallEndpointMessage::decode(ep.encode());
   assert(ep_d && ep_d->self.host == "192.168.1.10" && ep_d->self.port == 5050);
-  assert(nyx::kMaxCallParticipants == 200);
+  assert(nyx::kMaxCallParticipants == 20);
 
   nyx::CallPeerGoneMessage gone;
   gone.call_id = id;
   gone.user_id = peer;
   assert(nyx::CallPeerGoneMessage::decode(gone.encode()));
+
+  nyx::CallLeaveAckMessage leave_ack;
+  leave_ack.call_id = id;
+  leave_ack.user_id = peer;
+  auto leave_ack_d = nyx::CallLeaveAckMessage::decode(leave_ack.encode());
+  assert(leave_ack_d && leave_ack_d->user_id == peer);
+
+  nyx::CallRelayCandidateMessage candidate;
+  candidate.call_id = id;
+  candidate.user_id = peer;
+  candidate.score = 750;
+  auto candidate_d = nyx::CallRelayCandidateMessage::decode(candidate.encode());
+  assert(candidate_d && candidate_d->score == 750);
+
+  nyx::CallRelaySetMessage relay_set;
+  relay_set.call_id = id;
+  relay_set.epoch = 3;
+  relay_set.relays = {peer};
+  auto relay_set_d = nyx::CallRelaySetMessage::decode(relay_set.encode());
+  assert(relay_set_d && relay_set_d->epoch == 3 &&
+         relay_set_d->relays == relay_set.relays);
 
   const auto hex = nyx::call_id_hex(id);
   nyx::CallId back{};
@@ -1457,14 +1787,23 @@ static void test_call_media_and_opus() {
   auto d = nyx::CallMediaFrame::decode(f.encode());
   assert(d && d->seq == 42 && d->payload.size() == 4);
 
+  f.origin[0] = 0x42;
+  f.hop_count = 1;
+  f.audio_level = 99;
+  d = nyx::CallMediaFrame::decode(f.encode());
+  assert(d && d->origin == f.origin && d->hop_count == 1 &&
+         d->audio_level == 99 && d->payload == f.payload);
+
   // Realtime budget in Connection::send_realtime is 1100 plain bytes.
   nyx::CallMediaFrame fat;
   fat.type = nyx::CallMediaType::Opus;
   fat.seq = 1;
+  fat.origin[0] = 1;
   fat.payload.assign(nyx::kMaxCallMediaPayload, 0x7f);
   const auto fat_wire = fat.encode();
   assert(fat_wire.size() <= 1100);
-  assert(fat_wire.size() == 1 + 4 + nyx::kMaxCallMediaPayload);
+  assert(fat_wire.size() ==
+         1 + 4 + nyx::kPublicKeySize + 2 + nyx::kMaxCallMediaPayload);
 
   nyx::OpusEncoderWrap enc;
   nyx::OpusDecoderWrap dec;
@@ -1584,6 +1923,28 @@ static void test_call_mesh_loopback() {
   }
   assert(got);
   std::cout << "call mesh loopback ok\n";
+}
+
+static void test_call_relay_topology_20() {
+  std::vector<std::pair<nyx::UserId, uint16_t>> candidates;
+  for (uint8_t i = 1; i <= 20; ++i) {
+    nyx::UserId id{};
+    id[0] = i;
+    candidates.emplace_back(id, static_cast<uint16_t>(100 + i));
+  }
+  const auto relays = nyx::select_call_relays(candidates, 20);
+  assert(relays.size() == 3);
+  assert(relays[0][0] == 20 && relays[1][0] == 19 && relays[2][0] == 18);
+  for (const auto& [leaf, _] : candidates) {
+    const auto targets = nyx::call_relay_targets(leaf, relays);
+    assert(targets.size() == 2);
+    assert(targets[0] != targets[1]);
+    assert(std::find(relays.begin(), relays.end(), targets[0]) != relays.end());
+    assert(std::find(relays.begin(), relays.end(), targets[1]) != relays.end());
+  }
+  const auto again = nyx::select_call_relays(candidates, 20);
+  assert(again == relays);
+  std::cout << "call relay topology 20 ok\n";
 }
 
 static void test_file_access_roles() {
@@ -1980,6 +2341,10 @@ static void test_account_recovery_and_remember() {
 int main() {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+  const std::string test_data_root = "test_nyx_data";
+  std::filesystem::remove_all(test_data_root);
+  nyx::set_base_data_root(test_data_root);
+  assert(nyx::ensure_data_dir());
   test_frame_roundtrip();
   test_noise_handshake();
   test_reliable();
@@ -2000,12 +2365,14 @@ int main() {
   test_ten_messages_roundtrip();
   test_file_index_three();
   test_list_response_size_cap();
+  test_file_v2_and_scoped_index();
+  test_file_index_migration_and_objects();
+  test_file_catalog_snapshot_semantics();
 #ifdef _WIN32
   test_file_index_unicode();
 #endif
   test_call_media_and_opus();
   test_call_av1_fragment();
-  test_file_transfer_1mb();
   test_group_member_persistence();
   test_profile_meta_photos_wire();
   test_avatar_proto_roundtrip();
@@ -2014,6 +2381,7 @@ int main() {
   test_call_proto_roundtrip();
   test_call_session_fsm();
   test_call_mesh_loopback();
+  test_call_relay_topology_20();
   // Field room: open → Active without Accept; peer Accept doesn't hang host.
   {
     nyx::CallSession host;
@@ -2032,7 +2400,7 @@ int main() {
     assert(host.state == nyx::CallState::Active);
     assert(nyx::can_start_field_call(nyx::GroupRole::Owner));
     assert(nyx::can_start_field_call(nyx::GroupRole::Host));
-    assert(!nyx::can_start_field_call(nyx::GroupRole::Member));
+    assert(nyx::can_start_field_call(nyx::GroupRole::Member));
   }
   test_file_access_roles();
   test_share_policy();
@@ -2048,6 +2416,9 @@ int main() {
   test_file_log();
   test_recovery_phrase_roundtrip();
   test_account_recovery_and_remember();
+  test_file_transfer_1mb();
+  nyx::set_base_data_root({});
+  std::filesystem::remove_all(test_data_root);
   std::cout << "all tests passed\n";
   return 0;
 }

@@ -61,12 +61,13 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BuildDir = if ($env:NYX_ANDROID_BUILD_DIR) { $env:NYX_ANDROID_BUILD_DIR } else { Join-Path $Root "build-android" }
 $QtVer = if ($env:NYX_QT_VERSION) { $env:NYX_QT_VERSION } else { "6.5.3" }
 $QtRoot = if ($env:NYX_QT_ROOT) { $env:NYX_QT_ROOT } else { Join-Path $env:LOCALAPPDATA "Qt" }
+$QtAndroidArch = if ($env:NYX_QT_ANDROID_ARCH) { $env:NYX_QT_ANDROID_ARCH } else { "android_arm64_v8a" }
 $SdkRoot = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { Join-Path $env:LOCALAPPDATA "Android\Sdk" }
 $NdkVersion = if ($env:NYX_ANDROID_NDK_VERSION) { $env:NYX_ANDROID_NDK_VERSION } else { "25.2.9519653" }
 $ApiLevel = if ($env:NYX_ANDROID_API) { $env:NYX_ANDROID_API } else { "34" }
 $BuildTools = if ($env:NYX_ANDROID_BUILD_TOOLS) { $env:NYX_ANDROID_BUILD_TOOLS } else { "34.0.0" }
 $OutApk = Join-Path $BuildDir "Nyx.apk"
-$Keystore = if ($env:NYX_ANDROID_KEYSTORE) { $env:NYX_ANDROID_KEYSTORE } else { Join-Path $env:USERPROFILE ".android\debug.keystore" }
+$Keystore = if ($env:NYX_ANDROID_KEYSTORE) { $env:NYX_ANDROID_KEYSTORE } else { Join-Path $Root "android\keystore\nyx-debug.keystore" }
 $KeyAlias = if ($env:NYX_ANDROID_KEY_ALIAS) { $env:NYX_ANDROID_KEY_ALIAS } else { "androiddebugkey" }
 $StorePass = if ($env:NYX_ANDROID_STOREPASS) { $env:NYX_ANDROID_STOREPASS } else { "android" }
 $KeyPass = if ($env:NYX_ANDROID_KEYPASS) { $env:NYX_ANDROID_KEYPASS } else { "android" }
@@ -372,21 +373,21 @@ function Ensure-Qt {
     $env:QT_HOST_PATH = (Resolve-Path (Join-Path (Split-Path $hostQmake) "..")).Path
 
     $andrCmake = Find-FirstFile @(
-        (Join-Path $QtRoot "$QtVer\android_arm64_v8a\bin\qt-cmake.bat")
+        (Join-Path $QtRoot "$QtVer\$QtAndroidArch\bin\qt-cmake.bat")
     )
     if (-not $andrCmake) {
-        Log "Fetching Qt $QtVer Android (android_arm64_v8a)…"
-        if (-not (Invoke-AqtInstallQt -What "android_arm64_v8a" -CoreArgs @(
-                    "windows", "android", $QtVer, "android_arm64_v8a",
+        Log "Fetching Qt $QtVer Android ($QtAndroidArch)…"
+        if (-not (Invoke-AqtInstallQt -What $QtAndroidArch -CoreArgs @(
+                    "windows", "android", $QtVer, $QtAndroidArch,
                     "-m", "qtmultimedia", "--autodesktop"
                 ))) {
             Die "Failed to download Qt $QtVer Android. Re-run later."
         }
         $andrCmake = Find-FirstFile @(
-            (Join-Path $QtRoot "$QtVer\android_arm64_v8a\bin\qt-cmake.bat")
+            (Join-Path $QtRoot "$QtVer\$QtAndroidArch\bin\qt-cmake.bat")
         )
     }
-    if (-not $andrCmake) { Die "qt-cmake.bat not found under $QtRoot\$QtVer\android_arm64_v8a" }
+    if (-not $andrCmake) { Die "qt-cmake.bat not found under $QtRoot\$QtVer\$QtAndroidArch" }
     $script:QtAndroid = (Resolve-Path (Join-Path (Split-Path $andrCmake) "..")).Path
 
     Log "Qt Android: $script:QtAndroid"
@@ -435,10 +436,15 @@ function Ensure-CMake-Ninja {
 }
 
 function Ensure-DebugKeystore {
-    $dir = Split-Path $Keystore -Parent
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
     if (Test-Path $Keystore) { return }
 
+    $repoKs = Join-Path $Root "android\keystore\nyx-debug.keystore"
+    if ($Keystore -eq $repoKs) {
+        Die "Missing $repoKs — commit it or set NYX_ANDROID_KEYSTORE to a shared keystore"
+    }
+
+    $dir = Split-Path $Keystore -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $keytool = Join-Path $env:JAVA_HOME "bin\keytool.exe"
     if (-not (Test-Path $keytool)) { Die "keytool not found in JAVA_HOME" }
     Log "Creating debug keystore at $Keystore…"
@@ -479,8 +485,8 @@ function Configure-And-Build {
             "-DNYX_QT_ANDROID_ROOT=$($script:QtAndroid)" `
             "-DNYX_QT_HOST_ROOT=$($env:QT_HOST_PATH)"
         if ($LASTEXITCODE -ne 0) { Die "qt-cmake configure failed" }
-        Log "Building…"
-        & cmake --build $BuildDir --parallel
+        Log "Building native app…"
+        & cmake --build $BuildDir --target nyx-app_prepare_apk_dir --parallel
         if ($LASTEXITCODE -ne 0) { Die "cmake --build failed" }
     } finally {
         $ErrorActionPreference = $prev
@@ -561,4 +567,5 @@ Configure-And-Build
 Sign-Apk
 Log "APK: $OutApk"
 if ($InstallApk) { Install-ApkToDevice }
-Log "Finished."
+Log "Finished. Sideload: adb install -r `"$OutApk`""
+Log "Docs: docs/ADMIN.md section 'Сборка Android APK'"

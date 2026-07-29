@@ -117,6 +117,24 @@ void run_install(HWND hwnd) {
   }
 
   nyx_setup::register_uninstall(dir, uninstall_exe);
+
+  set_status(hwnd, L"Установка зависимостей просмотрщика…");
+  set_progress(92);
+  std::wstring deps_err;
+  nyx_setup::ensure_document_dependencies(
+      dir, &deps_err,
+      [hwnd](int pct, const wchar_t* status) {
+        set_progress(pct);
+        if (status) set_status(hwnd, status);
+      });
+  if (!deps_err.empty()) {
+    MessageBoxW(hwnd,
+                (L"Nyx установлен.\n\nЗамечания по зависимостям просмотрщика документов:\n" +
+                 deps_err)
+                    .c_str(),
+                L"Nyx Setup", MB_ICONINFORMATION);
+  }
+
   set_progress(100);
   set_status(hwnd, L"Готово.");
 
@@ -133,9 +151,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       CreateWindowW(L"STATIC", L"Установка Nyx", WS_CHILD | WS_VISIBLE, 20, 16, 360, 24, hwnd,
                     reinterpret_cast<HMENU>(IDC_TITLE), nullptr, nullptr);
       CreateWindowW(L"STATIC",
-                    L"P2P-мессенджер. Qt и все библиотеки входят в установку — ничего ставить "
-                    L"отдельно не нужно.",
-                    WS_CHILD | WS_VISIBLE, 20, 40, 360, 32, hwnd, nullptr, nullptr, nullptr);
+                    L"P2P-мессенджер. Qt входит в установку. Для просмотра документов "
+                    L"установщик при необходимости поставит MuPDF/LibreOffice.",
+                    WS_CHILD | WS_VISIBLE, 20, 40, 360, 40, hwnd, nullptr, nullptr, nullptr);
       CreateWindowW(L"STATIC", L"Папка установки:", WS_CHILD | WS_VISIBLE, 20, 84, 120, 18, hwnd,
                     reinterpret_cast<HMENU>(IDC_PATH_LABEL), nullptr, nullptr);
       g_path_edit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nyx_setup::default_install_dir().c_str(),

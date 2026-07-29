@@ -69,6 +69,7 @@ void run_chat_session(nyx::Connection& connection, const nyx::Profile& profile,
 
   nyx::FileIndex file_index;
   nyx::FileTransferService files(connection, file_index, nyx::default_downloads_dir());
+  files.announce_capabilities();
 
   chat.set_on_message([&](const nyx::ChatMessage& msg, bool outgoing) {
     ui.print_message(msg.timestamp_ms, msg.author, msg.text, outgoing);

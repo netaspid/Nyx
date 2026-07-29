@@ -38,6 +38,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -120,11 +121,22 @@ class NodeService {
       std::function<void(const std::string& path, int files_scanned, bool finished)>;
   using RemoteFilesCallback = std::function<void(const std::vector<nyx::FileEntry>&)>;
   using FileAccessSyncCallback = std::function<void()>;
+  struct TransferQueueItem {
+    std::string hash_hex;
+    std::string dest_path;
+    std::string state;
+    int progress = 0;
+    bool paused = false;
+    std::string error;
+    std::string direction = "download";
+  };
+  using TransferQueueCallback = std::function<void()>;
   using CallChangedCallback = std::function<void()>;
   void set_on_file_progress(FileProgressCallback cb);
   void set_on_file_index_progress(FileIndexProgressCallback cb);
   void set_on_remote_files(RemoteFilesCallback cb);
   void set_on_file_access_sync(FileAccessSyncCallback cb);
+  void set_on_transfer_queue_changed(TransferQueueCallback cb);
   void set_on_avatars_changed(SessionsChangedCallback cb);
   void set_on_call_changed(CallChangedCallback cb);
   using CallMediaCallback =
@@ -219,28 +231,47 @@ class NodeService {
   std::string call_id_hex() const;
   bool call_is_field_room() const;
   bool call_is_host() const;
+  std::vector<nyx::UserId> call_participants() const;
   bool call_mic_muted() const;
   void set_call_mic_muted(bool muted);
   bool call_camera_on() const;
   void set_call_camera_on(bool on);
+  void set_call_relay_score(uint16_t score) { call_relay_score_.store(score); }
   /** Отправка медиа-пакета в активный звонок (kRealtimeStream). */
-  bool send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload);
+  bool send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
+                       uint8_t audio_level = 0);
 
   bool index_folder(const std::string& path, const std::string& scope_group_id_hex = {});
   bool remove_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   bool rescan_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
-  int file_count_in_root(const std::string& root_path) const;
+  int file_count_in_root(const std::string& root_path,
+                         const std::string& scope_group_id_hex = {}) const;
   bool request_remote_files();
   /** Запрос каталога: scope — group hex; root/parent пустые = только share-корни. */
   bool request_remote_files_at(const std::string& root_path, const std::string& parent_rel);
   bool request_remote_files_at(const std::string& scope_group_id_hex, const std::string& root_path,
                                const std::string& parent_rel);
   bool request_file_access_policy();
-  bool download_file(const std::string& hash_hex, const std::string& dest_path = {});
+  bool download_file(const std::string& hash_hex, const std::string& dest_path = {},
+                     const std::string& session_id = {});
+  std::vector<TransferQueueItem> transfer_queue() const;
+  bool pause_transfer(const std::string& hash_hex, bool paused);
+  bool cancel_transfer(const std::string& hash_hex);
+  bool retry_transfer(const std::string& hash_hex);
+  bool move_transfer(const std::string& hash_hex, int delta);
   std::size_t enqueue_folder_downloads(const std::string& root_path,
                                        const std::string& folder_rel,
                                        const std::string& dest_dir = {});
   bool send_file(const std::string& path_or_hash);
+  std::optional<nyx::FileEntry> import_file_object(
+      const std::string& path, const std::string& display_name,
+      const std::string& mime,
+      const std::string& scope_group_id_hex = {},
+      const std::string& owner_user_id_hex = {},
+      const std::string& relative_dir = {});
+  /** Verified local object (share root or objects/ cache) by hash hex. */
+  std::optional<nyx::FileEntry> find_file_object(
+      const std::string& hash_hex) const;
   bool can_request_remote_files() const;
   /** Сессия для обмена файлами в области (group:<hex> или active). */
   std::string file_exchange_session_id(const std::string& scope_group_id_hex) const;
@@ -279,8 +310,9 @@ class NodeService {
                                 const std::string& preset_id);
 
   std::vector<nyx::ShareRoot> all_share_roots() const;
-  std::vector<nyx::FileEntry> local_files_at_root(const std::string& share_root_path,
-                                                  const std::string& parent_rel) const;
+  std::vector<nyx::FileEntry> local_files_at_root(
+      const std::string& share_root_path, const std::string& parent_rel,
+      const std::string& scope_group_id_hex = {}) const;
 
   void publish_field_index();
 
@@ -294,6 +326,10 @@ class NodeService {
   struct FileDownloadRequest {
     std::string hash_hex;
     std::string dest_path;
+    std::string state = "queued";
+    int progress = 0;
+    bool paused = false;
+    std::string error;
   };
 
   struct NetSession {
@@ -378,6 +414,13 @@ class NodeService {
   void run_lan_scan(int timeout_ms);
   void run_group_hub(std::shared_ptr<NetSession> session, std::string group_id_hex);
   void run_group_join(std::shared_ptr<NetSession> session, std::string invite_hex);
+  /** Browse LAN and dial peer by user-id hex (skips *-field hub beacons). */
+  bool try_connect_via_lan(const std::string& user_id_hex);
+  /** LAN browse + token/endpoint fallback on a detached thread (never blocks caller). */
+  void dial_dm_async(std::string peer_hex, std::string token_hex, std::string lan_host,
+                     uint16_t lan_port, bool quiet);
+  /** Browse LAN for field hub beacons / any peer; returns host:port candidates. */
+  std::vector<nyx::LanPeer> browse_lan_peers(int timeout_ms);
   void run_direct_chat(std::shared_ptr<NetSession> session,
                        std::unique_ptr<nyx::Connection> connection, const nyx::Profile& profile,
                        bool incoming, ConnectionVia via);
@@ -389,6 +432,9 @@ class NodeService {
   void wire_file_transfer(const std::shared_ptr<NetSession>& session,
                           nyx::FileTransferService& files);
   void drain_file_download_queue(const std::shared_ptr<NetSession>& session);
+  void load_download_queue(const std::shared_ptr<NetSession>& session);
+  void save_download_queue(const std::shared_ptr<NetSession>& session) const;
+  void emit_transfer_queue_changed();
   void try_pump_download_queue();
   void after_file_access_changed(const std::string& scope_group_id_hex);
   bool try_apply_file_access_policy(const nyx::ByteBuffer& payload);
@@ -401,15 +447,22 @@ class NodeService {
                           const nyx::ByteBuffer& payload);
   void wire_call_handlers(const std::shared_ptr<NetSession>& session);
   void handle_incoming_call_frame(const std::shared_ptr<NetSession>& session,
-                                  const nyx::ByteBuffer& frame);
+                                  const nyx::ByteBuffer& frame,
+                                  const nyx::UserId& from = {});
   bool send_call_frame_on_session(const std::shared_ptr<NetSession>& session,
                                   const nyx::ByteBuffer& frame);
   void pump_call_realtime(const std::shared_ptr<NetSession>& session);
   void emit_call_changed();
   void emit_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
                        const nyx::UserId& from = {});
-  /** @return false if this (type,seq) was already emitted (mesh+hub dup). */
-  bool note_inbound_call_media(nyx::CallMediaType type, uint32_t seq);
+  bool note_inbound_call_media(const nyx::UserId& from, nyx::CallMediaType type,
+                               uint32_t seq);
+  void pump_pending_call_signals(const std::shared_ptr<NetSession>& session);
+  void announce_relay_candidate();
+  void recompute_relay_set();
+  void apply_call_topology();
+  bool call_media_peer_allowed(const nyx::UserId& peer) const;
+  void handle_field_mesh_media(const nyx::UserId& from, nyx::ByteBuffer raw);
   void maybe_send_field_intros();
   void ensure_field_call_mesh();
   void announce_call_endpoint();
@@ -461,6 +514,7 @@ class NodeService {
   FileIndexProgressCallback on_file_index_progress_;
   RemoteFilesCallback on_remote_files_;
   FileAccessSyncCallback on_file_access_sync_;
+  TransferQueueCallback on_transfer_queue_changed_;
   SessionsChangedCallback on_avatars_changed_;
   CallChangedCallback on_call_changed_;
   CallMediaCallback on_call_media_;
@@ -482,10 +536,28 @@ class NodeService {
   std::atomic<bool> call_mesh_need_announce_{false};
   std::chrono::steady_clock::time_point call_inbound_opus_{};
   std::chrono::steady_clock::time_point call_inbound_video_{};
-  // Dedupe mesh+hub duplicates: last emitted (type, seq) pairs.
-  std::array<uint32_t, 4> call_media_dedupe_seq_{};
-  std::array<uint8_t, 4> call_media_dedupe_type_{};
+  std::set<nyx::UserId> call_participants_;
+  std::map<nyx::UserId, uint16_t> call_relay_candidates_;
+  std::vector<nyx::UserId> call_relays_;
+  uint32_t call_relay_epoch_ = 0;
+  std::atomic<uint16_t> call_relay_score_{500};
+  std::map<nyx::UserId, std::pair<uint8_t, std::chrono::steady_clock::time_point>>
+      call_speaker_levels_;
+  nyx::UserId call_dominant_speaker_{};
+  struct CallMediaDedupeEntry {
+    nyx::UserId from{};
+    uint32_t seq = 0;
+    uint8_t type = 0;
+  };
+  std::array<CallMediaDedupeEntry, 256> call_media_dedupe_{};
   int call_media_dedupe_i_ = 0;
+  struct PendingCallSignal {
+    std::string session_id;
+    nyx::ByteBuffer wire;
+    std::chrono::steady_clock::time_point next_send{};
+    std::chrono::steady_clock::time_point expires{};
+  };
+  std::vector<PendingCallSignal> pending_call_signals_;
 
   std::string profile_path_;
   std::string nickname_;
@@ -495,6 +567,7 @@ class NodeService {
   std::atomic<NodeMode> mode_{NodeMode::Idle};
   std::thread discovery_thread_;
   std::atomic<bool> discovery_busy_{false};
+  std::atomic<bool> dm_reconnect_busy_{false};
 
   nyx::FileIndex file_index_;
   /** Кэш каталога «Ресурсы» для локального hub (корни + подгруженные уровни). */

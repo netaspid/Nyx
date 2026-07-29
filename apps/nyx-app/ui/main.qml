@@ -73,6 +73,14 @@ ApplicationWindow {
 
     function handleBack() {
         // Active call: Back = hangup (also the escape hatch when camera steals taps).
+        if (app.documentViewer && app.documentViewer.open) {
+            app.documentViewer.close()
+            return true
+        }
+        if (app.inAppMediaOpen) {
+            app.closeInAppMedia()
+            return true
+        }
         if (app.callState === "incoming") {
             app.rejectCall()
             return true
@@ -135,6 +143,7 @@ ApplicationWindow {
                 theme: appTheme
                 node: app
                 avatarColorFn: avatarColor
+                useBottomNav: root.narrow
                 visible: root.showChatList
                 onSettingsRequested: settingsDialog.open()
             }
@@ -157,6 +166,13 @@ ApplicationWindow {
             }
         }
 
+        MobileNavBar {
+            Layout.fillWidth: true
+            theme: appTheme
+            node: app
+            visible: root.narrow
+        }
+
         StatusBar {
             id: statusBar
             Layout.fillWidth: true
@@ -164,6 +180,7 @@ ApplicationWindow {
             node: app
             text: app.statusText
             busy: app.busy
+            compact: root.narrow
         }
     }
 
@@ -227,11 +244,30 @@ ApplicationWindow {
         narrow: root.narrow
     }
 
+    Loader {
+        id: mediaPlayerLoader
+        anchors.fill: parent
+        active: app.inAppMediaOpen
+        sourceComponent: ChatMediaPlayer {
+            anchors.fill: parent
+            theme: appTheme
+            node: app
+        }
+    }
+
+    Loader {
+        id: documentViewerLoader
+        anchors.fill: parent
+        active: app.documentViewer && app.documentViewer.open
+        sourceComponent: DocumentViewer {
+            anchors.fill: parent
+            theme: appTheme
+            viewer: app.documentViewer
+        }
+    }
+
     Connections {
         target: app
-        function onChatChanged() {
-            if (app.inChat) app.refreshChatList()
-        }
         function onIncomingMessage(author, preview) {
             if (!root.active)
                 root.alert(0)

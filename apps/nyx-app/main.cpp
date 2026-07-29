@@ -90,6 +90,9 @@ int main(int argc, char* argv[]) {
   auto* call_frames = new CallFrameProvider();
   node.setCallFrameProvider(call_frames);
   engine.addImageProvider(QStringLiteral("nyxcall"), call_frames);
+  auto* capture_frames = new CallFrameProvider();
+  node.chatVideoRecorder()->setFrameProvider(capture_frames);
+  engine.addImageProvider(QStringLiteral("nyxcapture"), capture_frames);
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app, []() { QCoreApplication::exit(-1); },
       Qt::QueuedConnection);

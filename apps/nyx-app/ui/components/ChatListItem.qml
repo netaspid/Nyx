@@ -31,6 +31,11 @@ Rectangle {
     // Историю открываем всегда; сеть для офлайн-клиента — только toast.
     readonly property bool selectable: true
 
+    function requestContextMenu(x, y) {
+        const p = root.mapToItem(Overlay.overlay, x, y)
+        root.contextRequested(p.x, p.y)
+    }
+
     readonly property string fieldMemberHint: {
         if (kind !== 1) return ""
         for (let i = 0; i < node.groupList.length; ++i) {
@@ -159,40 +164,16 @@ Rectangle {
         cursorShape: Qt.PointingHandCursor
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
-                contextMenu.popup()
+                root.requestContextMenu(mouse.x, mouse.y)
                 return
             }
             root.clicked()
         }
-        onPressAndHold: contextMenu.popup()
-    }
-
-    Menu {
-        id: contextMenu
-        MenuItem {
-            text: qsTr("Отключиться")
-            enabled: root.live || root.connecting
-            onTriggered: node.disconnectChat(root.key)
-        }
-        MenuItem {
-            text: qsTr("Копировать invite поля")
-            visible: root.kind === 1
-            onTriggered: {
-                for (let i = 0; i < node.groupList.length; ++i) {
-                    const g = node.groupList[i]
-                    if (String(g.groupId).toLowerCase() === String(root.refId).toLowerCase()) {
-                        node.copyToClipboard(g.invite)
-                        return
-                    }
-                }
-            }
-        }
-        MenuSeparator {}
-        MenuItem {
-            text: root.kind === 1 ? qsTr("Удалить поле из списка") : qsTr("Удалить чат")
-            onTriggered: node.removeConversation(root.key)
+        onPressAndHold: function(mouse) {
+            root.requestContextMenu(mouse.x, mouse.y)
         }
     }
 
     signal clicked()
+    signal contextRequested(real sceneX, real sceneY)
 }

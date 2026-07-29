@@ -12,6 +12,7 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
 import android.media.ImageReader;
+import android.media.MediaRecorder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
@@ -19,7 +20,9 @@ import android.util.Size;
 import android.view.Surface;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 
 /**
@@ -39,11 +42,19 @@ public final class NyxCameraCapture {
     private static CameraDevice sCamera;
     private static CameraCaptureSession sSession;
     private static ImageReader sReader;
+    private static MediaRecorder sRecorder;
+    private static Surface sRecorderSurface;
+    private static Size sCaptureSize;
+    private static Size sRecordSize;
+    private static int sSensorOrientation = 90;
+    private static String sRecordingPath = "";
+    private static boolean sRecording = false;
     private static String sCameraId = "";
     private static boolean sFront = true;
     private static boolean sOpening = false;
     private static long sLastFrameMs = 0;
     private static Context sAppCtx;
+    private static int sGeneration = 0;
 
     private NyxCameraCapture() {}
 
@@ -51,11 +62,18 @@ public final class NyxCameraCapture {
         if (ctx == null) return;
         final Context app = ctx.getApplicationContext();
         ensureThread();
-        sHandler.post(() -> openLocked(app, preferFront));
+        final int generation;
+        synchronized (LOCK) {
+            generation = ++sGeneration;
+        }
+        sHandler.post(() -> openLocked(app, preferFront, generation));
     }
 
     public static void stop() {
         ensureThread();
+        synchronized (LOCK) {
+            ++sGeneration;
+        }
         sHandler.post(NyxCameraCapture::closeLocked);
     }
 
@@ -65,8 +83,26 @@ public final class NyxCameraCapture {
             final boolean next = !sFront;
             final Context ctx = sAppCtx;
             closeLocked();
-            if (ctx != null) openLocked(ctx, next);
+            final int generation;
+            synchronized (LOCK) {
+                generation = ++sGeneration;
+            }
+            if (ctx != null) openLocked(ctx, next, generation);
         });
+    }
+
+    public static void startRecording(String path) {
+        if (path == null || path.isEmpty()) {
+            nativeOnRecordingError("empty output path");
+            return;
+        }
+        ensureThread();
+        sHandler.post(() -> startRecordingLocked(path));
+    }
+
+    public static void stopRecording() {
+        ensureThread();
+        sHandler.post(NyxCameraCapture::stopRecordingLocked);
     }
 
     public static boolean hasFrontAndBack(Context ctx) {
@@ -97,7 +133,10 @@ public final class NyxCameraCapture {
         }
     }
 
-    private static void openLocked(Context app, boolean preferFront) {
+    private static void openLocked(Context app, boolean preferFront, int generation) {
+        synchronized (LOCK) {
+            if (generation != sGeneration) return;
+        }
         closeLocked();
         sAppCtx = app;
         sFront = preferFront;
@@ -109,21 +148,33 @@ public final class NyxCameraCapture {
             final String id = pickCameraId(cm, preferFront);
             if (id == null) throw new IllegalStateException("no camera id");
             sCameraId = id;
-            Size sz = pickSize(cm, id);
-            Log.i(TAG, "open id=" + id + " front=" + preferFront + " size=" + sz.getWidth() + "x"
-                    + sz.getHeight());
+            sCaptureSize = pickSize(cm, id);
+            sRecordSize = pickRecordSize(cm, id);
+            CameraCharacteristics characteristics = cm.getCameraCharacteristics(id);
+            Integer orientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+            sSensorOrientation = orientation != null ? orientation : 90;
+            Log.i(TAG, "open id=" + id + " front=" + preferFront + " preview="
+                    + sCaptureSize.getWidth() + "x" + sCaptureSize.getHeight() + " record="
+                    + sRecordSize.getWidth() + "x" + sRecordSize.getHeight()
+                    + " sensor=" + sSensorOrientation);
 
-            sReader = ImageReader.newInstance(sz.getWidth(), sz.getHeight(),
+            sReader = ImageReader.newInstance(sCaptureSize.getWidth(), sCaptureSize.getHeight(),
                     ImageFormat.YUV_420_888, 2);
             sReader.setOnImageAvailableListener(reader -> onImage(reader), sHandler);
 
             cm.openCamera(id, new CameraDevice.StateCallback() {
                 @Override
                 public void onOpened(CameraDevice camera) {
+                    synchronized (LOCK) {
+                        if (generation != sGeneration) {
+                            camera.close();
+                            return;
+                        }
+                    }
                     sCamera = camera;
                     sOpening = false;
                     try {
-                        createSession(camera);
+                        createPreviewSession(camera);
                         nativeOnStarted(sFront, sCameraId);
                     } catch (Throwable t) {
                         Log.e(TAG, "createSession failed", t);
@@ -134,6 +185,7 @@ public final class NyxCameraCapture {
 
                 @Override
                 public void onDisconnected(CameraDevice camera) {
+                    camera.close();
                     Log.w(TAG, "disconnected");
                     closeLocked();
                     nativeOnError("disconnected");
@@ -141,6 +193,7 @@ public final class NyxCameraCapture {
 
                 @Override
                 public void onError(CameraDevice camera, int error) {
+                    camera.close();
                     Log.e(TAG, "camera error " + error);
                     closeLocked();
                     nativeOnError("camera error " + error);
@@ -159,7 +212,7 @@ public final class NyxCameraCapture {
         }
     }
 
-    private static void createSession(CameraDevice camera) throws CameraAccessException {
+    private static void createPreviewSession(CameraDevice camera) throws CameraAccessException {
         final Surface surface = sReader.getSurface();
         camera.createCaptureSession(Collections.singletonList(surface),
                 new CameraCaptureSession.StateCallback() {
@@ -190,6 +243,174 @@ public final class NyxCameraCapture {
                     }
                 },
                 sHandler);
+    }
+
+    private static void startRecordingLocked(String path) {
+        if (sCamera == null || sReader == null || sRecording) {
+            nativeOnRecordingError("camera is not ready");
+            return;
+        }
+        try {
+            File out = new File(path);
+            File parent = out.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs())
+                throw new IllegalStateException("cannot create output directory");
+            if (out.exists() && !out.delete())
+                throw new IllegalStateException("cannot replace output file");
+
+            sRecorder = new MediaRecorder();
+            sRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
+            sRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
+            sRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            sRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+            sRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            sRecorder.setVideoSize(sRecordSize.getWidth(), sRecordSize.getHeight());
+            sRecorder.setVideoFrameRate(30);
+            sRecorder.setVideoEncodingBitRate(4_000_000);
+            sRecorder.setAudioSamplingRate(48_000);
+            sRecorder.setAudioEncodingBitRate(128_000);
+            sRecorder.setOrientationHint(recordingOrientation());
+            sRecorder.setOutputFile(path);
+            sRecorder.prepare();
+            sRecorderSurface = sRecorder.getSurface();
+            sRecordingPath = path;
+
+            closeSessionOnly();
+            sHandler.postDelayed(NyxCameraCapture::createRecordingSessionLocked, 120);
+        } catch (Throwable t) {
+            Log.e(TAG, "startRecording", t);
+            releaseRecorder();
+            nativeOnRecordingError("record: " + t.getMessage());
+        }
+    }
+
+    private static void createRecordingSessionLocked() {
+        if (sCamera == null || sReader == null || sRecorder == null
+                || sRecorderSurface == null) {
+            nativeOnRecordingError("recording session is not ready");
+            return;
+        }
+        final Surface previewSurface = sReader.getSurface();
+        try {
+            sCamera.createCaptureSession(Arrays.asList(previewSurface, sRecorderSurface),
+                    new CameraCaptureSession.StateCallback() {
+                        @Override
+                        public void onConfigured(CameraCaptureSession session) {
+                            if (sCamera == null || sRecorder == null) {
+                                session.close();
+                                return;
+                            }
+                            sSession = session;
+                            try {
+                                CaptureRequest.Builder b = sCamera.createCaptureRequest(
+                                        CameraDevice.TEMPLATE_RECORD);
+                                b.addTarget(previewSurface);
+                                b.addTarget(sRecorderSurface);
+                                b.set(CaptureRequest.CONTROL_MODE,
+                                        CaptureRequest.CONTROL_MODE_AUTO);
+                                b.set(CaptureRequest.CONTROL_AF_MODE,
+                                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
+                                session.setRepeatingRequest(b.build(), null, sHandler);
+                                sRecorder.start();
+                                sRecording = true;
+                                nativeOnRecordingStarted(sRecordingPath);
+                                Log.i(TAG, "recording started " + sRecordingPath);
+                            } catch (Throwable t) {
+                                Log.e(TAG, "start recorder", t);
+                                closeSessionOnly();
+                                releaseRecorder();
+                                nativeOnRecordingError("start: " + t.getMessage());
+                            }
+                        }
+
+                        @Override
+                        public void onConfigureFailed(CameraCaptureSession session) {
+                            Log.e(TAG, "recording configure failed");
+                            releaseRecorder();
+                            nativeOnRecordingError("recording configure failed");
+                            restorePreviewLater();
+                        }
+                    }, sHandler);
+        } catch (Throwable t) {
+            Log.e(TAG, "create recording session", t);
+            releaseRecorder();
+            nativeOnRecordingError("recording session: " + t.getMessage());
+            restorePreviewLater();
+        }
+    }
+
+    private static void stopRecordingLocked() {
+        final String path = sRecordingPath;
+        boolean ok = sRecording;
+        if (sRecording && sRecorder != null) {
+            try {
+                sRecorder.stop();
+            } catch (Throwable t) {
+                ok = false;
+                Log.e(TAG, "stop recorder", t);
+            }
+        }
+        sRecording = false;
+        closeSessionOnly();
+        releaseRecorder();
+        restorePreviewLater();
+        nativeOnRecordingStopped(path, ok);
+    }
+
+    private static void restorePreviewLater() {
+        sHandler.postDelayed(() -> {
+            if (sCamera == null || sReader == null || sRecording) return;
+            try {
+                createPreviewSession(sCamera);
+            } catch (Throwable t) {
+                Log.e(TAG, "restore preview", t);
+                nativeOnError("preview: " + t.getMessage());
+            }
+        }, 120);
+    }
+
+    private static void closeSessionOnly() {
+        if (sSession == null) return;
+        try {
+            sSession.stopRepeating();
+        } catch (Throwable ignored) {}
+        try {
+            sSession.close();
+        } catch (Throwable ignored) {}
+        sSession = null;
+    }
+
+    private static void releaseRecorder() {
+        if (sRecorder != null) {
+            try {
+                sRecorder.reset();
+            } catch (Throwable ignored) {}
+            try {
+                sRecorder.release();
+            } catch (Throwable ignored) {}
+        }
+        sRecorder = null;
+        sRecorderSurface = null;
+        sRecording = false;
+        sRecordingPath = "";
+    }
+
+    private static int recordingOrientation() {
+        int degrees = 0;
+        try {
+            android.view.WindowManager wm = (android.view.WindowManager)
+                    sAppCtx.getSystemService(Context.WINDOW_SERVICE);
+            int rotation = wm != null ? wm.getDefaultDisplay().getRotation()
+                                      : Surface.ROTATION_0;
+            if (rotation == Surface.ROTATION_90) degrees = 90;
+            else if (rotation == Surface.ROTATION_180) degrees = 180;
+            else if (rotation == Surface.ROTATION_270) degrees = 270;
+        } catch (Throwable ignored) {}
+        // MediaRecorder orientation hint — not JPEG EXIF (no front-camera mirror flip).
+        if (sFront) {
+            return (sSensorOrientation + degrees) % 360;
+        }
+        return (sSensorOrientation - degrees + 360) % 360;
     }
 
     private static void onImage(ImageReader reader) {
@@ -306,19 +527,43 @@ public final class NyxCameraCapture {
         return best;
     }
 
+    private static Size pickRecordSize(CameraManager cm, String id)
+            throws CameraAccessException {
+        CameraCharacteristics ch = cm.getCameraCharacteristics(id);
+        android.hardware.camera2.params.StreamConfigurationMap map =
+                ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        Size fallback = new Size(1280, 720);
+        if (map == null) return fallback;
+        Size[] sizes = map.getOutputSizes(MediaRecorder.class);
+        if (sizes == null || sizes.length == 0) return fallback;
+        Size best = sizes[0];
+        long bestScore = Long.MAX_VALUE;
+        final long targetArea = 1280L * 720L;
+        for (Size size : sizes) {
+            long area = (long) size.getWidth() * size.getHeight();
+            if (area > 1920L * 1080L) continue;
+            long aspectPenalty = Math.abs(size.getWidth() * 9L - size.getHeight() * 16L)
+                    * 1000L;
+            long score = Math.abs(area - targetArea) + aspectPenalty;
+            if (score < bestScore) {
+                bestScore = score;
+                best = size;
+            }
+        }
+        return best;
+    }
+
     private static void closeLocked() {
         sOpening = false;
+        if (sRecording && sRecorder != null) {
+            try {
+                sRecorder.stop();
+            } catch (Throwable ignored) {}
+        }
         try {
-            if (sSession != null) {
-                try {
-                    sSession.stopRepeating();
-                } catch (Throwable ignored) {}
-                try {
-                    sSession.close();
-                } catch (Throwable ignored) {}
-                sSession = null;
-            }
+            closeSessionOnly();
         } catch (Throwable ignored) {}
+        releaseRecorder();
         try {
             if (sCamera != null) {
                 sCamera.close();
@@ -337,4 +582,7 @@ public final class NyxCameraCapture {
     private static native void nativeOnJpeg(byte[] jpeg, int width, int height, boolean front);
     private static native void nativeOnError(String message);
     private static native void nativeOnStarted(boolean front, String cameraId);
+    private static native void nativeOnRecordingStarted(String path);
+    private static native void nativeOnRecordingStopped(String path, boolean success);
+    private static native void nativeOnRecordingError(String message);
 }
