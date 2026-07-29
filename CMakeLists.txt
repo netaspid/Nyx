@@ -218,6 +218,8 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/main.cpp
       apps/nyx-app/qt/node_controller.cpp
       apps/nyx-app/qt/node_controller_files.cpp
+      apps/nyx-app/qt/node_controller_files_access.cpp
+      apps/nyx-app/qt/node_controller_files_transfer.cpp
       apps/nyx-app/qt/node_controller_call.cpp
       apps/nyx-app/qt/node_controller_wire.cpp
       apps/nyx-app/qt/node_controller_account.cpp
