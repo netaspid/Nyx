@@ -62,92 +62,11 @@ class NodeController : public QObject {
       int discoveryMode READ discoveryMode WRITE setDiscoveryMode NOTIFY networkSettingsChanged)
   Q_PROPERTY(QString networkStatus READ networkStatus NOTIFY networkSettingsChanged)
   Q_PROPERTY(QString toast READ toast NOTIFY toastChanged)
-  Q_PROPERTY(QString callState READ callState NOTIFY callChanged)
-  Q_PROPERTY(QString callTitle READ callTitle NOTIFY callChanged)
-  Q_PROPERTY(bool callVideo READ callVideo NOTIFY callChanged)
-  Q_PROPERTY(bool canStartCall READ canStartCall NOTIFY chatChanged)
-  Q_PROPERTY(bool callIsFieldRoom READ callIsFieldRoom NOTIFY callChanged)
-  Q_PROPERTY(bool callMicMuted READ callMicMuted WRITE setCallMicMuted NOTIFY callChanged)
-  Q_PROPERTY(bool callCameraOn READ callCameraOn WRITE setCallCameraOn NOTIFY callChanged)
-  Q_PROPERTY(
-      bool callSpeakerphone READ callSpeakerphone WRITE setCallSpeakerphone NOTIFY callChanged)
-  Q_PROPERTY(float audioTestLevel READ audioTestLevel NOTIFY audioTestLevelChanged)
-  Q_PROPERTY(bool audioTestActive READ audioTestActive NOTIFY audioTestChanged)
-  Q_PROPERTY(QUrl callRemoteFrameUrl READ callRemoteFrameUrl NOTIFY callRemoteFrameChanged)
-  Q_PROPERTY(QUrl callLocalFrameUrl READ callLocalFrameUrl NOTIFY callLocalFrameChanged)
-  Q_PROPERTY(bool callCanSwitchCamera READ callCanSwitchCamera NOTIFY callChanged)
-  Q_PROPERTY(QVariantList callVideoPeers READ callVideoPeers NOTIFY callVideoPeersChanged)
-  Q_PROPERTY(QVariantList callRosterPeers READ callRosterPeers NOTIFY callVideoPeersChanged)
-  Q_PROPERTY(QVariantList cameraDeviceList READ cameraDeviceList NOTIFY mediaDevicesChanged)
-  Q_PROPERTY(QVariantList audioInputDeviceList READ audioInputDeviceList NOTIFY mediaDevicesChanged)
-  Q_PROPERTY(
-      QVariantList audioOutputDeviceList READ audioOutputDeviceList NOTIFY mediaDevicesChanged)
-  Q_PROPERTY(QString selectedCameraId READ selectedCameraId WRITE setSelectedCameraId NOTIFY
-                 mediaDevicesChanged)
-  Q_PROPERTY(QString selectedAudioInputId READ selectedAudioInputId WRITE setSelectedAudioInputId
-                 NOTIFY mediaDevicesChanged)
-  Q_PROPERTY(QString selectedAudioOutputId READ selectedAudioOutputId WRITE setSelectedAudioOutputId
-                 NOTIFY mediaDevicesChanged)
   Q_PROPERTY(bool windowActive READ windowActive WRITE setWindowActive NOTIFY windowActiveChanged)
-  Q_PROPERTY(QString fileProgressLabel READ fileProgressLabel NOTIFY fileProgressChanged)
-  Q_PROPERTY(int fileProgressPercent READ fileProgressPercent NOTIFY fileProgressChanged)
-  Q_PROPERTY(bool fileProgressVisible READ fileProgressVisible NOTIFY fileProgressChanged)
-  Q_PROPERTY(QVariantList localFileList READ localFileList NOTIFY filesChanged)
-  Q_PROPERTY(QVariantList remoteFileList READ remoteFileList NOTIFY filesChanged)
-  Q_PROPERTY(QVariantList transferQueue READ transferQueue NOTIFY filesChanged)
-  Q_PROPERTY(bool inAppMediaOpen READ inAppMediaOpen NOTIFY inAppMediaChanged)
-  Q_PROPERTY(QString inAppMediaPath READ inAppMediaPath NOTIFY inAppMediaChanged)
-  Q_PROPERTY(QString inAppMediaMime READ inAppMediaMime NOTIFY inAppMediaChanged)
-  Q_PROPERTY(QString inAppMediaTitle READ inAppMediaTitle NOTIFY inAppMediaChanged)
   Q_PROPERTY(DocumentViewer* documentViewer READ documentViewer CONSTANT)
   Q_PROPERTY(ChatMediaRecorder* chatMediaRecorder READ chatMediaRecorder CONSTANT)
   Q_PROPERTY(ChatVideoRecorder* chatVideoRecorder READ chatVideoRecorder CONSTANT)
-  Q_PROPERTY(QVariantList fileShareRoots READ fileShareRoots NOTIFY filesChanged)
-  Q_PROPERTY(QString fileSelectedShareRoot READ fileSelectedShareRoot WRITE setFileSelectedShareRoot
-                 NOTIFY filesChanged)
-  Q_PROPERTY(QString fileBrowsePath READ fileBrowsePath NOTIFY filesChanged)
-  Q_PROPERTY(QVariantList fileBrowseCrumbs READ fileBrowseCrumbs NOTIFY filesChanged)
-  Q_PROPERTY(QString fileResourcesRoot READ fileResourcesRoot NOTIFY filesChanged)
-  Q_PROPERTY(QVariantList fileRemoteBrowseCrumbs READ fileRemoteBrowseCrumbs NOTIFY filesChanged)
-  Q_PROPERTY(int filesSection READ filesSection WRITE setFilesSection NOTIFY filesChanged)
-  Q_PROPERTY(bool canFileList READ canFileList NOTIFY fileAccessChanged)
-  Q_PROPERTY(
-      QString fileScopeGroupId READ fileScopeGroupId WRITE setFileScopeGroupId NOTIFY filesChanged)
-  Q_PROPERTY(QString fileScopeLabel READ fileScopeLabel NOTIFY filesChanged)
-  Q_PROPERTY(bool fileExchangeReady READ fileExchangeReady NOTIFY filesChanged)
-  Q_PROPERTY(QString fileExchangeHint READ fileExchangeHint NOTIFY filesChanged)
-  Q_PROPERTY(
-      bool fileIndexProgressVisible READ fileIndexProgressVisible NOTIFY fileIndexProgressChanged)
-  Q_PROPERTY(
-      int fileIndexProgressPercent READ fileIndexProgressPercent NOTIFY fileIndexProgressChanged)
-  Q_PROPERTY(
-      QString fileIndexProgressLabel READ fileIndexProgressLabel NOTIFY fileIndexProgressChanged)
   Q_PROPERTY(int mainViewMode READ mainViewMode WRITE setMainViewMode NOTIFY mainViewModeChanged)
-  Q_PROPERTY(QVariantList fileRoleList READ fileRoleList NOTIFY fileAccessChanged)
-  Q_PROPERTY(
-      QVariantList filePermissionPresetList READ filePermissionPresetList NOTIFY fileAccessChanged)
-  Q_PROPERTY(QVariantList fileMemberAccess READ fileMemberAccess NOTIFY fileAccessChanged)
-  Q_PROPERTY(QVariantList filePathMemberAccess READ filePathMemberAccess NOTIFY fileAccessChanged)
-  Q_PROPERTY(QString filePathRoleId READ filePathRoleId NOTIFY fileAccessChanged)
-  Q_PROPERTY(
-      QString filePathRoleInheritedFrom READ filePathRoleInheritedFrom NOTIFY fileAccessChanged)
-  Q_PROPERTY(QString fileAccessTargetLabel READ fileAccessTargetLabel NOTIFY fileAccessChanged)
-  Q_PROPERTY(QString fileAccessTargetRoot READ fileAccessTargetRoot NOTIFY fileAccessChanged)
-  Q_PROPERTY(QString fileAccessTargetRel READ fileAccessTargetRel NOTIFY fileAccessChanged)
-  Q_PROPERTY(bool toastIsError READ toastIsError NOTIFY toastChanged)
-  Q_PROPERTY(bool canManageFileRoles READ canManageFileRoles NOTIFY fileAccessChanged)
-  Q_PROPERTY(bool canFileUpload READ canFileUpload NOTIFY fileAccessChanged)
-  Q_PROPERTY(bool canFileDownload READ canFileDownload NOTIFY fileAccessChanged)
-  Q_PROPERTY(bool canFileOpenRemote READ canFileOpenRemote NOTIFY fileAccessChanged)
-  Q_PROPERTY(bool canManageFileShares READ canManageFileShares NOTIFY fileAccessChanged)
-  Q_PROPERTY(bool canAddShareFolder READ canAddShareFolder NOTIFY fileAccessChanged)
-  Q_PROPERTY(int permFileList READ permFileList CONSTANT)
-  Q_PROPERTY(int permFileDownload READ permFileDownload CONSTANT)
-  Q_PROPERTY(int permFileUpload READ permFileUpload CONSTANT)
-  Q_PROPERTY(int permFileDelete READ permFileDelete CONSTANT)
-  Q_PROPERTY(int permFileOpenRemote READ permFileOpenRemote CONSTANT)
-  Q_PROPERTY(int permFileManageShares READ permFileManageShares CONSTANT)
-  Q_PROPERTY(int permFileManageRoles READ permFileManageRoles CONSTANT)
   Q_PROPERTY(bool connectionPanelOpen READ connectionPanelOpen WRITE setConnectionPanelOpen NOTIFY
                  connectionPanelOpenChanged)
   Q_PROPERTY(
@@ -175,6 +94,8 @@ class NodeController : public QObject {
                  NOTIFY profileMetaChanged)
   Q_PROPERTY(QString profileAvatarPath READ profileAvatarPath NOTIFY profilePhotosChanged)
   Q_PROPERTY(QVariantList profilePhotoList READ profilePhotoList NOTIFY profilePhotosChanged)
+  Q_PROPERTY(FilesUi* files READ files CONSTANT)
+  Q_PROPERTY(CallUi* call READ call CONSTANT)
 
 public:
   explicit NodeController(QObject* parent = nullptr);
@@ -234,6 +155,8 @@ public:
   QString inAppMediaMime() const { return files_ui_.in_app_media_mime_; }
   QString inAppMediaTitle() const { return files_ui_.in_app_media_title_; }
   DocumentViewer* documentViewer() { return &document_viewer_; }
+  FilesUi* files() { return &files_ui_; }
+  CallUi* call() { return &call_ui_; }
   ChatMediaRecorder* chatMediaRecorder() { return &chat_media_recorder_; }
   ChatVideoRecorder* chatVideoRecorder() { return &chat_video_recorder_; }
   QVariantList transferQueue() const { return files_ui_.transfer_queue_; }

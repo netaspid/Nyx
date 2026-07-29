@@ -35,12 +35,12 @@ void NodeController::refreshRemoteFileList() {
   syncRemoteBrowseCrumbs();
   if (!service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(), {}, {})) {
     refreshRemoteFileModel();
-    emit filesChanged();
+    files_ui_.notifyFilesChanged();
     showToast(fileExchangeHint().isEmpty() ? QStringLiteral("Не удалось запросить файлы")
                                            : fileExchangeHint());
     return;
   }
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }
 
 void NodeController::downloadFile(const QString& hashHex,
@@ -364,7 +364,7 @@ void NodeController::openFolderInResources(const QString& hashHex,
         files_ui_.file_scope_group_id_.toStdString(), root.toStdString(), rel.toStdString());
   }
   refreshRemoteFileModel();
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }
 
 void NodeController::pauseFileTransfer(const QString& hashHex, bool paused) {

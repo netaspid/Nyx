@@ -225,7 +225,7 @@ void NodeController::openConversation(const QString& key,
   chat_list_.clearUnread(key);
   emit chatChanged();
 
-  QTimer::singleShot(0, this, [this]() { emit filesChanged(); });
+  QTimer::singleShot(0, this, [this]() { files_ui_.notifyFilesChanged(); });
 
   if (live)
     return;
@@ -316,7 +316,7 @@ void NodeController::enterChat(const QString& peerName,
   }
   emit chatChanged();
   emit busyChanged();
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }
 
 void NodeController::endLiveSession() {
@@ -333,13 +333,13 @@ void NodeController::endLiveSession() {
   files_ui_.file_progress_visible_ = false;
   files_ui_.file_progress_percent_ = 0;
   files_ui_.file_progress_label_.clear();
-  emit fileProgressChanged();
+  files_ui_.notifyFileProgressChanged();
   emit chatChanged();
   emit busyChanged();
   refreshChatList();
   refreshGroupList();
   refreshRemoteFileModel();
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
   emit sessionsChanged();
 }
 
@@ -355,7 +355,7 @@ void NodeController::leaveChat() {
   files_ui_.file_progress_visible_ = false;
   files_ui_.file_progress_percent_ = 0;
   files_ui_.file_progress_label_.clear();
-  emit fileProgressChanged();
+  files_ui_.notifyFileProgressChanged();
   emit chatChanged();
   emit busyChanged();
   refreshChatList();

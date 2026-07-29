@@ -118,7 +118,7 @@ void NodeController::refreshFileAccessLists() {
   files_ui_.file_member_access_.clear();
   if (files_ui_.file_scope_group_id_.isEmpty()) {
     refreshPathRoleState();
-    emit fileAccessChanged();
+    files_ui_.notifyFileAccessChanged();
     return;
   }
 
@@ -179,7 +179,7 @@ void NodeController::refreshFileAccessLists() {
 
   refreshFilePathMemberAccess();
   refreshPathRoleState();
-  emit fileAccessChanged();
+  files_ui_.notifyFileAccessChanged();
 }
 
 void NodeController::refreshFilePathMemberAccess() {
@@ -345,7 +345,7 @@ void NodeController::setFileAccessTarget(const QString& rootPath, const QString&
   files_ui_.file_access_target_rel_.replace(QLatin1Char('\\'), QLatin1Char('/'));
   updateFileAccessTargetLabel();
   refreshFilePathMemberAccess();
-  emit fileAccessChanged();
+  files_ui_.notifyFileAccessChanged();
 }
 
 QString NodeController::resolveAccessRootPath(const QString& rootPath) const {
@@ -595,7 +595,7 @@ void NodeController::updateFileRole(const QString& roleId, const QString& name, 
   refreshFileAccessLists();
   if (files_ui_.files_section_ == 1)
     refreshRemoteFileModel();
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }
 
 void NodeController::deleteFileRole(const QString& roleId) {

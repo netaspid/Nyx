@@ -237,15 +237,15 @@ Item {
                         property string localPath: {
                             void fileRefresh.tick
                             return bubbleRoot.node && hash.length && !isDirectory
-                                   ? bubbleRoot.node.fileLocalPath(hash) : ""
+                                   ? bubbleRoot.node.files.fileLocalPath(hash) : ""
                         }
                         property int syncState: {
                             void fileRefresh.tick
                             return bubbleRoot.node && hash.length
-                                   ? bubbleRoot.node.fileSyncState(hash) : 0
+                                   ? bubbleRoot.node.files.fileSyncState(hash) : 0
                         }
                         property string previewText: localPath.length && isText
-                                                     ? bubbleRoot.node.fileTextPreview(hash) : ""
+                                                     ? bubbleRoot.node.files.fileTextPreview(hash) : ""
 
                         Component.onCompleted: {
                             if (!isDirectory
@@ -253,7 +253,7 @@ Item {
                                         || (isText && fileSize <= 262144))
                                     && bubbleRoot.node) {
                                 requested = true
-                                bubbleRoot.node.ensureFileAvailable(hash, fileName)
+                                bubbleRoot.node.files.ensureFileAvailable(hash, fileName)
                             }
                         }
 
@@ -267,7 +267,7 @@ Item {
                             onTriggered: {
                                 tick++
                                 if (bubbleRoot.node)
-                                    bubbleRoot.node.ensureFileAvailable(parent.hash, parent.fileName)
+                                    bubbleRoot.node.files.ensureFileAvailable(parent.hash, parent.fileName)
                             }
                         }
 
@@ -373,7 +373,7 @@ Item {
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: bubbleRoot.node.openInAppMedia(
+                                            onClicked: bubbleRoot.node.files.openInAppMedia(
                                                 fileBlock.localPath, fileBlock.mime,
                                                 fileBlock.fileName)
                                         }
@@ -387,7 +387,7 @@ Item {
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: bubbleRoot.node.openInAppMedia(
+                                            onClicked: bubbleRoot.node.files.openInAppMedia(
                                                 fileBlock.localPath, fileBlock.mime,
                                                 fileBlock.fileName)
                                         }
@@ -431,7 +431,7 @@ Item {
                                             text: qsTr("В ресурсы")
                                             onClicked: {
                                                 if (bubbleRoot.node)
-                                                    bubbleRoot.node.openFolderInResources(
+                                                    bubbleRoot.node.files.openFolderInResources(
                                                         fileBlock.hash,
                                                         fileBlock.folderRoot,
                                                         fileBlock.folderRel)
@@ -442,7 +442,7 @@ Item {
                                             text: qsTr("Скачать")
                                             onClicked: {
                                                 if (bubbleRoot.node)
-                                                    bubbleRoot.node.downloadRemoteFolder(
+                                                    bubbleRoot.node.files.downloadRemoteFolder(
                                                         fileBlock.folderRoot,
                                                         fileBlock.folderRel)
                                             }
@@ -465,13 +465,13 @@ Item {
                                                 const card = fileBlock
                                                 if (!card.localPath.length) {
                                                     card.requested = true
-                                                    bubbleRoot.node.ensureFileAvailable(
+                                                    bubbleRoot.node.files.ensureFileAvailable(
                                                         card.hash, card.fileName)
                                                 } else if (card.isImage) {
-                                                    bubbleRoot.node.openInAppMedia(
+                                                    bubbleRoot.node.files.openInAppMedia(
                                                         card.localPath, card.mime, card.fileName)
                                                 } else {
-                                                    bubbleRoot.node.openLocalFile(
+                                                    bubbleRoot.node.files.openLocalFile(
                                                         card.localPath, card.mime)
                                                 }
                                             }
@@ -559,7 +559,7 @@ Item {
                                     onClicked: {
                                         if (!fileBlock.localPath.length) {
                                             fileBlock.requested = true
-                                            bubbleRoot.node.ensureFileAvailable(
+                                            bubbleRoot.node.files.ensureFileAvailable(
                                                         fileBlock.hash,
                                                         fileBlock.fileName)
                                         } else if (circlePlayer.playbackState
@@ -623,7 +623,7 @@ Item {
                             property string path: {
                                 void mediaRefresh.tick
                                 if (!bubbleRoot.node || !hash.length) return ""
-                                return bubbleRoot.node.mediaLocalPath(hash)
+                                return bubbleRoot.node.files.mediaLocalPath(hash)
                             }
 
                             Timer {
@@ -635,18 +635,18 @@ Item {
                                 onTriggered: {
                                     tick++
                                     if (bubbleRoot.node && mediaCol.hash.length && mediaCol.path.length === 0)
-                                        bubbleRoot.node.ensureMediaAvailable(mediaCol.hash)
+                                        bubbleRoot.node.files.ensureMediaAvailable(mediaCol.hash)
                                 }
                             }
 
                             Component.onCompleted: {
                                 if (bubbleRoot.node && hash.length && path.length === 0)
-                                    bubbleRoot.node.ensureMediaAvailable(hash)
+                                    bubbleRoot.node.files.ensureMediaAvailable(hash)
                             }
 
                             Image {
                                 visible: mediaCol.path.length > 0
-                                         && (!bubbleRoot.node || bubbleRoot.node.isImageMedia(mediaCol.hash))
+                                         && (!bubbleRoot.node || bubbleRoot.node.files.isImageMedia(mediaCol.hash))
                                 source: visible && mediaCol.path.length
                                         ? ("file:///" + String(mediaCol.path).replace(/\\/g, "/"))
                                         : ""
@@ -659,7 +659,7 @@ Item {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         if (bubbleRoot.node && mediaCol.path.length)
-                                            bubbleRoot.node.openInAppMedia(
+                                            bubbleRoot.node.files.openInAppMedia(
                                                 mediaCol.path, "image/jpeg", mediaCol.caption)
                                     }
                                 }
@@ -667,7 +667,7 @@ Item {
 
                             Rectangle {
                                 visible: mediaCol.path.length > 0 && bubbleRoot.node
-                                         && !bubbleRoot.node.isImageMedia(mediaCol.hash)
+                                         && !bubbleRoot.node.files.isImageMedia(mediaCol.hash)
                                 width: parent.width
                                 height: 52
                                 radius: 8
@@ -683,7 +683,7 @@ Item {
                                     }
                                     Button {
                                         text: qsTr("Смотреть")
-                                        onClicked: bubbleRoot.node.openInAppMedia(
+                                        onClicked: bubbleRoot.node.files.openInAppMedia(
                                             mediaCol.path, "video/mp4", mediaCol.caption)
                                     }
                                 }

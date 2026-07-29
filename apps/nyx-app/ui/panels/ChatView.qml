@@ -208,21 +208,21 @@ Item {
 
             IconButton {
                 visible: node.peerTitle.length > 0
-                         && (node.canStartCall || node.activeChatKind === 1)
+                         && (node.call.canStartCall || node.activeChatKind === 1)
                 theme: root.theme
                 name: "phone"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть аудиокомнату")
                                                        : qsTr("Аудиозвонок")
-                onClicked: node.startCall(false)
+                onClicked: node.call.startCall(false)
             }
             IconButton {
                 visible: node.peerTitle.length > 0
-                         && (node.canStartCall || node.activeChatKind === 1)
+                         && (node.call.canStartCall || node.activeChatKind === 1)
                 theme: root.theme
                 name: "video"
                 ToolTip.text: node.activeChatKind === 1 ? qsTr("Открыть видеокомнату")
                                                        : qsTr("Видеозвонок")
-                onClicked: node.startCall(true)
+                onClicked: node.call.startCall(true)
             }
 
             IconButton {
@@ -304,10 +304,10 @@ Item {
         ProgressBar {
             Layout.fillWidth: true
             Layout.preferredHeight: 4
-            visible: node.fileProgressVisible
+            visible: node.files.fileProgressVisible
             from: 0
             to: 100
-            value: node.fileProgressPercent
+            value: node.files.fileProgressPercent
         }
 
         Rectangle {
@@ -462,8 +462,8 @@ Item {
                                 name: "image"
                                 btnSize: 36
                                 enabled: node.canSendMessage
-                                         && (node.callState === "idle"
-                                             || node.callState === "ended")
+                                         && (node.call.callState === "idle"
+                                             || node.call.callState === "ended")
                                 ToolTip.text: qsTr("Камера: фото или видео")
                                 onPressed: root.holdComposerToolsBriefly()
                                 onClicked: root.openMediaCapture()
@@ -475,8 +475,8 @@ Item {
                                 name: node.chatMediaRecorder.recording ? "stop" : "mic"
                                 btnSize: 36
                                 enabled: node.canSendMessage
-                                         && (node.callState === "idle"
-                                             || node.callState === "ended")
+                                         && (node.call.callState === "idle"
+                                             || node.call.callState === "ended")
                                          && node.chatMediaRecorder.state !== "starting"
                                          && node.chatMediaRecorder.state !== "stopping"
                                 accent: node.chatMediaRecorder.recording

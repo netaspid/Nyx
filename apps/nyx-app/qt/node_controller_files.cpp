@@ -187,8 +187,8 @@ void NodeController::setFileScopeGroupId(const QString& groupIdHex) {
   refreshFileAccessLists();
   if (fileExchangeReady())
     refreshRemoteFileList();
-  emit filesChanged();
-  emit fileAccessChanged();
+  files_ui_.notifyFilesChanged();
+  files_ui_.notifyFileAccessChanged();
 }
 
 bool NodeController::fileExchangeReady() const {
@@ -287,8 +287,8 @@ void NodeController::setFilesSection(int section) {
     refreshGroupList();
     refreshFileAccessLists();
   }
-  emit filesChanged();
-  emit fileAccessChanged();
+  files_ui_.notifyFilesChanged();
+  files_ui_.notifyFileAccessChanged();
 }
 
 std::vector<nyx::FileEntry>
@@ -437,7 +437,7 @@ void NodeController::setFileSelectedShareRoot(const QString& path) {
   resetFileBrowse();
   refreshLocalFileModel();
   service_.save_files_selected_root(canonical.toStdString());
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }
 
 void NodeController::browseIntoFolder(const QString& navPath, const QString& itemRootPath) {
@@ -467,7 +467,7 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
                                      files_ui_.file_resources_root_.toStdString(),
                                      files_ui_.file_remote_browse_path_.toStdString());
     refreshRemoteFileModel();
-    emit filesChanged();
+    files_ui_.notifyFilesChanged();
     return;
   }
 
@@ -478,7 +478,7 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
   files_ui_.file_browse_path_ = rel;
   syncFileBrowseCrumbs();
   refreshLocalFileModel();
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }
 
 void NodeController::browseUp() {
@@ -501,7 +501,7 @@ void NodeController::browseUp() {
       }
       refreshRemoteFileModel();
     }
-    emit filesChanged();
+    files_ui_.notifyFilesChanged();
     return;
   }
 
@@ -512,7 +512,7 @@ void NodeController::browseUp() {
     files_ui_.file_browse_path_ = slash < 0 ? QString() : rel.left(slash);
     syncFileBrowseCrumbs();
     refreshLocalFileModel();
-    emit filesChanged();
+    files_ui_.notifyFilesChanged();
     return;
   }
 
@@ -521,7 +521,7 @@ void NodeController::browseUp() {
     resetFileBrowse();
     service_.save_files_selected_root({});
     refreshLocalFileModel();
-    emit filesChanged();
+    files_ui_.notifyFilesChanged();
   }
 }
 
@@ -538,7 +538,7 @@ void NodeController::browseToCrumb(int index) {
         service_.request_remote_files_at(files_ui_.file_scope_group_id_.toStdString(), {}, {});
       }
       refreshRemoteFileModel();
-      emit filesChanged();
+      files_ui_.notifyFilesChanged();
       return;
     }
     if (index == 1) {
@@ -553,7 +553,7 @@ void NodeController::browseToCrumb(int index) {
                                        files_ui_.file_remote_browse_path_.toStdString());
     }
     refreshRemoteFileModel();
-    emit filesChanged();
+    files_ui_.notifyFilesChanged();
     return;
   }
 
@@ -563,7 +563,7 @@ void NodeController::browseToCrumb(int index) {
       files_ui_.file_browse_crumbs_.at(index).toMap().value(QStringLiteral("path")).toString();
   syncFileBrowseCrumbs();
   refreshLocalFileModel();
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }
 
 void NodeController::addDroppedUrls(const QVariantList& urls) {
@@ -757,5 +757,5 @@ void NodeController::refreshFileLists() {
   refreshFileShareRoots();
   refreshLocalFileModel();
   refreshRemoteFileModel();
-  emit filesChanged();
+  files_ui_.notifyFilesChanged();
 }

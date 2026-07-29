@@ -393,7 +393,7 @@ void NodeController::wireCallCallbacks() {
     QMetaObject::invokeMethod(
         this,
         [this]() {
-          emit callChanged();
+          call_ui_.notifyCallChanged();
 
           syncCallNotifications();
           syncCallAudio();
@@ -431,11 +431,11 @@ void NodeController::wireFileCallbacks() {
           files_ui_.file_progress_label_ = QString::fromStdString(label);
           files_ui_.file_progress_percent_ = percent;
           files_ui_.file_progress_visible_ = percent > 0 && percent < 100;
-          emit fileProgressChanged();
+          files_ui_.notifyFileProgressChanged();
           if (percent >= 100) {
             QTimer::singleShot(1500, this, [this]() {
               files_ui_.file_progress_visible_ = false;
-              emit fileProgressChanged();
+              files_ui_.notifyFileProgressChanged();
             });
           }
         },
@@ -460,7 +460,7 @@ void NodeController::wireFileCallbacks() {
               files_ui_.file_index_progress_label_ =
                   name.isEmpty() ? QStringLiteral("Сканирование… %1 файлов").arg(files_scanned)
                                  : QStringLiteral("%1 · %2").arg(name).arg(files_scanned);
-              emit fileIndexProgressChanged();
+              files_ui_.notifyFileIndexProgressChanged();
             },
             Qt::QueuedConnection);
       });
@@ -483,7 +483,7 @@ void NodeController::wireFileCallbacks() {
             item.insert(QStringLiteral("direction"), QString::fromStdString(task.direction));
             files_ui_.transfer_queue_.append(item);
           }
-          emit filesChanged();
+          files_ui_.notifyFilesChanged();
         },
         Qt::QueuedConnection);
   });
@@ -493,7 +493,7 @@ void NodeController::wireFileCallbacks() {
         this,
         [this, entries]() {
           refreshRemoteFileModel(entries);
-          emit filesChanged();
+          files_ui_.notifyFilesChanged();
           const int n = static_cast<int>(files_ui_.remote_file_list_.size());
           if (files_ui_.file_resources_root_.isEmpty()) {
             showToast(n == 0 ? QStringLiteral("Ресурсы поля: папок нет")
@@ -511,7 +511,7 @@ void NodeController::wireFileCallbacks() {
         [this]() {
           refreshFileAccessLists();
           refreshRemoteFileModel();
-          emit filesChanged();
+          files_ui_.notifyFilesChanged();
         },
         Qt::QueuedConnection);
   });

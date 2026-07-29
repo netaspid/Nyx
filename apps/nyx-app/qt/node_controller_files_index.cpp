@@ -142,7 +142,7 @@ void NodeController::runIndexJob(const QString& path, const QString& scopeGroupI
   files_ui_.file_index_progress_percent_ = 5;
   files_ui_.file_index_progress_label_ = QStringLiteral("Подготовка сканирования…");
   files_ui_.file_index_files_scanned_ = 0;
-  emit fileIndexProgressChanged();
+  files_ui_.notifyFileIndexProgressChanged();
 
   const QString scope = scopeGroupId;
   if (files_ui_.file_index_thread_.joinable())
@@ -178,11 +178,11 @@ void NodeController::runIndexJob(const QString& path, const QString& scopeGroupI
               showToast(QStringLiteral("Переиндексировано: %1 файлов").arg(count));
             }
           }
-          emit fileIndexProgressChanged();
+          files_ui_.notifyFileIndexProgressChanged();
           QTimer::singleShot(1400, this, [this]() {
             if (!files_ui_.file_index_busy_.load()) {
               files_ui_.file_index_progress_visible_ = false;
-              emit fileIndexProgressChanged();
+              files_ui_.notifyFileIndexProgressChanged();
             }
           });
         },

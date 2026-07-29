@@ -113,7 +113,7 @@ void NodeController::openInAppMedia(const QString& path,
   files_ui_.in_app_media_mime_ = mime;
   files_ui_.in_app_media_title_ = title;
   files_ui_.in_app_media_open_ = true;
-  emit inAppMediaChanged();
+  files_ui_.notifyInAppMediaChanged();
 }
 
 void NodeController::closeInAppMedia() {
@@ -123,7 +123,7 @@ void NodeController::closeInAppMedia() {
   files_ui_.in_app_media_path_.clear();
   files_ui_.in_app_media_mime_.clear();
   files_ui_.in_app_media_title_.clear();
-  emit inAppMediaChanged();
+  files_ui_.notifyInAppMediaChanged();
 }
 
 void NodeController::ensureChatMediaRootIndexed() {

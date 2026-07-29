@@ -31,7 +31,7 @@ Popup {
     function openForPath(rootPath, relativePath, title) {
         mode = "path"
         objectTitle = title.length > 0 ? qsTr("Права: %1").arg(title) : qsTr("Права доступа")
-        node.setFileAccessTarget(rootPath, relativePath)
+        node.files.setFileAccessTarget(rootPath, relativePath)
         open()
     }
 
@@ -135,17 +135,17 @@ Popup {
                     id: pathRoleCombo
                     Layout.fillWidth: true
                     theme: root.theme
-                    enabled: node.canManageFileRoles
+                    enabled: node.files.canManageFileRoles
                     model: pathRoleModel
                     textRole: "label"
                     Component.onCompleted: syncPathRole()
                     function syncPathRole() {
-                        if (node.filePathRoleId.length === 0) {
+                        if (node.files.filePathRoleId.length === 0) {
                             currentIndex = 0
                             return
                         }
                         for (let i = 1; i < pathRoleModel.count; ++i) {
-                            if (pathRoleModel.get(i).roleId === node.filePathRoleId) {
+                            if (pathRoleModel.get(i).roleId === node.files.filePathRoleId) {
                                 currentIndex = i
                                 return
                             }
@@ -155,16 +155,16 @@ Popup {
                     onActivated: {
                         const item = pathRoleModel.get(currentIndex)
                         if (item.mode === "inherit")
-                            node.clearPathRole()
+                            node.files.clearPathRole()
                         else
-                            node.setPathRole(item.roleId)
+                            node.files.setPathRole(item.roleId)
                     }
                 }
                 Label {
                     Layout.fillWidth: true
-                    visible: node.filePathRoleInheritedFrom.length > 0
-                              && node.filePathRoleId.length === 0
-                    text: qsTr("Наследует роль от: %1").arg(node.filePathRoleInheritedFrom)
+                    visible: node.files.filePathRoleInheritedFrom.length > 0
+                              && node.files.filePathRoleId.length === 0
+                    text: qsTr("Наследует роль от: %1").arg(node.files.filePathRoleInheritedFrom)
                     color: theme.accent
                     font.pixelSize: 10
                 }
@@ -214,7 +214,7 @@ Popup {
                 Repeater {
                     id: memberRepeater
                     model: {
-                        const all = mode === "field" ? node.fileMemberAccess : node.filePathMemberAccess
+                        const all = mode === "field" ? node.files.fileMemberAccess : node.files.filePathMemberAccess
                         const out = []
                         for (let i = 0; i < all.length; ++i) {
                             if (!all[i].isOwner) out.push(all[i])
@@ -258,7 +258,7 @@ Popup {
                                     id: pathGrantCombo
                                     Layout.preferredWidth: 170
                                     theme: root.theme
-                                    enabled: node.canManageFileRoles
+                                    enabled: node.files.canManageFileRoles
                                     model: mode === "field" ? fieldRoleModel : pathGrantModel
                                     textRole: "label"
                                     property int syncKey: root.grantSyncKey
@@ -292,16 +292,16 @@ Popup {
                                     onActivated: {
                                         if (mode === "field") {
                                             const item = fieldRoleModel.get(currentIndex)
-                                            if (item) node.setMemberFileRole(userId, item.roleId)
+                                            if (item) node.files.setMemberFileRole(userId, item.roleId)
                                             return
                                         }
                                         const item = pathGrantModel.get(currentIndex)
                                         if (item.mode === "inherit")
-                                            node.clearPathMemberGrant(userId)
+                                            node.files.clearPathMemberGrant(userId)
                                         else if (item.mode === "direct")
-                                            node.setPathGrantDirect(userId)
+                                            node.files.setPathGrantDirect(userId)
                                         else
-                                            node.setPathMemberFileRole(userId, item.roleId)
+                                            node.files.setPathMemberFileRole(userId, item.roleId)
                                     }
                                     Connections {
                                         target: node
@@ -325,10 +325,10 @@ Popup {
                                 spacing: 6
                                 Repeater {
                                     model: [
-                                        { bit: node.permFileList, label: qsTr("Список") },
-                                        { bit: node.permFileDownload, label: qsTr("Скачать") },
-                                        { bit: node.permFileUpload, label: qsTr("Отправить") },
-                                        { bit: node.permFileOpenRemote, label: qsTr("По сети") }
+                                        { bit: node.files.permFileList, label: qsTr("Список") },
+                                        { bit: node.files.permFileDownload, label: qsTr("Скачать") },
+                                        { bit: node.files.permFileUpload, label: qsTr("Отправить") },
+                                        { bit: node.files.permFileOpenRemote, label: qsTr("По сети") }
                                     ]
                                     delegate: Rectangle {
                                         required property int bit
@@ -347,8 +347,8 @@ Popup {
                                         }
                                         MouseArea {
                                             anchors.fill: parent
-                                            enabled: node.canManageFileRoles
-                                            onClicked: node.togglePathDirectPermission(userId, bit)
+                                            enabled: node.files.canManageFileRoles
+                                            onClicked: node.files.togglePathDirectPermission(userId, bit)
                                         }
                                     }
                                 }
@@ -366,7 +366,7 @@ Popup {
         function rebuild() {
             clear()
             append({ label: qsTr("По умолчанию (поле / родитель)"), mode: "inherit", roleId: "" })
-            const roles = node.fileRoleList
+            const roles = node.files.fileRoleList
             for (let i = 0; i < roles.length; ++i) {
                 if (roles[i].roleId === "owner") continue
                 append({ label: roles[i].name, mode: "role", roleId: roles[i].roleId })
@@ -379,7 +379,7 @@ Popup {
         function rebuild() {
             clear()
             append({ label: qsTr("По умолчанию"), mode: "inherit", roleId: "" })
-            const roles = node.fileRoleList
+            const roles = node.files.fileRoleList
             for (let i = 0; i < roles.length; ++i) {
                 if (roles[i].roleId === "owner") continue
                 append({ label: roles[i].name, mode: "role", roleId: roles[i].roleId })
@@ -392,7 +392,7 @@ Popup {
         id: fieldRoleModel
         function rebuild() {
             clear()
-            const roles = node.fileRoleList
+            const roles = node.files.fileRoleList
             for (let i = 0; i < roles.length; ++i) {
                 if (roles[i].roleId === "owner") continue
                 append({ label: roles[i].name, roleId: roles[i].roleId })

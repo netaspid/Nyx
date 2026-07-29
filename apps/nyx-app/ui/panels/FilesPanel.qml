@@ -11,7 +11,7 @@ ColumnLayout {
 
     spacing: 0
 
-    readonly property int sectionCount: node.fileScopeGroupId.length > 0 ? 3 : 2
+    readonly property int sectionCount: node.files.fileScopeGroupId.length > 0 ? 3 : 2
     readonly property bool narrow: width < 720 || Qt.platform.os === "android"
     property string localSearchQuery: ""
     property string remoteSearchQuery: ""
@@ -45,7 +45,7 @@ ColumnLayout {
     }
 
     function selectShareRoot(path) {
-        node.setFileSelectedShareRoot(path)
+        node.files.setFileSelectedShareRoot(path)
         closeMobileFolders()
     }
 
@@ -82,7 +82,7 @@ ColumnLayout {
                     font.weight: Font.DemiBold
                 }
                 Label {
-                    text: node.fileScopeLabel
+                    text: node.files.fileScopeLabel
                     color: theme.textSecondary
                     font.pixelSize: 11
                 }
@@ -95,10 +95,10 @@ ColumnLayout {
                 theme: root.theme
                 model: scopeModel
                 textRole: "label"
-                onActivated: node.fileScopeGroupId = scopeModel.get(currentIndex).groupId
+                onActivated: node.files.fileScopeGroupId = scopeModel.get(currentIndex).groupId
                 Component.onCompleted: syncScopeIndex()
                 function syncScopeIndex() {
-                    const gid = node.fileScopeGroupId
+                    const gid = node.files.fileScopeGroupId
                     for (let i = 0; i < scopeModel.count; ++i) {
                         if (scopeModel.get(i).groupId === gid) {
                             currentIndex = i
@@ -112,9 +112,9 @@ ColumnLayout {
             IconButton {
                 theme: root.theme
                 name: "refresh"
-                enabled: node.fileExchangeReady
+                enabled: node.files.fileExchangeReady
                 ToolTip.text: qsTr("Обновить ресурсы")
-                onClicked: node.refreshRemoteFileList()
+                onClicked: node.files.refreshRemoteFileList()
             }
         }
 
@@ -165,7 +165,7 @@ ColumnLayout {
             anchors.fill: parent
             anchors.margins: 4
             spacing: 4
-            property int currentIndex: node ? node.filesSection : 0
+            property int currentIndex: node ? node.files.filesSection : 0
 
             Repeater {
                 model: root.sectionCount
@@ -194,7 +194,7 @@ ColumnLayout {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: {
-                            node.setFilesSection(index)
+                            node.files.setFilesSection(index)
                             if (index !== 0)
                                 root.closeMobileFolders()
                         }
@@ -210,11 +210,11 @@ ColumnLayout {
         Layout.rightMargin: theme.spacing
         Layout.topMargin: 8
         spacing: 4
-        visible: node.fileIndexProgressVisible
+        visible: node.files.fileIndexProgressVisible
 
         Label {
             Layout.fillWidth: true
-            text: node.fileIndexProgressLabel
+            text: node.files.fileIndexProgressLabel
             color: theme.textMuted
             font.pixelSize: 11
             elide: Text.ElideMiddle
@@ -223,7 +223,7 @@ ColumnLayout {
             Layout.fillWidth: true
             from: 0
             to: 100
-            value: node.fileIndexProgressPercent
+            value: node.files.fileIndexProgressPercent
         }
     }
 
@@ -232,9 +232,9 @@ ColumnLayout {
         Layout.leftMargin: theme.spacing
         Layout.rightMargin: theme.spacing
         Layout.preferredHeight: visible
-                                ? Math.min(156, 28 + node.transferQueue.length * 48)
+                                ? Math.min(156, 28 + node.files.transferQueue.length * 48)
                                 : 0
-        visible: node.transferQueue.length > 0
+        visible: node.files.transferQueue.length > 0
         radius: theme.radiusBtn
         color: theme.inputBg
         border.color: theme.border
@@ -254,7 +254,7 @@ ColumnLayout {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 3
-                model: node.transferQueue
+                model: node.files.transferQueue
                 delegate: RowLayout {
                     required property var modelData
                     width: ListView.view.width
@@ -284,24 +284,24 @@ ColumnLayout {
                     ToolButton {
                         visible: modelData.direction !== "upload"
                         text: modelData.paused ? "▶" : "Ⅱ"
-                        onClicked: node.pauseFileTransfer(modelData.hash,
+                        onClicked: node.files.pauseFileTransfer(modelData.hash,
                                                          !modelData.paused)
                     }
                     ToolButton {
                         visible: modelData.state === "failed"
                                  && modelData.direction !== "upload"
                         text: "↻"
-                        onClicked: node.retryFileTransfer(modelData.hash)
+                        onClicked: node.files.retryFileTransfer(modelData.hash)
                     }
                     ToolButton {
                         visible: modelData.direction !== "upload"
                         text: "↑"
-                        onClicked: node.moveFileTransfer(modelData.hash, -1)
+                        onClicked: node.files.moveFileTransfer(modelData.hash, -1)
                     }
                     ToolButton {
                         visible: modelData.direction !== "upload"
                         text: "×"
-                        onClicked: node.cancelFileTransfer(modelData.hash)
+                        onClicked: node.files.cancelFileTransfer(modelData.hash)
                     }
                 }
             }
@@ -330,20 +330,20 @@ ColumnLayout {
         ProgressBar {
             Layout.fillWidth: true
             Layout.preferredHeight: 4
-            visible: node.fileProgressVisible
+            visible: node.files.fileProgressVisible
             from: 0
             to: 100
-            value: node.fileProgressPercent
+            value: node.files.fileProgressPercent
         }
 
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            visible: node.fileProgressVisible
+            visible: node.files.fileProgressVisible
             color: theme.bgInputBar
             Label {
                 anchors.centerIn: parent
-                text: node.fileProgressLabel + " · " + node.fileProgressPercent + "%"
+                text: node.files.fileProgressLabel + " · " + node.files.fileProgressPercent + "%"
                 color: theme.accent
                 font.pixelSize: 11
             }
@@ -362,29 +362,29 @@ ColumnLayout {
         property bool canRemove: true
         NyxMenuItem {
             theme: root.theme
-            visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
+            visible: node.files.fileScopeGroupId.length > 0 && node.files.canManageFileRoles
             text: qsTr("Права на папку…")
             onTriggered: pathAccessPopup.openForShareRoot(rootPathMenu.path, rootPathMenu.displayName)
         }
         NyxMenuItem {
             theme: root.theme
-            visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
+            visible: node.files.fileScopeGroupId.length > 0 && node.files.canManageFileRoles
             text: qsTr("Роли участников поля…")
             onTriggered: pathAccessPopup.openForField()
         }
         MenuSeparator {
-            visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
+            visible: node.files.fileScopeGroupId.length > 0 && node.files.canManageFileRoles
         }
         NyxMenuItem {
             theme: root.theme
             text: qsTr("Переиндексировать")
-            onTriggered: node.rescanIndexedFolder(rootPathMenu.path)
+            onTriggered: node.files.rescanIndexedFolder(rootPathMenu.path)
         }
         NyxMenuItem {
             theme: root.theme
             text: qsTr("Убрать из индекса")
             enabled: rootPathMenu.canRemove
-            onTriggered: node.removeIndexedFolder(rootPathMenu.path)
+            onTriggered: node.files.removeIndexedFolder(rootPathMenu.path)
         }
     }
 
@@ -411,7 +411,7 @@ ColumnLayout {
                     const urls = []
                     for (let i = 0; i < drop.urls.length; ++i)
                         urls.push(drop.urls[i])
-                    node.addDroppedUrls(urls)
+                    node.files.addDroppedUrls(urls)
                 }
             }
 
@@ -454,8 +454,8 @@ ColumnLayout {
 
                     Label {
                         Layout.fillWidth: true
-                        visible: node.fileSelectedShareRoot.length === 0
-                                 && node.localFileList.length === 0
+                        visible: node.files.fileSelectedShareRoot.length === 0
+                                 && node.files.localFileList.length === 0
                         wrapMode: Text.WordWrap
                         text: root.narrow
                               ? qsTr("Откройте «Мои папки» или импортируйте файлы — они появятся здесь.")
@@ -467,8 +467,8 @@ ColumnLayout {
                     }
                     Label {
                         Layout.fillWidth: true
-                        visible: node.fileSelectedShareRoot.length === 0
-                                 && node.localFileList.length > 0
+                        visible: node.files.fileSelectedShareRoot.length === 0
+                                 && node.files.localFileList.length > 0
                         wrapMode: Text.WordWrap
                         text: qsTr("Локальные объекты Nyx (импорт и скачанные файлы)")
                         color: theme.textSecondary
@@ -484,7 +484,7 @@ ColumnLayout {
                             theme: root.theme
                             name: "folder"
                             accent: root.mobileFoldersOpen
-                                    || node.fileSelectedShareRoot.length === 0
+                                    || node.files.fileSelectedShareRoot.length === 0
                             ToolTip.visible: hovered
                             ToolTip.text: qsTr("Мои папки")
                             onClicked: root.openMobileFolders()
@@ -493,17 +493,17 @@ ColumnLayout {
                         IconButton {
                             theme: root.theme
                             name: "back"
-                            visible: node.fileSelectedShareRoot.length > 0
-                                     || node.fileBrowsePath.length > 0
-                            enabled: node.fileBrowsePath.length > 0
-                                     || node.fileSelectedShareRoot.length > 0
-                            ToolTip.text: node.fileBrowsePath.length > 0
+                            visible: node.files.fileSelectedShareRoot.length > 0
+                                     || node.files.fileBrowsePath.length > 0
+                            enabled: node.files.fileBrowsePath.length > 0
+                                     || node.files.fileSelectedShareRoot.length > 0
+                            ToolTip.text: node.files.fileBrowsePath.length > 0
                                           ? qsTr("На уровень выше")
                                           : qsTr("К списку папок")
                             onClicked: {
-                                const leaveShare = node.fileBrowsePath.length === 0
-                                        && node.fileSelectedShareRoot.length > 0
-                                node.browseUp()
+                                const leaveShare = node.files.fileBrowsePath.length === 0
+                                        && node.files.fileSelectedShareRoot.length > 0
+                                node.files.browseUp()
                                 if (root.narrow && leaveShare)
                                     root.openMobileFolders()
                             }
@@ -511,18 +511,18 @@ ColumnLayout {
 
                         Flow {
                             Layout.fillWidth: true
-                            visible: node.fileSelectedShareRoot.length > 0
+                            visible: node.files.fileSelectedShareRoot.length > 0
                             spacing: 4
                             Repeater {
-                                model: node.fileBrowseCrumbs
+                                model: node.files.fileBrowseCrumbs
                                 delegate: Label {
                                     required property var modelData
                                     required property int index
                                     text: index > 0 ? " › " + modelData.label : modelData.label
-                                    color: index === node.fileBrowseCrumbs.length - 1
+                                    color: index === node.files.fileBrowseCrumbs.length - 1
                                            ? theme.textPrimary : theme.accent
                                     font.pixelSize: 11
-                                    font.weight: index === node.fileBrowseCrumbs.length - 1
+                                    font.weight: index === node.files.fileBrowseCrumbs.length - 1
                                                  ? Font.DemiBold : Font.Normal
                                     MouseArea {
                                         anchors.fill: parent
@@ -530,16 +530,16 @@ ColumnLayout {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: function(mouse) {
                                             if (mouse.button === Qt.RightButton
-                                                && index === node.fileBrowseCrumbs.length - 1
-                                                && node.fileScopeGroupId.length > 0
-                                                && node.canManageFileRoles) {
+                                                && index === node.files.fileBrowseCrumbs.length - 1
+                                                && node.files.fileScopeGroupId.length > 0
+                                                && node.files.canManageFileRoles) {
                                                 root.openPathAccess(
-                                                    node.fileSelectedShareRoot,
-                                                    node.fileBrowsePath, modelData.label)
+                                                    node.files.fileSelectedShareRoot,
+                                                    node.files.fileBrowsePath, modelData.label)
                                                 return
                                             }
                                             if (mouse.button === Qt.LeftButton)
-                                                node.browseToCrumb(index)
+                                                node.files.browseToCrumb(index)
                                         }
                                     }
                                 }
@@ -548,11 +548,11 @@ ColumnLayout {
 
                         Item {
                             Layout.fillWidth: true
-                            visible: node.fileSelectedShareRoot.length === 0
+                            visible: node.files.fileSelectedShareRoot.length === 0
                         }
 
                         NyxButtonSecondary {
-                            visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
+                            visible: node.files.fileScopeGroupId.length > 0 && node.files.canManageFileRoles
                             theme: root.theme
                             text: qsTr("Роли поля")
                             ToolTip.text: qsTr("Роли участников по умолчанию")
@@ -562,10 +562,10 @@ ColumnLayout {
 
                     Flow {
                         Layout.fillWidth: true
-                        visible: node.fileScopeGroupId.length > 0
+                        visible: node.files.fileScopeGroupId.length > 0
                         spacing: 6
                         Repeater {
-                            model: node.fileMemberAccess
+                            model: node.files.fileMemberAccess
                             delegate: Rectangle {
                                 required property string nickname
                                 required property string roleName
@@ -588,9 +588,9 @@ ColumnLayout {
 
                     Label {
                         Layout.fillWidth: true
-                        visible: node.fileSelectedShareRoot.length > 0
+                        visible: node.files.fileSelectedShareRoot.length > 0
                         wrapMode: Text.WordWrap
-                        text: node.fileScopeGroupId.length === 0
+                        text: node.files.fileScopeGroupId.length === 0
                               ? qsTr("Щелчок по папке — войти внутрь. Перетащите папку или файл.")
                               : qsTr("ПКМ по папке или файлу — назначить роль. Замок на строке — то же. «Роли поля» — роли участников по умолчанию.")
                         color: theme.textMuted
@@ -614,7 +614,7 @@ ColumnLayout {
                             anchors.fill: parent
                             clip: true
                             spacing: 4
-                            model: node.localFileList
+                            model: node.files.localFileList
                             delegate: Item {
                                 required property var modelData
                                 width: ListView.view ? ListView.view.width : parent.width
@@ -646,12 +646,12 @@ ColumnLayout {
                                     text: qsTr("В чат")
                                     onClicked: {
                                         if (fileRow.fileIsDirectory) {
-                                            node.linkFolderToChat(
+                                            node.files.linkFolderToChat(
                                                 fileRow.fileHash, fileRow.fileName,
                                                 fileRow.fileRootPath, fileRow.fileFullRelPath,
                                                 fileRow.fileSize)
                                         } else {
-                                            node.linkFileToChat(
+                                            node.files.linkFileToChat(
                                                 fileRow.fileHash, fileRow.fileName,
                                                 fileRow.fileMime, fileRow.fileSize)
                                         }
@@ -661,34 +661,34 @@ ColumnLayout {
                                     visible: !fileRow.fileIsDirectory
                                     theme: root.theme
                                     text: qsTr("Открыть")
-                                    onClicked: node.openFileByHash(
+                                    onClicked: node.files.openFileByHash(
                                         fileRow.fileHash, fileRow.fileName, fileRow.fileMime,
                                         fileRow.fileRootPath, fileRow.fileFullRelPath)
                                 }
                                 NyxButtonSecondary {
 
 
-                                    visible: node.fileScopeGroupId.length === 0
-                                             && node.fileExchangeReady
-                                             && node.canFileUpload
+                                    visible: node.files.fileScopeGroupId.length === 0
+                                             && node.files.fileExchangeReady
+                                             && node.files.canFileUpload
                                              && !fileRow.fileIsDirectory
                                     theme: root.theme
                                     text: qsTr("Передать")
                                     ToolTip.visible: hovered
                                     ToolTip.text: qsTr("Отправить этот файл собеседнику в текущем чате (не в поле)")
-                                    onClicked: node.sendFileByHash(fileRow.fileHash)
+                                    onClicked: node.files.sendFileByHash(fileRow.fileHash)
                                 }
                                 NyxButtonSecondary {
                                     visible: Qt.platform.os === "android"
                                              && !fileRow.fileIsDirectory
                                     theme: root.theme
                                     text: qsTr("Экспорт")
-                                    onClicked: node.exportFile(
+                                    onClicked: node.files.exportFile(
                                         fileRow.fileHash, fileRow.fileName,
                                         fileRow.fileMime)
                                 }
                                 IconButton {
-                                    visible: node.fileScopeGroupId.length > 0 && node.canManageFileRoles
+                                    visible: node.files.fileScopeGroupId.length > 0 && node.files.canManageFileRoles
                                     theme: root.theme
                                     name: "lock"
                                     ToolTip.text: qsTr("Права доступа")
@@ -702,7 +702,7 @@ ColumnLayout {
                         EmptyState {
                             anchors.centerIn: parent
                             width: parent.width - 24
-                            visible: localList.count === 0 && node.fileShareRoots.length === 0
+                            visible: localList.count === 0 && node.files.fileShareRoots.length === 0
                             theme: root.theme
                             emoji: "📁"
                             title: qsTr("Нет папок")
@@ -714,8 +714,8 @@ ColumnLayout {
                         EmptyState {
                             anchors.centerIn: parent
                             width: parent.width - 24
-                            visible: localList.count === 0 && node.fileShareRoots.length > 0
-                                     && node.fileSelectedShareRoot.length > 0
+                            visible: localList.count === 0 && node.files.fileShareRoots.length > 0
+                                     && node.files.fileSelectedShareRoot.length > 0
                             theme: root.theme
                             emoji: "📂"
                             title: qsTr("Папка пуста")
@@ -727,8 +727,8 @@ ColumnLayout {
                             width: parent.width - 24
                             visible: root.narrow
                                      && localList.count === 0
-                                     && node.fileShareRoots.length > 0
-                                     && node.fileSelectedShareRoot.length === 0
+                                     && node.files.fileShareRoots.length > 0
+                                     && node.files.fileSelectedShareRoot.length === 0
                             theme: root.theme
                             emoji: "📁"
                             title: qsTr("Выберите папку")
@@ -756,7 +756,7 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: node.fileScopeGroupId.length > 0
+                visible: node.files.fileScopeGroupId.length > 0
                 wrapMode: Text.WordWrap
                 text: qsTr("Только ваши share-папки в этом поле. Каталог других участников — вкладка «Ресурсы».")
                 color: theme.textMuted
@@ -768,13 +768,13 @@ ColumnLayout {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 4
-                model: node.fileShareRoots
+                model: node.files.fileShareRoots
                 delegate: ItemDelegate {
                     required property var modelData
                     width: ListView.view.width
                     implicitHeight: rowLayout.implicitHeight + 16
                     padding: 8
-                    highlighted: node.fileSelectedShareRoot === modelData.path
+                    highlighted: node.files.fileSelectedShareRoot === modelData.path
                     background: Rectangle {
                         radius: theme.radiusBtn - 2
                         color: parent.highlighted ? theme.accentPress
@@ -827,7 +827,7 @@ ColumnLayout {
                             name: "delete"
                             visible: modelData.canRemove === true
                             ToolTip.text: qsTr("Убрать из индекса")
-                            onClicked: node.removeIndexedFolder(modelData.path)
+                            onClicked: node.files.removeIndexedFolder(modelData.path)
                         }
                     }
                     onClicked: root.selectShareRoot(modelData.path)
@@ -843,18 +843,18 @@ ColumnLayout {
             NyxButtonSecondary {
                 Layout.fillWidth: true
                 theme: root.theme
-                enabled: node.canAddShareFolder
+                enabled: node.files.canAddShareFolder
                 text: Qt.platform.os === "android"
                       ? qsTr("Папка для обмена…")
                       : qsTr("Добавить папку…")
-                onClicked: node.addIndexedFolder("")
+                onClicked: node.files.addIndexedFolder("")
             }
             NyxButtonSecondary {
                 Layout.fillWidth: true
                 theme: root.theme
-                enabled: node.canAddShareFolder
+                enabled: node.files.canAddShareFolder
                 text: qsTr("Импортировать файлы…")
-                onClicked: node.importFiles()
+                onClicked: node.files.importFiles()
             }
         }
     }
@@ -933,10 +933,10 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: !node.fileExchangeReady
+                visible: !node.files.fileExchangeReady
                 wrapMode: Text.WordWrap
-                text: node.fileExchangeHint.length
-                      ? node.fileExchangeHint
+                text: node.files.fileExchangeHint.length
+                      ? node.files.fileExchangeHint
                       : qsTr("Подключитесь к чату или войдите в поле, затем нажмите «Обновить» в шапке.")
                 color: theme.textMuted
                 font.pixelSize: 11
@@ -944,7 +944,7 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: node.fileExchangeReady
+                visible: node.files.fileExchangeReady
                 wrapMode: Text.WordWrap
                 text: qsTr("Общие папки участников поля. Нажмите «Обновить» в шапке, если список пуст.")
                 color: theme.textMuted
@@ -953,36 +953,36 @@ ColumnLayout {
 
             RowLayout {
                 Layout.fillWidth: true
-                visible: node.fileExchangeReady
+                visible: node.files.fileExchangeReady
                 spacing: 6
                 IconButton {
                     theme: root.theme
                     name: "folder"
-                    enabled: node.fileResourcesRoot.length > 0
-                             || node.fileRemoteBrowsePath.length > 0
-                    ToolTip.text: node.fileRemoteBrowsePath.length > 0
+                    enabled: node.files.fileResourcesRoot.length > 0
+                             || node.files.fileRemoteBrowsePath.length > 0
+                    ToolTip.text: node.files.fileRemoteBrowsePath.length > 0
                                   ? qsTr("На уровень выше")
                                   : qsTr("К списку папок поля")
-                    onClicked: node.browseUp()
+                    onClicked: node.files.browseUp()
                 }
                 Flow {
                     Layout.fillWidth: true
                     spacing: 4
                     Repeater {
-                        model: node.fileRemoteBrowseCrumbs
+                        model: node.files.fileRemoteBrowseCrumbs
                         delegate: Label {
                             required property var modelData
                             required property int index
                             text: index > 0 ? " › " + modelData.label : modelData.label
-                            color: index === node.fileRemoteBrowseCrumbs.length - 1
+                            color: index === node.files.fileRemoteBrowseCrumbs.length - 1
                                    ? theme.textPrimary : theme.accent
                             font.pixelSize: 11
-                            font.weight: index === node.fileRemoteBrowseCrumbs.length - 1
+                            font.weight: index === node.files.fileRemoteBrowseCrumbs.length - 1
                                          ? Font.DemiBold : Font.Normal
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: node.browseToCrumb(index)
+                                onClicked: node.files.browseToCrumb(index)
                             }
                         }
                     }
@@ -991,9 +991,9 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: node.fileExchangeReady
+                visible: node.files.fileExchangeReady
                 wrapMode: Text.WordWrap
-                text: node.fileResourcesRoot.length === 0
+                text: node.files.fileResourcesRoot.length === 0
                       ? qsTr("Щелчок по папке — открыть share-папку участника.")
                       : qsTr("Щелчок по папке — войти внутрь. Скачайте файл кнопкой справа.")
                 color: theme.textMuted
@@ -1017,8 +1017,8 @@ ColumnLayout {
                     anchors.fill: parent
                     clip: true
                     spacing: 4
-                    visible: node.canFileList
-                    model: node.remoteFileList
+                    visible: node.files.canFileList
+                    model: node.files.remoteFileList
                     delegate: Item {
                         required property var modelData
                         width: ListView.view ? ListView.view.width : parent.width
@@ -1048,12 +1048,12 @@ ColumnLayout {
                                 text: qsTr("В чат")
                                 onClicked: {
                                     if (fileRow.fileIsDirectory) {
-                                        node.linkFolderToChat(
+                                        node.files.linkFolderToChat(
                                             fileRow.fileHash, fileRow.fileName,
                                             fileRow.fileRootPath, fileRow.fileFullRelPath,
                                             fileRow.fileSize)
                                     } else {
-                                        node.linkFileToChat(
+                                        node.files.linkFileToChat(
                                             fileRow.fileHash, fileRow.fileName,
                                             fileRow.fileMime, fileRow.fileSize)
                                     }
@@ -1063,19 +1063,19 @@ ColumnLayout {
                                 visible: fileRow.fileIsDirectory && modelData.canDownload === true
                                 theme: root.theme
                                 text: qsTr("Скачать папку")
-                                onClicked: node.downloadRemoteFolder(fileRow.fileRootPath, fileRow.fileFullRelPath)
+                                onClicked: node.files.downloadRemoteFolder(fileRow.fileRootPath, fileRow.fileFullRelPath)
                             }
                             NyxButtonSecondary {
                                 visible: !fileRow.fileIsDirectory && modelData.canDownload === true
                                 theme: root.theme
                                 text: qsTr("Скачать")
-                                onClicked: node.downloadFile(fileRow.fileHash, fileRow.fileName, fileRow.fileRootPath, fileRow.fileFullRelPath)
+                                onClicked: node.files.downloadFile(fileRow.fileHash, fileRow.fileName, fileRow.fileRootPath, fileRow.fileFullRelPath)
                             }
                             NyxButtonSecondary {
                                 visible: !fileRow.fileIsDirectory && modelData.canOpenRemote === true
                                 theme: root.theme
                                 text: qsTr("Открыть")
-                                onClicked: node.openRemoteFile(fileRow.fileHash, fileRow.fileName, fileRow.fileRootPath, fileRow.fileFullRelPath)
+                                onClicked: node.files.openRemoteFile(fileRow.fileHash, fileRow.fileName, fileRow.fileRootPath, fileRow.fileFullRelPath)
                             }
                         }
                     }
@@ -1084,7 +1084,7 @@ ColumnLayout {
                 EmptyState {
                     anchors.centerIn: parent
                     width: parent.width - 24
-                    visible: !node.canFileList && node.fileExchangeReady
+                    visible: !node.files.canFileList && node.files.fileExchangeReady
                     theme: root.theme
                     emoji: "🔒"
                     title: qsTr("Нет доступа к списку")
@@ -1094,7 +1094,7 @@ ColumnLayout {
                 EmptyState {
                     anchors.centerIn: parent
                     width: parent.width - 24
-                    visible: remoteList.count === 0 && node.fileExchangeReady && node.canFileList
+                    visible: remoteList.count === 0 && node.files.fileExchangeReady && node.files.canFileList
                     theme: root.theme
                     emoji: "🌐"
                     title: qsTr("Список пуст")
@@ -1121,7 +1121,7 @@ ColumnLayout {
                 Label {
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: node.canManageFileRoles
+                    text: node.files.canManageFileRoles
                           ? qsTr("Пресеты прав — конструктор масок. Роли собираются из прав. Назначение ролей — на «Обзор».")
                           : qsTr("Права на файлы настраивает владелец поля.")
                     color: theme.textMuted
@@ -1136,7 +1136,7 @@ ColumnLayout {
                 }
 
                 Repeater {
-                    model: node.filePermissionPresetList
+                    model: node.files.filePermissionPresetList
                     delegate: Rectangle {
                         required property string presetId
                         required property string name
@@ -1166,13 +1166,13 @@ ColumnLayout {
                                 spacing: 6
                                 Repeater {
                                     model: [
-                                        { bit: node.permFileList, label: qsTr("Список") },
-                                        { bit: node.permFileDownload, label: qsTr("Скачать") },
-                                        { bit: node.permFileUpload, label: qsTr("Отправить") },
-                                        { bit: node.permFileDelete, label: qsTr("Удалить") },
-                                        { bit: node.permFileOpenRemote, label: qsTr("По сети") },
-                                        { bit: node.permFileManageShares, label: qsTr("Папки") },
-                                        { bit: node.permFileManageRoles, label: qsTr("Роли") }
+                                        { bit: node.files.permFileList, label: qsTr("Список") },
+                                        { bit: node.files.permFileDownload, label: qsTr("Скачать") },
+                                        { bit: node.files.permFileUpload, label: qsTr("Отправить") },
+                                        { bit: node.files.permFileDelete, label: qsTr("Удалить") },
+                                        { bit: node.files.permFileOpenRemote, label: qsTr("По сети") },
+                                        { bit: node.files.permFileManageShares, label: qsTr("Папки") },
+                                        { bit: node.files.permFileManageRoles, label: qsTr("Роли") }
                                     ]
                                     delegate: Rectangle {
                                         required property int bit
@@ -1191,8 +1191,8 @@ ColumnLayout {
                                         }
                                         MouseArea {
                                             anchors.fill: parent
-                                            enabled: node.canManageFileRoles
-                                            onClicked: node.togglePermissionPresetBit(presetId, bit)
+                                            enabled: node.files.canManageFileRoles
+                                            onClicked: node.files.togglePermissionPresetBit(presetId, bit)
                                         }
                                     }
                                 }
@@ -1205,7 +1205,7 @@ ColumnLayout {
                                     id: delBtn
                                     theme: root.theme
                                     text: qsTr("Удалить")
-                                    onClicked: node.deletePermissionPreset(presetId)
+                                    onClicked: node.files.deletePermissionPreset(presetId)
                                 }
                             }
                         }
@@ -1215,7 +1215,7 @@ ColumnLayout {
                 Row {
                     width: parent.width
                     spacing: 8
-                    visible: node.canManageFileRoles
+                    visible: node.files.canManageFileRoles
                     NyxTextField {
                         id: newPresetName
                         width: parent.width - createPresetBtn.width - 8
@@ -1228,8 +1228,8 @@ ColumnLayout {
                         text: qsTr("Создать пресет")
                         enabled: newPresetName.text.trim().length > 0
                         onClicked: {
-                            node.createPermissionPreset(newPresetName.text,
-                                node.permFileList | node.permFileDownload)
+                            node.files.createPermissionPreset(newPresetName.text,
+                                node.files.permFileList | node.files.permFileDownload)
                             newPresetName.clear()
                         }
                     }
@@ -1243,7 +1243,7 @@ ColumnLayout {
                 }
 
                 Repeater {
-                    model: node.fileRoleList
+                    model: node.files.fileRoleList
                     delegate: Rectangle {
                         required property string roleId
                         required property string name
@@ -1274,13 +1274,13 @@ ColumnLayout {
                                 spacing: 6
                                 Repeater {
                                     model: [
-                                        { bit: node.permFileList, label: qsTr("Список") },
-                                        { bit: node.permFileDownload, label: qsTr("Скачать") },
-                                        { bit: node.permFileUpload, label: qsTr("Отправить") },
-                                        { bit: node.permFileDelete, label: qsTr("Удалить") },
-                                        { bit: node.permFileOpenRemote, label: qsTr("По сети") },
-                                        { bit: node.permFileManageShares, label: qsTr("Папки") },
-                                        { bit: node.permFileManageRoles, label: qsTr("Роли") }
+                                        { bit: node.files.permFileList, label: qsTr("Список") },
+                                        { bit: node.files.permFileDownload, label: qsTr("Скачать") },
+                                        { bit: node.files.permFileUpload, label: qsTr("Отправить") },
+                                        { bit: node.files.permFileDelete, label: qsTr("Удалить") },
+                                        { bit: node.files.permFileOpenRemote, label: qsTr("По сети") },
+                                        { bit: node.files.permFileManageShares, label: qsTr("Папки") },
+                                        { bit: node.files.permFileManageRoles, label: qsTr("Роли") }
                                     ]
                                     delegate: Rectangle {
                                         required property int bit
@@ -1299,9 +1299,9 @@ ColumnLayout {
                                         }
                                         MouseArea {
                                             anchors.fill: parent
-                                            enabled: node.canManageFileRoles
-                                                     && node.canEditFileRolePermissions(roleId)
-                                            onClicked: node.toggleFileRolePermission(roleId, bit)
+                                            enabled: node.files.canManageFileRoles
+                                                     && node.files.canEditFileRolePermissions(roleId)
+                                            onClicked: node.files.toggleFileRolePermission(roleId, bit)
                                         }
                                     }
                                 }
@@ -1309,8 +1309,8 @@ ColumnLayout {
                             Row {
                                 width: parent.width
                                 spacing: 8
-                                visible: node.canManageFileRoles && node.filePermissionPresetList.length > 0
-                                         && node.canEditFileRolePermissions(roleId)
+                                visible: node.files.canManageFileRoles && node.files.filePermissionPresetList.length > 0
+                                         && node.files.canEditFileRolePermissions(roleId)
                                 Label {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: qsTr("Из пресета:")
@@ -1318,26 +1318,26 @@ ColumnLayout {
                                     font.pixelSize: 10
                                 }
                                 Repeater {
-                                    model: node.filePermissionPresetList
+                                    model: node.files.filePermissionPresetList
                                     delegate: NyxButtonSecondary {
                                         required property string presetId
                                         required property string name
                                         theme: root.theme
                                         text: name
-                                        onClicked: node.applyPresetToRole(presetId, roleId)
+                                        onClicked: node.files.applyPresetToRole(presetId, roleId)
                                     }
                                 }
                             }
                             Row {
                                 width: parent.width
-                                visible: node.canManageFileRoles && !builtin
+                                visible: node.files.canManageFileRoles && !builtin
                                 spacing: 8
                                 Item { width: parent.width - delRoleBtn.width; height: 1 }
                                 NyxButtonSecondary {
                                     id: delRoleBtn
                                     theme: root.theme
                                     text: qsTr("Удалить роль")
-                                    onClicked: node.deleteFileRole(roleId)
+                                    onClicked: node.files.deleteFileRole(roleId)
                                 }
                             }
                         }
@@ -1347,7 +1347,7 @@ ColumnLayout {
                 Row {
                     width: parent.width
                     spacing: 8
-                    visible: node.canManageFileRoles
+                    visible: node.files.canManageFileRoles
                     NyxTextField {
                         id: newRoleName
                         width: parent.width - createRoleBtn.width - 8
@@ -1360,8 +1360,8 @@ ColumnLayout {
                         text: qsTr("Создать роль")
                         enabled: newRoleName.text.trim().length > 0
                         onClicked: {
-                            node.createFileRole(newRoleName.text,
-                                                node.permFileList | node.permFileDownload)
+                            node.files.createFileRole(newRoleName.text,
+                                                node.files.permFileList | node.files.permFileDownload)
                             newRoleName.clear()
                         }
                     }
@@ -1375,7 +1375,7 @@ ColumnLayout {
                 }
 
                 Repeater {
-                    model: node.fileMemberAccess
+                    model: node.files.fileMemberAccess
                     delegate: Rectangle {
                         required property string userId
                         required property string nickname
@@ -1401,13 +1401,13 @@ ColumnLayout {
                             NyxComboBox {
                                 id: memberRoleCombo
                                 Layout.preferredWidth: 170
-                                visible: !isOwner && node.canManageFileRoles
+                                visible: !isOwner && node.files.canManageFileRoles
                                 theme: root.theme
-                                model: node.fileRoleList
+                                model: node.files.fileRoleList
                                 textRole: "name"
                                 Component.onCompleted: syncRole()
                                 function syncRole() {
-                                    const roles = node.fileRoleList
+                                    const roles = node.files.fileRoleList
                                     for (let i = 0; i < roles.length; ++i) {
                                         if (roles[i].roleId === roleId) {
                                             currentIndex = i
@@ -1417,9 +1417,9 @@ ColumnLayout {
                                     currentIndex = roles.length > 0 ? 0 : -1
                                 }
                                 onActivated: {
-                                    const roles = node.fileRoleList
+                                    const roles = node.files.fileRoleList
                                     if (currentIndex >= 0 && currentIndex < roles.length)
-                                        node.setMemberFileRole(userId, roles[currentIndex].roleId)
+                                        node.files.setMemberFileRole(userId, roles[currentIndex].roleId)
                                 }
                                 Connections {
                                     target: node

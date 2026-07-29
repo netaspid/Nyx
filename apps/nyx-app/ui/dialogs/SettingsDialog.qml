@@ -33,10 +33,10 @@ Dialog {
         dialog: root
     }
 
-    onOpened: node.refreshMediaDevices()
+    onOpened: node.call.refreshMediaDevices()
     onClosed: {
-        if (node.audioTestActive)
-            node.stopAudioTest()
+        if (node.call.audioTestActive)
+            node.call.stopAudioTest()
     }
 
     contentItem: ColumnLayout {
@@ -244,16 +244,16 @@ Dialog {
                     Layout.fillWidth: true
                     theme: root.theme
                     textRole: "text"
-                    model: node.cameraDeviceList
+                    model: node.call.cameraDeviceList
                     Component.onCompleted: syncCamera()
                     onActivated: {
                         const row = rowAt(currentIndex)
                         if (row && row.id !== undefined)
-                            node.selectedCameraId = row.id
+                            node.call.selectedCameraId = row.id
                     }
                     function syncCamera() {
-                        const cur = node.selectedCameraId
-                        const list = node.cameraDeviceList
+                        const cur = node.call.selectedCameraId
+                        const list = node.call.cameraDeviceList
                         for (let i = 0; i < list.length; ++i) {
                             if (list[i].id === cur) {
                                 currentIndex = i
@@ -280,16 +280,16 @@ Dialog {
                     Layout.fillWidth: true
                     theme: root.theme
                     textRole: "text"
-                    model: node.audioInputDeviceList
+                    model: node.call.audioInputDeviceList
                     Component.onCompleted: syncMic()
                     onActivated: {
                         const row = rowAt(currentIndex)
                         if (row && row.id !== undefined)
-                            node.selectedAudioInputId = row.id
+                            node.call.selectedAudioInputId = row.id
                     }
                     function syncMic() {
-                        const cur = node.selectedAudioInputId
-                        const list = node.audioInputDeviceList
+                        const cur = node.call.selectedAudioInputId
+                        const list = node.call.audioInputDeviceList
                         for (let i = 0; i < list.length; ++i) {
                             if (list[i].id === cur) {
                                 currentIndex = i
@@ -318,16 +318,16 @@ Dialog {
                     Layout.fillWidth: true
                     theme: root.theme
                     textRole: "text"
-                    model: node.audioOutputDeviceList
+                    model: node.call.audioOutputDeviceList
                     Component.onCompleted: syncSpeaker()
                     onActivated: {
                         const row = rowAt(currentIndex)
                         if (row && row.id !== undefined)
-                            node.selectedAudioOutputId = row.id
+                            node.call.selectedAudioOutputId = row.id
                     }
                     function syncSpeaker() {
-                        const cur = node.selectedAudioOutputId
-                        const list = node.audioOutputDeviceList
+                        const cur = node.call.selectedAudioOutputId
+                        const list = node.call.audioOutputDeviceList
                         for (let i = 0; i < list.length; ++i) {
                             if (list[i].id === cur) {
                                 currentIndex = i
@@ -351,8 +351,8 @@ Dialog {
                         color: theme.textPrimary
                     }
                     Switch {
-                        checked: node.callSpeakerphone
-                        onToggled: node.callSpeakerphone = checked
+                        checked: node.call.callSpeakerphone
+                        onToggled: node.call.callSpeakerphone = checked
                     }
                 }
 
@@ -380,19 +380,19 @@ Dialog {
                     NyxButton {
                         Layout.fillWidth: true
                         theme: root.theme
-                        text: node.audioTestActive ? qsTr("Стоп микрофон") : qsTr("Тест микрофона")
+                        text: node.call.audioTestActive ? qsTr("Стоп микрофон") : qsTr("Тест микрофона")
                         onClicked: {
-                            if (node.audioTestActive)
-                                node.stopAudioTest()
+                            if (node.call.audioTestActive)
+                                node.call.stopAudioTest()
                             else
-                                node.startMicTest()
+                                node.call.startMicTest()
                         }
                     }
                     NyxButton {
                         Layout.fillWidth: true
                         theme: root.theme
                         text: qsTr("Тест динамика")
-                        onClicked: node.playSpeakerTest()
+                        onClicked: node.call.playSpeakerTest()
                     }
                 }
 
@@ -401,9 +401,9 @@ Dialog {
                     Layout.preferredHeight: 10
                     radius: 5
                     color: theme.inputBg
-                    visible: node.audioTestActive
+                    visible: node.call.audioTestActive
                     Rectangle {
-                        width: Math.max(2, parent.width * Math.min(1, Math.max(0, node.audioTestLevel)))
+                        width: Math.max(2, parent.width * Math.min(1, Math.max(0, node.call.audioTestLevel)))
                         height: parent.height
                         radius: parent.radius
                         color: theme.accent
@@ -413,7 +413,7 @@ Dialog {
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
-                    visible: node.audioTestActive
+                    visible: node.call.audioTestActive
                     text: qsTr("Говорите в микрофон — полоска должна двигаться.")
                     color: theme.textMuted
                     font.pixelSize: 11

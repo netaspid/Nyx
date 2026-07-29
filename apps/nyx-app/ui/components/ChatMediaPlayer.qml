@@ -10,12 +10,12 @@ Item {
     required property var node
     z: 950
     anchors.fill: parent
-    visible: node && node.inAppMediaOpen
+    visible: node && node.files.inAppMediaOpen
     focus: visible
 
-    readonly property string path: node ? (node.inAppMediaPath || "") : ""
-    readonly property string mime: node ? (node.inAppMediaMime || "") : ""
-    readonly property string title: node ? (node.inAppMediaTitle || "") : ""
+    readonly property string path: node ? (node.files.inAppMediaPath || "") : ""
+    readonly property string mime: node ? (node.files.inAppMediaMime || "") : ""
+    readonly property string title: node ? (node.files.inAppMediaTitle || "") : ""
     readonly property bool isImage: mime.indexOf("image/") === 0
     readonly property bool isAudio: mime.indexOf("audio/") === 0
     readonly property bool isVideo: mime.indexOf("video/") === 0
@@ -25,7 +25,7 @@ Item {
 
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
-            node.closeInAppMedia()
+            node.files.closeInAppMedia()
             event.accepted = true
         } else if (event.key === Qt.Key_Space && (isAudio || isVideo)) {
             if (player.playbackState === MediaPlayer.PlayingState)
@@ -62,7 +62,7 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        onClicked: root.node.closeInAppMedia()
+        onClicked: root.node.files.closeInAppMedia()
     }
 
     ColumnLayout {
@@ -85,7 +85,7 @@ Item {
                 theme: root.theme
                 name: "close"
                 ToolTip.text: qsTr("Закрыть")
-                onClicked: root.node.closeInAppMedia()
+                onClicked: root.node.files.closeInAppMedia()
             }
         }
 

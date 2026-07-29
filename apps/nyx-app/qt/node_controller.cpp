@@ -65,6 +65,11 @@ QIcon makeTrayIcon() {
 } // namespace
 
 NodeController::NodeController(QObject* parent) : QObject(parent), call_ui_(this), files_ui_(this) {
+  files_ui_.setHost(this);
+  call_ui_.setHost(this);
+  connect(this, &NodeController::chatChanged, &call_ui_, [this]() {
+    call_ui_.notifyCanStartCallChanged();
+  });
   connect(&document_viewer_,
           &DocumentViewer::toast,
           this,
@@ -86,12 +91,12 @@ NodeController::NodeController(QObject* parent) : QObject(parent), call_ui_(this
   connect(&call_ui_.call_audio_, &CallAudioIo::startFailed, this, [this]() {
     showToast(QStringLiteral("Микрофон/динамик недоступны — только сигналинг"), true);
   });
-  connect(&call_ui_.call_audio_,
-          &CallAudioIo::micLevelChanged,
-          this,
-          &NodeController::audioTestLevelChanged);
-  connect(
-      &call_ui_.call_audio_, &CallAudioIo::micTestChanged, this, &NodeController::audioTestChanged);
+  connect(&call_ui_.call_audio_, &CallAudioIo::micLevelChanged, &call_ui_, [this]() {
+    call_ui_.notifyAudioTestLevelChanged();
+  });
+  connect(&call_ui_.call_audio_, &CallAudioIo::micTestChanged, &call_ui_, [this]() {
+    call_ui_.notifyAudioTestChanged();
+  });
   connect(&call_ui_.call_audio_, &CallAudioIo::localVoiceActiveChanged, this, [this](bool active) {
     const bool small_field =
         service_.call_is_field_room() && service_.call_participants().size() <= 2;
@@ -112,9 +117,9 @@ NodeController::NodeController(QObject* parent) : QObject(parent), call_ui_(this
               if (call_ui_.call_frames_)
                 call_ui_.call_frames_->setPrimaryRemoteKey(QString());
               call_ui_.call_remote_frame_url_.clear();
-              emit callRemoteFrameChanged();
+              call_ui_.notifyCallRemoteFrameChanged();
             }
-            emit callVideoPeersChanged();
+            call_ui_.notifyCallVideoPeersChanged();
           });
   call_ui_.call_audio_thread_.start();
 
@@ -149,7 +154,7 @@ NodeController::NodeController(QObject* parent) : QObject(parent), call_ui_(this
             }
             call_ui_.call_video_.setCameraEnabled(true);
             call_ui_.call_video_.start();
-            emit callChanged();
+            call_ui_.notifyCallChanged();
           });
         }
       });
@@ -158,7 +163,7 @@ NodeController::NodeController(QObject* parent) : QObject(parent), call_ui_(this
   connect(&call_ui_.call_video_, &CallVideoIo::cameraOpenFailed, this, [this]() {
     service_.set_call_camera_on(false);
     showToast(QStringLiteral("Не удалось открыть камеру"), true);
-    emit callChanged();
+    call_ui_.notifyCallChanged();
   });
 
 #if !defined(Q_OS_ANDROID)
