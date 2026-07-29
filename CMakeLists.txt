@@ -352,7 +352,8 @@ if(NYX_BUILD_GUI)
       set(NYX_SETUP_STUB "${NYX_INSTALLER_DIR}/stub.exe")
       set(NYX_PACK_INSTALLER_EXE "${NYX_INSTALLER_DIR}/pack.exe")
 
-      add_executable(nyx-setup-stub apps/nyx-setup/main.cpp apps/nyx-setup/setup_util.cpp)
+      add_executable(nyx-setup-stub apps/nyx-setup/main.cpp apps/nyx-setup/setup_util.cpp
+                     apps/nyx-setup/payload.cpp)
       target_include_directories(nyx-setup-stub PRIVATE apps/nyx-setup)
       target_link_libraries(nyx-setup-stub PRIVATE shell32 ole32 comctl32 shlwapi advapi32)
       target_compile_options(nyx-setup-stub PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)

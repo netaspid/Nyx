@@ -19,21 +19,6 @@ namespace nyx_setup {
 
 namespace {
 
-constexpr char kMagic[4] = {'N', 'Y', 'X', 'I'};
-constexpr char kFooterMagic[4] = {'N', 'Y', 'X', 'F'};
-constexpr std::size_t kFooterSize = 12;
-
-std::uint32_t read_u32(const std::uint8_t* p) {
-  return static_cast<std::uint32_t>(p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
-}
-
-std::uint64_t read_u64(const std::uint8_t* p) {
-  std::uint64_t v = 0;
-  for (int i = 0; i < 8; ++i)
-    v |= static_cast<std::uint64_t>(p[i]) << (8 * i);
-  return v;
-}
-
 bool ensure_parent_dirs(const std::wstring& file_path) {
   const auto pos = file_path.find_last_of(L"\\/");
   if (pos == std::wstring::npos)
@@ -197,72 +182,9 @@ bool stop_nyx_for_install(const std::wstring& install_dir, std::wstring* err) {
   return true;
 }
 
-bool read_self_payload(std::vector<std::uint8_t>& out) {
-  wchar_t self[MAX_PATH];
-  if (!GetModuleFileNameW(nullptr, self, MAX_PATH))
-    return false;
-  std::ifstream in(self, std::ios::binary);
-  if (!in)
-    return false;
-  in.seekg(0, std::ios::end);
-  const std::streamoff size = in.tellg();
-  if (size < static_cast<std::streamoff>(kFooterSize + 12))
-    return false;
-  std::vector<std::uint8_t> exe(static_cast<size_t>(size));
-  in.seekg(0);
-  in.read(reinterpret_cast<char*>(exe.data()), size);
-  if (!in)
-    return false;
-
-  const std::size_t footer_at = static_cast<std::size_t>(size) - kFooterSize;
-  if (std::memcmp(exe.data() + footer_at + 8, kFooterMagic, 4) != 0)
-    return false;
-
-  const std::uint64_t payload_off = read_u64(exe.data() + footer_at);
-  if (payload_off + 12 > footer_at)
-    return false;
-  if (std::memcmp(exe.data() + payload_off, kMagic, 4) != 0)
-    return false;
-
-  out.assign(exe.begin() + static_cast<std::ptrdiff_t>(payload_off),
-             exe.begin() + static_cast<std::ptrdiff_t>(footer_at));
-  return true;
-}
-
-bool parse_payload(const std::vector<std::uint8_t>& blob, std::vector<PayloadFile>& files) {
-  files.clear();
-  if (blob.size() < 12 || std::memcmp(blob.data(), kMagic, 4) != 0)
-    return false;
-  const std::uint32_t version = read_u32(blob.data() + 4);
-  if (version != 1)
-    return false;
-  const std::uint32_t count = read_u32(blob.data() + 8);
-  size_t off = 12;
-  files.reserve(count);
-  for (std::uint32_t i = 0; i < count; ++i) {
-    if (off + 4 > blob.size())
-      return false;
-    const std::uint32_t path_len = read_u32(blob.data() + off);
-    off += 4;
-    if (off + path_len + 8 > blob.size())
-      return false;
-    PayloadFile f;
-    f.relative_path.assign(reinterpret_cast<const char*>(blob.data() + off), path_len);
-    off += path_len;
-    const std::uint64_t data_len = read_u64(blob.data() + off);
-    off += 8;
-    if (off + data_len > blob.size())
-      return false;
-    f.data.assign(blob.begin() + off, blob.begin() + off + static_cast<size_t>(data_len));
-    off += static_cast<size_t>(data_len);
-    files.push_back(std::move(f));
-  }
-  return true;
-}
-
 bool extract_payload(const std::vector<std::uint8_t>& blob,
                      const std::wstring& target_dir,
-                     ProgressFn progress,
+                     InstallProgressFn progress,
                      std::wstring* err) {
   std::vector<PayloadFile> files;
   if (!parse_payload(blob, files)) {
@@ -675,7 +597,7 @@ bool install_libreoffice(std::wstring* err) {
 
 bool ensure_document_dependencies(const std::wstring& install_dir,
                                   std::wstring* err,
-                                  ProgressFn progress) {
+                                  InstallProgressFn progress) {
   std::wstring notes;
   auto append = [&](const std::wstring& msg) {
     if (!notes.empty())
