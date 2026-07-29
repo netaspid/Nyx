@@ -553,7 +553,10 @@ private:
 
   std::thread discovery_thread_;
   std::atomic<bool> discovery_busy_ {false};
+  std::thread dm_reconnect_thread_;
   std::atomic<bool> dm_reconnect_busy_ {false};
+  std::thread dm_dial_thread_;
+  std::atomic<bool> dm_dial_busy_ {false};
 
   nyx::FileIndex file_index_;
   std::vector<nyx::FileEntry> hub_remote_catalog_;

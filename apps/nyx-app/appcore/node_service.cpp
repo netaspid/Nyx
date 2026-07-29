@@ -610,6 +610,13 @@ void NodeService::set_active_session(const std::string& session_id) {
 }
 
 void NodeService::stop() {
+  if (discovery_thread_.joinable())
+    discovery_thread_.join();
+  if (dm_reconnect_thread_.joinable())
+    dm_reconnect_thread_.join();
+  if (dm_dial_thread_.joinable())
+    dm_dial_thread_.join();
+
   std::vector<std::shared_ptr<NetSession>> to_join;
   {
     std::lock_guard lock(sessions_mutex_);
@@ -620,10 +627,6 @@ void NodeService::stop() {
       to_join.push_back(s);
     }
   }
-  if (discovery_thread_.joinable())
-    discovery_thread_.join();
-  for (int i = 0; i < 50 && (discovery_busy_.load() || dm_reconnect_busy_.load()); ++i)
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   for (auto& s : to_join) {
     if (s->worker.joinable()) {
       if (s->worker.get_id() != std::this_thread::get_id())
@@ -1308,7 +1311,9 @@ void NodeService::auto_reconnect_all() {
   }
 
   if (!plans.empty() && !dm_reconnect_busy_.exchange(true)) {
-    std::thread([this, plans = std::move(plans)]() {
+    if (dm_reconnect_thread_.joinable())
+      dm_reconnect_thread_.join();
+    dm_reconnect_thread_ = std::thread([this, plans = std::move(plans)]() {
       for (const auto& p : plans) {
         if (!p.peer_hex.empty()) {
           if (is_session_up(make_dm_session_id(p.peer_hex)))
@@ -1324,7 +1329,7 @@ void NodeService::auto_reconnect_all() {
           start_connect_peer(p.lan_host, p.lan_port);
       }
       dm_reconnect_busy_.store(false);
-    }).detach();
+    });
   }
 }
 

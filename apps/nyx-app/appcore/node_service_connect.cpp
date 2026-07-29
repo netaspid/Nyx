@@ -456,25 +456,35 @@ void NodeService::dial_dm_async(std::string peer_hex,
                                 std::string lan_host,
                                 uint16_t lan_port,
                                 bool quiet) {
-  std::thread([this,
-               peer_hex = std::move(peer_hex),
-               token_hex = std::move(token_hex),
-               lan_host = std::move(lan_host),
-               lan_port,
-               quiet]() {
+  if (dm_dial_busy_.exchange(true))
+    return;
+  if (dm_dial_thread_.joinable())
+    dm_dial_thread_.join();
+  dm_dial_thread_ = std::thread([this,
+                                 peer_hex = std::move(peer_hex),
+                                 token_hex = std::move(token_hex),
+                                 lan_host = std::move(lan_host),
+                                 lan_port,
+                                 quiet]() {
     if (!peer_hex.empty()) {
-      if (is_session_up(make_dm_session_id(peer_hex)))
+      if (is_session_up(make_dm_session_id(peer_hex))) {
+        dm_dial_busy_.store(false);
         return;
-      if (try_connect_via_lan(peer_hex))
+      }
+      if (try_connect_via_lan(peer_hex)) {
+        dm_dial_busy_.store(false);
         return;
+      }
     }
     if (token_hex.size() == 64) {
       start_connect_token(token_hex, quiet);
+      dm_dial_busy_.store(false);
       return;
     }
     if (!lan_host.empty() && lan_port > 0)
       start_connect_peer(lan_host, lan_port);
-  }).detach();
+    dm_dial_busy_.store(false);
+  });
 }
 
 bool NodeService::start_listen(bool lan_advertise) {
