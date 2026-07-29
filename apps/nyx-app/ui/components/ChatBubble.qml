@@ -6,7 +6,7 @@ import QtMultimedia
 import "."
 import "../js/MarkdownFormat.js" as Md
 
-/** Пузырь сообщения: блоки paragraph/table/formula/media/action. */
+/** Message bubble: paragraph/table/formula/media/action blocks. */
 Item {
     id: bubbleRoot
     required property string author
@@ -156,7 +156,6 @@ Item {
         }
     }
 
-    // —— обычный ——
     Rectangle {
         id: bubble
         visible: !bubbleRoot.isAction

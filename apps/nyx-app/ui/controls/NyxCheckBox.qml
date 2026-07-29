@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Компактный чекбокс в стиле Nyx. */
+/** Compact Nyx-styled checkbox. */
 Item {
     id: root
     required property var theme

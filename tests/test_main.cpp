@@ -51,7 +51,7 @@
 #include <thread>
 #include <vector>
 
-// Release (NDEBUG) иначе выкидывает assert → краши на nullptr.
+// Release (NDEBUG) would drop the assert, crashing on nullptr.
 #undef NDEBUG
 #include <cassert>
 
@@ -723,14 +723,14 @@ static void test_file_index_three() {
   }
   assert(has_sub);
 
-  // Кэш уровня с peer: маркеры папок + leaf-имена файлов (как после старого ListResp).
-  // Повторный listing_level не должен выкидывать ни папки, ни файлы.
+  // Level cache from a peer: folder markers + leaf file names (as after the old ListResp).
+  // A repeated listing_level must drop neither folders nor files.
   {
     std::vector<nyx::FileEntry> wire_level;
     for (const auto& e : level) {
       nyx::FileEntry w = e;
       if (!w.is_directory()) {
-        // Имитация старого бага на проводе: только leaf.
+        // Simulates the old wire bug: leaf only.
         w.relative_path = w.leaf_name();
       }
       wire_level.push_back(std::move(w));
@@ -745,7 +745,7 @@ static void test_file_index_three() {
     assert(has_sub_again);
     assert(files_again >= 3);
 
-    // Уровень внутри sub: leaf-файл nested.txt не должен пропасть.
+    // Level inside sub: the leaf file nested.txt must not vanish.
     std::vector<nyx::FileEntry> nested_wire;
     for (const auto& e : index.entries_for_session({})) {
       if (e.relative_path.find("sub/") == 0) {
@@ -773,7 +773,7 @@ static void test_file_index_three() {
   assert(index.share_roots().empty());
   assert(index.listing_for_session({}).empty());
 
-  // Повторное добавление после удаления не должно ломаться.
+  // Re-adding after removal must not break.
   assert(index.add_root(dir));
   assert(index.entries().size() == 4);
   assert(index.remove_root(dir));
@@ -804,7 +804,7 @@ static void test_list_response_size_cap() {
   assert(decoded);
   assert(!decoded->empty());
   assert(decoded->size() < entries.size());
-  // Папки кодируются раньше файлов — в урезанном ответе должны быть directory-маркеры.
+  // Folders encode before files, so a trimmed reply must keep the directory markers.
   bool has_dir = false;
   for (const auto& e : *decoded) {
     if (e.is_directory()) {
@@ -1291,7 +1291,7 @@ static void test_group_three_members() {
   assert(test_exchange_hello(*charlie_conn, charlie));
 
   nyx::GroupId zero{};
-  // У каждого участника свой data_dir — иначе общий groups/*.jsonl ломает дедуп id.
+  // Each member gets its own data_dir, or a shared groups/*.jsonl breaks id dedup.
   nyx::set_account_data_dir(bob_dir);
   nyx::GroupMemberService bob_svc(*bob_conn, bob, zero, "");
   nyx::set_account_data_dir(charlie_dir);
@@ -1404,7 +1404,7 @@ static void test_mdns_browse_receives_beacon() {
   sender.join();
 
   if (peers.empty()) {
-    // Часто блокируется firewall / без multicast на loopback.
+    // Often blocked by a firewall / loopback without multicast.
     std::cout << "mdns browse skipped (no peers — multicast unavailable)\n";
     return;
   }
@@ -1486,7 +1486,7 @@ static void test_profile_meta_photos_wire() {
   assert(out.photo_hashes.size() == 1);
   assert(out.photo_hashes[0] == h);
 
-  // Старый кадр без хвоста фото.
+  // Old frame without the photo tail.
   nyx::ByteBuffer legacy;
   nyx::write_u16_le(legacy, 2);
   legacy.push_back('o');
@@ -1629,7 +1629,7 @@ static void test_group_meta_message() {
   assert(decoded->tags == "a, b");
   assert(decoded->visibility == nyx::GroupVisibility::PublicListed);
 
-  // Пустая мета тоже не должна читаться как Bye.
+  // Empty meta must not parse as Bye either.
   nyx::GroupMetaMessage empty;
   const auto empty_wire = empty.encode();
   assert(!nyx::ByeMessage::decode(empty_wire));

@@ -1,6 +1,6 @@
 #pragma once
 
-/** Подключение initiator по EndpointHint от rendezvous (LAN punch + handshake). */
+/** Initiator connect via a rendezvous EndpointHint (LAN punch + handshake). */
 
 #include "nyx/connection.hpp"
 #include "nyx/proto.hpp"
@@ -17,7 +17,7 @@ struct HintConnectResult {
   uint16_t port = 0;
 };
 
-/** Hole-punch вне LAN, затем Noise handshake. socket передаётся по move. */
+/** Hole punch outside the LAN, then Noise handshake. The socket is moved in. */
 HintConnectResult connect_via_rendezvous_hint(nyx::UdpSocket socket,
                                               const nyx::EndpointHint& hint);
 

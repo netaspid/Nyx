@@ -1,6 +1,6 @@
 #pragma once
 
-/** Метка типа соединения для UI и логов (GUI + CLI). */
+/** Connection type label for UI and logs (GUI + CLI). */
 
 #include <string>
 
@@ -14,7 +14,7 @@ enum class ConnectionVia {
   Group,
 };
 
-/** Человекочитаемая метка: LAN, Интернет, Поле, … */
+/** Human-readable label: LAN, Internet, Field, ... */
 std::string connection_label(ConnectionVia via, const std::string& peer_host);
 
 }  // namespace nyx_app

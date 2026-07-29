@@ -128,7 +128,7 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
       session->id = final_id;
       sessions_[final_id] = session;
     }
-    // Не перехватывать active у другого открытого чата.
+    // Do not steal active from another open chat.
     if (active_session_id_.empty() || active_session_id_ == final_id ||
         active_session_id_.rfind("dm:pending:", 0) == 0 ||
         active_session_id_.rfind("dm:incoming:", 0) == 0) {
@@ -283,9 +283,9 @@ bool NodeService::remove_share_root(const std::string& path,
     return false;
   }
   emit_status("папка убрана из индекса");
-  // Всегда публикуем при scoped-удалении (в т.ч. пустой индекс — сброс на hub).
+  // Always publish on a scoped removal (even an empty index resets the hub).
   if (scope_ptr) publish_field_index();
-  // Сброс локального кэша «Ресурсы» у владельца hub, чтобы UI не держал призраки.
+  // Reset the owner local Resources cache so the UI drops ghost entries.
   hub_remote_catalog_.clear();
   return true;
 }

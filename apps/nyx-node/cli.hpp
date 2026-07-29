@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file cli.hpp
- *  Разбор аргументов командной строки nyx-node.
+ *  nyx-node command line parsing.
  */
 
 #include <cstdint>
@@ -9,7 +9,7 @@
 
 namespace nyx_node {
 
-/** Параметры запуска узла. */
+/** Node launch parameters. */
 struct NodeConfig {
   std::string rendezvous = "127.0.0.1:3478";
   std::string bind_host = "0.0.0.0";
@@ -20,13 +20,13 @@ struct NodeConfig {
   std::string peer_addr;
 };
 
-/** Разбирает host:port. @return false при ошибке формата. */
+/** Parses host:port. @return false on bad format. */
 bool parse_host_port(const std::string& addr, std::string& host, uint16_t& port);
 
-/** Разбор argv после имени команды (listen / connect). */
+/** Parses argv after the command name (listen / connect). */
 NodeConfig parse_config(int argc, char** argv, int start_index);
 
-/** Печатает справку по использованию. */
+/** Prints usage help. */
 void print_usage();
 
 }  // namespace nyx_node

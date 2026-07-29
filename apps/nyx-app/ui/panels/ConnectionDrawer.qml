@@ -158,7 +158,6 @@ Drawer {
             Layout.preferredHeight: 220
             currentIndex: connTabs.currentIndex
 
-            // Пригласить: короткий код + копирование
             ColumnLayout {
                 spacing: 10
                 Label {
@@ -185,7 +184,6 @@ Drawer {
                 }
             }
 
-            // Войти в личный чат
             ColumnLayout {
                 spacing: 10
                 Label {
@@ -214,7 +212,6 @@ Drawer {
                 }
             }
 
-            // Войти в поле
             ColumnLayout {
                 spacing: 10
                 Label {
@@ -308,7 +305,6 @@ Drawer {
             }
         }
 
-        // Блок подсказок
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: tipsCol.implicitHeight + 16

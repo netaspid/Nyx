@@ -38,7 +38,7 @@ Rectangle {
 
         Label {
             Layout.fillWidth: true
-            // Важно: не читать свой text внутри binding — иначе строка раздувается.
+            // Never read own text inside the binding, or the string keeps growing.
             text: {
                 const summary = node ? node.sessionSummary : ""
                 const status = root.text

@@ -441,7 +441,7 @@ void DocumentViewer::queryPageCount() {
   const int gen = ++render_gen_;
   const QString pdf = pdf_path_;
 
-  // Wait on a worker thread so a stalled UI event loop cannot leave us on «Чтение…».
+  // Wait on a worker thread so a stalled UI event loop cannot leave us stuck on "reading".
   std::thread([this, program, args, gen, pdf]() {
     int code = -1;
     const QByteArray out = run_tool_capture(program, args, 15000, &code);

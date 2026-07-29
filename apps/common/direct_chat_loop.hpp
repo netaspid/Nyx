@@ -1,6 +1,6 @@
 #pragma once
 
-/** Общий цикл ChatService + FileTransferService (GUI и CLI). */
+/** Shared ChatService + FileTransferService loop (GUI and CLI). */
 
 #include "nyx/chat_service.hpp"
 #include "nyx/connection.hpp"
@@ -10,8 +10,8 @@
 
 namespace nyx_app {
 
-/** Крутит tick/pump/recv пока should_continue() и chat.connected().
- *  on_bulk: если вернул true — кадр уже обработан (например avatar), files не зовём.
+/** Runs tick/pump/recv while should_continue() and chat.connected().
+ *  on_bulk: returning true means the frame is handled (e.g. avatar); files is skipped.
  */
 void pump_direct_chat(nyx::ChatService& chat, nyx::FileTransferService& files,
                       nyx::Connection& connection,

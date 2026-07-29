@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "../controls"
 
-/** Короткий invite-код + копирование полного hex. */
+/** Short invite code plus full-hex copy. */
 RowLayout {
     id: root
     required property var theme

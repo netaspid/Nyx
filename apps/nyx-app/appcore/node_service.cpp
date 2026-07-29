@@ -468,8 +468,8 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
   session->running.store(false);
   session->quiet_ui.store(false);
   session->state.store(final_state);
-  // Не detach здесь: параллельный join() из UI даёт data race / краш.
-  // Поток остаётся joinable до join() снаружи или ~NetSession.
+  // No detach here: a concurrent join() from the UI causes a data race / crash.
+  // The thread stays joinable until an external join() or ~NetSession.
   {
     std::lock_guard lock(sessions_mutex_);
     if (active_session_id_ == session->id) {
@@ -499,7 +499,7 @@ void NodeService::stop_session_locked(const std::shared_ptr<NetSession>& session
 void NodeService::abandon_session_worker(const std::shared_ptr<NetSession>& session) {
   if (!session) return;
   session->running.store(false);
-  // Не join() из UI: lookup/reconnect может держать поток секунды → подвисание и краш.
+  // Never join() from the UI: lookup/reconnect can hold the thread for seconds, freezing the UI.
   if (session->worker.joinable() &&
       session->worker.get_id() != std::this_thread::get_id()) {
     session->worker.detach();
@@ -585,7 +585,7 @@ bool NodeService::is_session_live(const std::string& session_id) const {
 }
 
 bool NodeService::is_session_up(const std::string& session_id) const {
-  // Сырой state: тихий Connecting тоже «занят», иначе timer запустит второй join.
+  // Raw state: a quiet Connecting also counts as busy, or the timer starts a second join.
   auto s = find_session(session_id);
   if (!s) return false;
   const auto st = s->state.load();
@@ -641,7 +641,7 @@ bool NodeService::stop_session(const std::string& session_id) {
     if (!session) return false;
     id = session->id;
   }
-  // Сначала выключить intent — иначе session_ended / timer успеют снова поднять сессию.
+  // Disable the intent first, or session_ended / the timer bring the session back up.
   mark_session_disconnected(id);
   if (!session->ref_id_hex.empty() && id.rfind("group:", 0) == 0) {
     mark_session_disconnected(make_group_session_id(session->ref_id_hex));
@@ -827,7 +827,7 @@ bool NodeService::update_group_meta(const std::string& group_id_hex,
                                         : nyx::GroupVisibility::Circle;
   if (!store.update_meta(gid, description, direction, tags, visibility)) return false;
 
-  // Живой hub — пушим мету участникам в эфире.
+  // Live hub: push meta to connected members.
   {
     std::lock_guard lock(sessions_mutex_);
     for (auto& [id, session] : sessions_) {
@@ -956,7 +956,7 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
     auto existing = find_session(sid);
     if (existing && existing->kind == SessionKind::GroupHub) {
       const auto st = existing->state.load();
-      // Не убивать Connecting: register/rendezvous может занять секунды.
+      // Do not kill Connecting: register/rendezvous can take seconds.
       if (st == SessionState::Live || st == SessionState::Connecting) return true;
     }
     if (existing) {
@@ -972,7 +972,7 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
     sessions_.erase(sid);
     session = create_session(sid, SessionKind::GroupHub);
     session->ref_id_hex = group_id_hex;
-    // Не перехватывать active у открытого чата (фоновый reconnect).
+    // Do not steal active from an open chat (background reconnect).
     if (active_session_id_.empty() || active_session_id_ == sid) active_session_id_ = sid;
   }
   session->worker =
@@ -1009,7 +1009,7 @@ bool NodeService::start_group_join(const std::string& invite_hex, bool quiet_ui)
     }
   }
 
-  // Старый pending-ключ после прошлых версий.
+  // Stale pending key left over from previous versions.
   if (!ref_hex.empty()) {
     const std::string legacy = "group:join:" + invite_hex.substr(0, 12);
     if (legacy != sid) {
@@ -1127,7 +1127,7 @@ void NodeService::auto_reconnect_all() {
   store.load();
   intent_store_.load();
 
-  // Свои поля: поднимаем hub всегда, пока intent не выключен вручную («Отключиться»).
+  // Own fields: always bring the hub up until the intent is disabled manually.
   for (const auto& g : store.all()) {
     if (g.owner_id != profile.user_id()) continue;
     const std::string gid = nyx::GroupStore::group_id_hex(g.id);
@@ -1139,8 +1139,8 @@ void NodeService::auto_reconnect_all() {
 
   if (!network_config_.auto_start_owned_hub) return;
 
-  // Чужие поля / join — пока intent не выключен вручную («Отключиться»).
-  // После 3 видимых неудач — офлайн в UI, тихий probe раз в ~60 с.
+  // Foreign fields / joins: retried until the intent is disabled manually.
+  // After 3 visible failures: offline in the UI, quiet probe every ~60 s.
   const int64_t now_ms = steady_now_ms();
   for (const auto& g : store.all()) {
     if (g.owner_id == profile.user_id()) continue;
@@ -1359,7 +1359,7 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
       if (!live.name.empty()) merged.name = live.name;
       nyx::UserId zero{};
       if (live.owner_id != zero) merged.owner_id = live.owner_id;
-      // Hub всегда источник меты; участник — только после GroupMeta.
+      // The hub is always the meta source; a member only after GroupMeta.
       if (session->group_hub ||
           (session->group_member && session->group_member->view().meta_received)) {
         merged.description = live.description;

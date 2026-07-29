@@ -149,7 +149,7 @@ ColumnLayout {
         }
     }
 
-    // --- вкладки: явный Row, без скрытых TabButton ---
+    // Tabs: an explicit Row, no hidden TabButtons
     Rectangle {
         Layout.fillWidth: true
         Layout.leftMargin: theme.spacing
@@ -308,7 +308,7 @@ ColumnLayout {
         }
     }
 
-    // --- содержимое: только одна страница через Loader ---
+    // Content: a single page via Loader
     Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -395,7 +395,6 @@ ColumnLayout {
         node: root.node
     }
 
-    // ===== Страница: Обзор =====
     Component {
         id: overviewPage
 
@@ -667,8 +666,8 @@ ColumnLayout {
                                         fileRow.fileRootPath, fileRow.fileFullRelPath)
                                 }
                                 NyxButtonSecondary {
-                                    // Только личка 1:1: передать файл собеседнику по каналу обмена.
-                                    // В поле каталог уже общий через «Ресурсы» — кнопка путает.
+                                    // DM only: send the file to the peer over the exchange channel.
+                                    // In a field the catalog is already shared via Resources; the button confuses.
                                     visible: node.fileScopeGroupId.length === 0
                                              && node.fileExchangeReady
                                              && node.canFileUpload
@@ -925,7 +924,6 @@ ColumnLayout {
         }
     }
 
-    // ===== Страница: Ресурсы соседа =====
     Component {
         id: remotePage
 
@@ -1106,7 +1104,6 @@ ColumnLayout {
         }
     }
 
-    // ===== Страница: Доступ (только для поля) =====
     Component {
         id: accessPage
 

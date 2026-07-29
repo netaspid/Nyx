@@ -41,7 +41,7 @@ reset_usb_android() {
   for n in "${nodes[@]}"; do
     [[ -e "$n" ]] || continue
     sudo chmod a+rw "$n" 2>/dev/null || true
-    # USBDEVFS_RESET — оживляет «залипший» ADB без перетыкания кабеля
+    # USBDEVFS_RESET revives a stuck ADB without replugging the cable
     python3 - "$n" <<'PY' 2>/dev/null || true
 import fcntl, os, sys
 USBDEVFS_RESET = 21780

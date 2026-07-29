@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-/** Пустое состояние: emoji + заголовок + подсказка. */
+/** Empty state: emoji + title + hint. */
 Column {
     id: root
     spacing: 8

@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file cli_console.hpp
- *  Потокобезопасный вывод CLI-чата: сообщения, события, подсказка ввода.
+ *  Thread-safe CLI chat output: messages, events, input prompt.
  */
 
 #include <cstdint>
@@ -11,7 +11,7 @@
 
 namespace nyx_node {
 
-/** Строка для print_history. */
+/** Line item for print_history. */
 struct HistoryLine {
   uint64_t timestamp_ms = 0;
   std::string author;
@@ -19,31 +19,31 @@ struct HistoryLine {
   bool outgoing = false;
 };
 
-/** Форматированный вывод в терминал без конфликтов сетевого потока и stdin. */
+/** Formatted terminal output without clashes between the network thread and stdin. */
 class CliConsole {
  public:
   explicit CliConsole(std::string self_nickname);
 
-  /** Шапка сессии после подключения. */
+  /** Session header after connect. */
   void print_header(const std::string& peer_nickname, const std::string& peer_id_short);
 
-  /** Системное событие (подключение, отключение, ошибка). */
+  /** System event (connect, disconnect, error). */
   void print_event(const std::string& text);
 
-  /** Строка чата. outgoing=true — ваше сообщение. */
+  /** Chat line. outgoing=true marks own messages. */
   void print_message(uint64_t timestamp_ms, const std::string& author,
                      const std::string& text, bool outgoing);
 
-  /** Печать истории из хранилища. */
+  /** Prints stored history. */
   void print_history(const std::vector<HistoryLine>& lines);
 
-  /** Подсказка ввода внизу экрана. */
+  /** Input prompt at the bottom of the screen. */
   void print_prompt();
 
-  /** Справка по командам. */
+  /** Command help. */
   void print_help() const;
 
-  /** Статус соединения и peer. */
+  /** Connection and peer status. */
   void print_status(const std::string& peer_nickname, const std::string& peer_endpoint,
                     bool connected) const;
 

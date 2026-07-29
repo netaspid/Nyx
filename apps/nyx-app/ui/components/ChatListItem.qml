@@ -16,11 +16,11 @@ Rectangle {
     required property string key
     required property string refId
     required property string lastSeen
-    // Обязательны для ListView: иначе Qt 6 не обновляет роль при dataChanged.
+    // Required for ListView: Qt 6 does not refresh the role on dataChanged otherwise.
     required property string sessionState
     required property bool selected
 
-    // Offline / disconnected — серые. Connecting и live — активные.
+    // Offline / disconnected are gray; connecting and live are active.
     readonly property bool live: sessionState === "live"
     readonly property bool connecting: sessionState === "connecting"
     readonly property bool offline: !live && !connecting &&
@@ -28,7 +28,7 @@ Rectangle {
                                      || sessionState === "disconnected"
                                      || sessionState === "idle"
                                      || sessionState.length === 0)
-    // Историю открываем всегда; сеть для офлайн-клиента — только toast.
+    // History always opens; network for an offline client is toast-only.
     readonly property bool selectable: true
 
     function requestContextMenu(x, y) {

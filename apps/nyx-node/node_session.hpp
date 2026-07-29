@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file node_session.hpp
- *  Сценарии listen/connect и интерактивный чат (фаза 1 roadmap).
+ *  listen/connect scenarios and the interactive chat.
  */
 
 #include "cli.hpp"
@@ -13,16 +13,16 @@
 
 namespace nyx_node {
 
-/** Режим слушателя: register на rendezvous, accept, чат. */
+/** Listener mode: rendezvous register, accept, chat. */
 int run_listen(const NodeConfig& config);
 
-/** Подключение по invite token, чат. */
+/** Connect by invite token, then chat. */
 int run_connect(const std::string& token_hex, const NodeConfig& config);
 
-/** Прямое подключение по host:port (LAN). */
+/** Direct connect by host:port (LAN). */
 int run_connect_peer(const NodeConfig& config);
 
-/** Поиск узлов в локальной сети. */
+/** LAN node discovery. */
 int run_browse(int timeout_ms);
 
 }  // namespace nyx_node

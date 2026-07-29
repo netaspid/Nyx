@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "controls"
 import "components"
 
-/** Экран входа: локальные аккаунты, recovery, remember-me. */
+/** Login screen: local accounts, recovery, remember-me. */
 Rectangle {
     id: root
     required property var theme
@@ -15,7 +15,7 @@ Rectangle {
     visible: !node.sessionUnlocked || node.needsRecoveryConfirm
     z: 100
 
-    /** 0 — список, 1 — создать, 2 — показать recovery, 3 — сброс пароля */
+    /** 0 = list, 1 = create, 2 = show recovery, 3 = password reset */
     property int mode: node.needsRecoveryConfirm ? 2
                        : (node.accountList.length > 0 ? 0 : 1)
     property string selectedAccountId: ""
@@ -35,7 +35,7 @@ Rectangle {
         if (root.selectedAccountId.length > 0) return
         const last = node.lastAccountId || ""
         if (last.length === 0) {
-            // Автовыбор единственного доступного аккаунта
+            // Auto-select the only available account
             if (node.accountList.length === 1 && !node.accountList[0].locked) {
                 root.selectedAccountId = node.accountList[0].id
                 root.selectedNickname = node.accountList[0].nickname

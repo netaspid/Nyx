@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 
-/** Бренд Nyx: созвездие + подпись «Nyx» (единый lockup, чистый QML). */
+/** Nyx brand: constellation + "Nyx" caption (single lockup, pure QML). */
 Item {
     id: root
 

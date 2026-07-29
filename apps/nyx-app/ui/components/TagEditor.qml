@@ -170,7 +170,7 @@ Item {
                 }
 
                 onTextChanged: {
-                    // IME / вставка: «a b», «a,b»
+                    // IME / paste: "a b", "a,b"
                     if (/[\s,;]/.test(text))
                         Qt.callLater(function() { root.commitInput() })
                 }

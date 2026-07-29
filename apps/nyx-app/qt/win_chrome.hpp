@@ -4,11 +4,11 @@
 
 class QWindow;
 
-/** Тёмный/светлый системный title bar (Windows DWM). На других ОС — no-op. */
+/** Dark/light system title bar (Windows DWM). No-op elsewhere. */
 void nyxApplyNativeChromeDark(QWindow* window, bool dark);
 
-/** Применить ко всем top-level окнам приложения. */
+/** Applies to all top-level application windows. */
 void nyxApplyNativeChromeDarkAll(bool dark);
 
-/** Иконка приложения: .ico из ресурсов, иначе PNG/SVG/fallback. */
+/** Application icon: .ico from resources, else PNG/SVG/fallback. */
 QIcon nyxAppIcon();

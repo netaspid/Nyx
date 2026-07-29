@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "../controls"
 import "../components"
 
-/** Информация о поле и участники — в стиле приложения, клик → профиль. */
+/** Field info and members, app-styled; click opens the profile. */
 Dialog {
     id: root
     required property var theme
@@ -56,7 +56,7 @@ Dialog {
     function openMemberProfile(userId) {
         const uid = String(userId || "").trim().toLowerCase()
         if (uid.length !== 64) return
-        // PeerInfo поверх модалки поля
+        // PeerInfo above the field modal
         node.openPeerInfo(uid)
     }
 
@@ -80,7 +80,6 @@ Dialog {
         spacing: 0
         width: parent ? parent.width : implicitWidth
 
-        // —— шапка поля ——
         Rectangle {
             Layout.fillWidth: true
             color: theme.bgChatHeader
@@ -161,7 +160,7 @@ Dialog {
             }
         }
 
-        // —— прокручиваемое тело (gutter под скроллбар — без наезда на поля) ——
+        // Scrollable body (scrollbar gutter avoids overlapping the fields)
         Flickable {
             id: bodyFlick
             Layout.fillWidth: true
@@ -207,7 +206,7 @@ Dialog {
                         font.pixelSize: 11
                     }
 
-                    // —— Просмотр меты (участник) ——
+                    // Meta view (member)
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -274,7 +273,7 @@ Dialog {
                         }
                     }
 
-                    // —— Редактирование меты (создатель) ——
+                    // Meta editing (owner)
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 6
@@ -346,7 +345,7 @@ Dialog {
 
                         delegate: Rectangle {
                             id: memberRow
-                            // QVariantMap из fieldInfoMembers — через modelData
+                            // QVariantMap from fieldInfoMembers comes via modelData
                             required property var modelData
 
                             readonly property string userId: String(modelData.userId || "")
@@ -462,7 +461,7 @@ Dialog {
                                 }
                             }
 
-                            // поверх строки, кроме кнопки «Искл.»
+                            // covers the row except the kick button
                             MouseArea {
                                 id: memberMa
                                 anchors.fill: parent

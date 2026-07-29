@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Установка nyx-rendezvous на Linux VDS
+# Installs nyx-rendezvous on a Linux VDS
 set -euo pipefail
 
 INSTALL_DIR="/opt/nyx"

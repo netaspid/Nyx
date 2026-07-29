@@ -1,6 +1,6 @@
 #pragma once
 
-/** Захват/воспроизведение аудио звонка через Qt Multimedia + Opus. */
+/** Call audio capture/playback via Qt Multimedia + Opus. */
 
 #include "nyx/call_opus.hpp"
 

@@ -85,7 +85,7 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
   session->share_scope = group_id;
   remember_intent_for_session(session, nyx::GroupStore::invite_hex(group->invite_token));
 
-  // GroupHub до chat_ready: иначе Live без send_message → «Не удалось отправить».
+  // GroupHub before chat_ready: otherwise Live without send_message fails sends.
   session->group_hub = std::make_unique<nyx::GroupHub>(rv.socket(), profile, *group);
   session->group_hub->attach_files(file_index_, group_id, &file_access_);
   session->group_hub->set_on_message([this, session](const nyx::ChatMessage& msg, bool outgoing) {
@@ -175,7 +175,7 @@ void NodeService::run_group_hub(std::shared_ptr<NetSession> session, std::string
   }
 
   session->group_hub->notify_shutdown("эфир закрыт");
-  // Дать UDP Bye уйти до unregister.
+  // Let the UDP Bye leave before unregister.
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   nyx::unregister_token_on(session->group_hub->socket(), rv_servers, hub_invite);
   clear_live_group_snapshot(group_id);

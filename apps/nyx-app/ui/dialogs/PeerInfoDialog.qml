@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "../controls"
 import "../components"
 
-/** Профиль собеседника — Dialog на Overlay. */
+/** Peer profile dialog on the Overlay. */
 Dialog {
     id: root
     required property var theme

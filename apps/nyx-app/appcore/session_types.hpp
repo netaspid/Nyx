@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file session_types.hpp
- *  Типы сетевых сессий AppCore (multi-session).
+ *  App core network session types (multi-session).
  */
 
 #include <cstdint>
@@ -25,7 +25,7 @@ enum class SessionState : uint8_t {
   Disconnected = 4,
 };
 
-/** Снимок сессии для UI / status bar. */
+/** Session snapshot for the UI / status bar. */
 struct SessionInfo {
   std::string id;
   SessionKind kind = SessionKind::Idle;

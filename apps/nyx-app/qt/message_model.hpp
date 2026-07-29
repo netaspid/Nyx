@@ -5,7 +5,7 @@
 #include <QVariant>
 #include <QVector>
 
-/** Список сообщений чата для QML ListView. */
+/** Chat message list for the QML ListView. */
 class MessageModel : public QAbstractListModel {
   Q_OBJECT
 
@@ -20,7 +20,7 @@ class MessageModel : public QAbstractListModel {
     AuthorUserIdRole,
   };
 
-  /** pending | delivered | failed | пусто (входящие / старая история). */
+  /** pending | delivered | failed | empty (incoming / old history). */
   explicit MessageModel(QObject* parent = nullptr);
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override;

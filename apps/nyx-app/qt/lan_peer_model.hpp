@@ -5,7 +5,7 @@
 #include <QVector>
 #include <QVariant>
 
-/** Результаты LAN browse для QML. */
+/** LAN browse results for QML. */
 class LanPeerModel : public QAbstractListModel {
   Q_OBJECT
 

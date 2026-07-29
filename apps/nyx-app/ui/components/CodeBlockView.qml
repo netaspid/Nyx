@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import "../js/MarkdownFormat.js" as Md
 
-/** Блок кода: тёмная панель, перенос строк, вертикальный скролл для длинных полотен. */
+/** Code block: dark panel, wrapping, vertical scroll for long content. */
 Rectangle {
     id: root
     property string lang: ""
@@ -16,7 +16,7 @@ Rectangle {
     border.width: 1
     clip: true
 
-    // Только колонка + поля; высоту кода не дублировать (раньше был ×2 → пустой хвост)
+    // Column + padding only; never double the code height (used to leave an empty tail)
     implicitHeight: col.implicitHeight + 16
 
     Column {
@@ -84,7 +84,7 @@ Rectangle {
                 text: Md.highlightCodeWrapped(root.lang, root.code, 56)
                 font.family: "Consolas"
                 font.pixelSize: 13
-                // lineHeight на RichText раздувает implicitHeight без отрисовки — не использовать
+                // lineHeight on RichText inflates implicitHeight without rendering; avoid it
                 color: "#d4d4d4"
             }
 

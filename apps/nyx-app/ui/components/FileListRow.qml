@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "../controls"
 import "."
 
-/** Строка файла или папки в браузере. */
+/** File or folder row in the browser. */
 Rectangle {
     id: root
     required property var theme
@@ -20,7 +20,7 @@ Rectangle {
     property string fileFullRelPath: ""
     property string fileOwnerLabel: ""
     property var node
-    /** ПКМ по строке — назначение прав (только в поле). */
+    /** Right click on the row assigns permissions (fields only). */
     signal accessContextMenuRequested()
 
     readonly property bool compact: width < 480 || Qt.platform.os === "android"

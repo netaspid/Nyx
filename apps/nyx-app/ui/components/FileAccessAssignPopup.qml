@@ -4,13 +4,13 @@ import QtQuick.Layouts
 import "../controls"
 import "."
 
-/** Диалог прав: роль на объект и переопределения для участников. */
+/** Permissions dialog: object role plus per-member overrides. */
 Popup {
     id: root
     required property var theme
     required property var node
 
-    /** "path" — папка/файл; "field" — роли участников поля. */
+    /** "path" = folder/file; "field" = member roles of the field. */
     property string mode: "path"
     property string objectTitle: ""
     property int grantSyncKey: 0
@@ -36,7 +36,7 @@ Popup {
         open()
     }
 
-    /** Права на share-корень (относительный путь пустой). */
+    /** Rights on the share root (empty relative path). */
     function openForShareRoot(rootPath, title) {
         openForPath(rootPath, "", title)
     }
@@ -101,7 +101,7 @@ Popup {
             }
         }
 
-        // --- Роль на объект (не требует участников) ---
+        // Object role (no members required)
         Rectangle {
             Layout.fillWidth: true
             visible: mode === "path"

@@ -14,9 +14,9 @@ Item {
     required property var formatMsgTimeFn
 
     property bool composerPreview: false
-    /** Облачко форматирования видно (в потоке layout, не Overlay). */
+    /** Formatting toolbar visible (inside the layout flow, not an Overlay). */
     property bool markdownToolsOpen: false
-    /** Не сбрасывать тулбар/превью при клике по кнопкам композера (Aa, эмодзи…). */
+    /** Keep the toolbar/preview when clicking composer buttons (Aa, emoji, ...). */
     property bool composerToolsSticky: false
     property string composerChatKey: ""
     property string contextMessageText: ""
@@ -72,7 +72,7 @@ Item {
         root.markdownToolsOpen = false
     }
 
-    /** Дефолтный ввод: без Aa-превью и без облачка форматирования. */
+    /** Default input: no Aa preview and no formatting toolbar. */
     function resetComposerTools() {
         composerResetTimer.stop()
         root.composerToolsSticky = false
@@ -332,7 +332,7 @@ Item {
                 anchors.rightMargin: theme.spacing
                 spacing: 6
 
-                // В потоке над полем — не перекрывает превью/текст
+                // In the flow above the input; never overlaps the preview/text
                 MarkdownToolbar {
                     id: mdToolbar
                     Layout.alignment: Qt.AlignLeft
@@ -356,7 +356,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                // Единая оболочка: в превью — сверху «так увидят», снизу ввод
+                // One shell: preview ("as seen") on top, input below
                 Rectangle {
                     id: composerShell
                     Layout.fillWidth: true
@@ -367,7 +367,7 @@ Item {
                         const bubbleH = Math.min(
                             160,
                             Math.max(36, composerPreviewBody.implicitHeight + 16 + 18))
-                        const previewH = 14 + bubbleH // подпись + облачко
+                        const previewH = 14 + bubbleH // caption + bubble
                         return Math.min(420, 12 + previewH + 9 + editorH)
                     }
                     radius: 18
@@ -382,7 +382,6 @@ Item {
                         anchors.margins: 6
                         spacing: 0
 
-                        // —— верх: превью по размеру текста ——
                         ColumnLayout {
                             id: previewSection
                             Layout.fillWidth: true
@@ -443,7 +442,6 @@ Item {
                             color: theme.border
                         }
 
-                        // —— низ: редактор ——
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -699,7 +697,7 @@ Item {
     Connections {
         target: node
         function onChatChanged() {
-            // chatChanged шумный — сбрасываем только при смене чата
+            // chatChanged is noisy; reset only when the chat actually changes
             const key = node.activeChatKey
             if (key === root.composerChatKey)
                 return

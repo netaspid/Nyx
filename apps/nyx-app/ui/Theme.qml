@@ -38,7 +38,7 @@ QtObject {
     readonly property color inputBg: darkMode ? "#242f3d" : "#ffffff"
     readonly property color border: darkMode ? "#2b3847" : "#dadce0"
     readonly property color online: darkMode ? "#4caf50" : "#4caf50"
-    /** Подсветка неактивного чата/поля в списке. */
+    /** Highlight for an inactive chat/field in the list. */
     readonly property color offlineRow: darkMode ? "#1a222c" : "#eceff1"
     readonly property color offlineBadge: darkMode ? "#6b4e4e" : "#e57373"
     readonly property color toastBg: darkMode ? "#243040" : "#ffffff"

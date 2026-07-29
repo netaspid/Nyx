@@ -392,8 +392,8 @@ bool NodeController::activeFieldIsOwner() const {
 }
 
 void NodeController::maybeAutoReconnectSessions() {
-  // Свои hub — если intent включён (после входа ensure_owned_hubs_running его включает).
-  // Чужие join/DM — по master-switch внутри auto_reconnect_all.
+  // Own hubs: when the intent is on (ensure_owned_hubs_running enables it after login).
+  // Foreign joins/DMs follow the master switch inside auto_reconnect_all.
   service_.auto_reconnect_all();
   invite_token_ = QString::fromStdString(service_.dm_inbox_token_hex());
   emit inviteTokenChanged();
@@ -1499,7 +1499,7 @@ std::vector<nyx::FileEntry> NodeController::remoteRootsCatalog(
     file_counts[nyx::normalize_utf8_path(e.root_path)]++;
   }
 
-  // Сначала маркеры папок с hub (в т.ч. пустые share-корни с 0 файлов).
+  // Folder markers from the hub first (including empty share roots with 0 files).
   std::map<std::string, nyx::FileEntry> by_root;
   for (const auto& e : all) {
     if (!e.is_directory()) continue;
@@ -1511,7 +1511,7 @@ std::vector<nyx::FileEntry> NodeController::remoteRootsCatalog(
     by_root[norm] = std::move(marker);
   }
 
-  // Корни только из файлов (на случай ответа без маркеров).
+  // Roots derived from files only (in case the reply lacks markers).
   for (const auto& [path, count] : file_counts) {
     if (by_root.count(path)) continue;
     nyx::ShareRoot sr;
@@ -1643,7 +1643,7 @@ void NodeController::browseIntoFolder(const QString& navPath, const QString& ite
       file_remote_browse_path_ = rel;
     }
     syncRemoteBrowseCrumbs();
-    // Подгрузить текущий уровень с hub (не весь node_modules разом).
+    // Fetch the current level from the hub (not the whole node_modules at once).
     service_.request_remote_files_at(file_scope_group_id_.toStdString(),
                                      file_resources_root_.toStdString(),
                                      file_remote_browse_path_.toStdString());
@@ -1696,7 +1696,7 @@ void NodeController::browseUp() {
     return;
   }
 
-  // Над share-корнем: снять выбор папки (список «Мои папки» остаётся слева).
+  // Above a share root: clear the folder selection (the "My folders" list stays on the left).
   if (!file_selected_share_root_.isEmpty()) {
     file_selected_share_root_.clear();
     resetFileBrowse();
@@ -1769,8 +1769,8 @@ void NodeController::addDroppedUrls(const QVariantList& urls) {
   }
   runIndexJob(dirs.front(), file_scope_group_id_, false);
   for (int i = 1; i < dirs.size(); ++i) {
-    // Последовательно: следующие папки после завершения первой через очередь не делаем —
-    // пользователь может добавить ещё раз. Одна крупная папка за раз достаточно.
+    // Sequential: no queue for the remaining folders after the first one completes;
+    // the user can re-add them. One large folder at a time is enough.
     Q_UNUSED(i);
   }
   if (dirs.size() > 1) {
@@ -2173,7 +2173,7 @@ void NodeController::rescanIndexedFolder(const QString& path) {
 }
 
 void NodeController::refreshRemoteFileList() {
-  // Полный сброс browse при обновлении корней — иначе остаёмся внутри удалённой папки.
+  // Full browse reset on root updates, or we stay inside a removed folder.
   file_resources_root_.clear();
   file_remote_browse_path_.clear();
   syncRemoteBrowseCrumbs();
@@ -2261,7 +2261,7 @@ void NodeController::wireCallbacks() {
             refreshGroupList();
             if (main_view_mode_ == 1) refreshFileAccessLists();
           }
-          // Lookup/rendezvous/NAT/reconnect — только статус-бар (иначе тост-спам).
+          // Lookup/rendezvous/NAT/reconnect goes to the status bar only (avoids toast spam).
           const bool progress_noise =
               lower.contains(QStringLiteral("lookup")) ||
               lower.contains(QStringLiteral("rendezvous")) ||
@@ -2437,7 +2437,7 @@ void NodeController::wireCallbacks() {
           const bool was_selected = !active_chat_key_.isEmpty() && active_chat_key_ == list_key;
           pending_field_join_notify_ = false;
 
-          // Не красть active_session / UI у другого открытого чата.
+          // Do not steal active_session / UI from another open chat.
           if (user_waiting || was_selected) {
             service_.set_active_session(session_id);
             active_chat_kind_ = static_cast<int>(kind);
@@ -2496,8 +2496,8 @@ void NodeController::wireCallbacks() {
               showToast(QStringLiteral("Эфир закрыт — владелец не в сети"), false);
             }
           }
-          // Auto-retry только при неожиданном Offline и включённом intent.
-          // Disconnected = пользователь нажал «Отключиться» — не переподключать.
+          // Auto-retry only on an unexpected Offline with the intent enabled.
+          // Disconnected = the user chose to disconnect; never reconnect.
           if (sid.startsWith(QStringLiteral("group:")) &&
               !sid.startsWith(QStringLiteral("group:join:"))) {
             const auto st = service_.session_state(session_id);
@@ -2654,9 +2654,9 @@ void NodeController::wireCallbacks() {
             this,
             [this, path, files_scanned, finished]() {
               file_index_files_scanned_ = files_scanned;
-              if (finished) return;  // финал рисует runIndexJob
+              if (finished) return;  // runIndexJob draws the final state
               file_index_progress_visible_ = true;
-              // Плавный индикатор без известного total (не «зависание»).
+              // Smooth indicator without a known total (avoids a frozen look).
               const int paced = 5 + static_cast<int>(
                   (95.0 * (1.0 - std::exp(-static_cast<double>(files_scanned) / 80.0))));
               file_index_progress_percent_ = qBound(5, paced, 95);
@@ -3106,7 +3106,7 @@ void NodeController::removeProfilePhoto(const QString& hashHex) {
 
 QString NodeController::peerAvatarPath(const QString& userIdHex) const {
   const QString uid = userIdHex.trimmed().toLower();
-  // Свой профиль — локальные фото, не contact book
+  // Own profile uses local photos, not the contact book.
   if (!uid.isEmpty() && uid == profile_user_id_hex_.trimmed().toLower() &&
       !profile_avatar_path_.isEmpty()) {
     return profile_avatar_path_;
@@ -3367,7 +3367,7 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
   const bool live = service_.is_session_live(key.toStdString());
   const bool is_group = kind == static_cast<int>(nyx::ConversationKind::Group);
 
-  // Нужен active_chat_ref_id_ для activeFieldIsOwner() до проверки owner.
+  // active_chat_ref_id_ must be set before the activeFieldIsOwner() owner check.
   active_chat_kind_ = kind;
   active_chat_ref_id_ = refId;
   const bool owner_field = is_group && activeFieldIsOwner();
@@ -3412,7 +3412,7 @@ void NodeController::openConversation(const QString& key, int kind, const QStrin
     return;
   }
 
-  // Владелец поля: открыть эфир и дать писать после Live.
+  // Field owner: open the room and allow writing once Live.
   chat_list_.setSessionState(key, QStringLiteral("connecting"));
   showToast(QStringLiteral("Открываем эфир…"));
   QTimer::singleShot(0, this, [this, key]() {
@@ -3442,7 +3442,7 @@ void NodeController::setStatus(const QString& text) {
 void NodeController::showToast(const QString& text, bool isError) {
   if (text.isEmpty()) return;
   toast_is_error_ = isError;
-  // Полный текст — перенос в ToastHost; без обрезки до короткого «кусочка».
+  // Full text wraps inside ToastHost; no truncation to a short snippet.
   toast_ = text;
   emit toastChanged();
 }
@@ -5044,7 +5044,7 @@ void NodeController::joinField(const QString& inviteHex) {
   setGroupsDialogOpen(false);
   pending_field_join_notify_ = true;
 
-  // Intent сразу: иначе после появления владельца список так и останется offline.
+  // Enable the intent right away, or the list stays offline after the owner appears.
   nyx::InviteToken token{};
   if (nyx::GroupStore::invite_from_hex(normalized.toStdString(), token)) {
     nyx::GroupStore store;

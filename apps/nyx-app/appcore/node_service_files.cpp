@@ -243,7 +243,7 @@ void NodeService::publish_field_index() {
   for (const auto& r : file_index_.roots_for_session(session->share_scope)) {
     root_paths.push_back(r.path);
   }
-  // Пустой индекс тоже пушим — иначе hub оставляет устаревший каталог участника.
+  // Push even an empty index, or the hub keeps the member stale catalog.
   if (!session->files->push_field_index(entries, root_paths)) {
     emit_status("не удалось опубликовать индекс поля");
   }

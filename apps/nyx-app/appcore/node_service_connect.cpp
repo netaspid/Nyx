@@ -138,7 +138,7 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
       continue;
     }
 
-    // Отдельная DM-сессия; inbox перезапустит listen в следующей итерации.
+    // Separate DM session; the inbox restarts listen on the next iteration.
     std::shared_ptr<NetSession> dm;
     {
       std::lock_guard lock(sessions_mutex_);
@@ -264,7 +264,7 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     return;
   }
 
-  // Превращаем listen-сессию в Direct на том же id, затем переименуем после Hello.
+  // Turn the listen session into Direct on the same id; renamed after Hello.
   session->kind = SessionKind::Direct;
   run_direct_chat(session, std::make_unique<nyx::Connection>(std::move(*conn)), profile, true,
                   ConnectionVia::Incoming);

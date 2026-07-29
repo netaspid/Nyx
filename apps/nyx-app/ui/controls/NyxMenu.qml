@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-/** Контекстное меню в стиле темы (не системное белое). */
+/** Theme-styled context menu (not the system white one). */
 Menu {
     id: root
     required property var theme

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-/** Компактное облачко форматирования в потоке layout (не Overlay). */
+/** Compact formatting toolbar inside the layout flow (not an Overlay). */
 Item {
     id: root
     required property var theme
@@ -81,7 +81,7 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            // Не забирать фокус у TextArea — иначе тулбар «прыгает»/сбрасывается
+                            // Never steal focus from the TextArea, or the toolbar jumps/resets
                             preventStealing: true
                             ToolTip.visible: containsMouse
                             ToolTip.text: modelData.tip

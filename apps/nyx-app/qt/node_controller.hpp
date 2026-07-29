@@ -29,7 +29,7 @@
 class QMenu;
 class QSystemTrayIcon;
 
-/** Qt-обёртка над NodeService: свойства и сигналы для QML. */
+/** Qt wrapper over NodeService: properties and signals for QML. */
 class NodeController : public QObject {
   Q_OBJECT
   Q_PROPERTY(QString profileNickname READ profileNickname WRITE setNickname NOTIFY profileChanged)
@@ -170,7 +170,7 @@ class NodeController : public QObject {
   Q_PROPERTY(QString activeChatKey READ activeChatKey NOTIFY chatChanged)
   Q_PROPERTY(QString sessionSummary READ sessionSummary NOTIFY sessionsChanged)
   Q_PROPERTY(QString dmInboxToken READ dmInboxToken NOTIFY inviteTokenChanged)
-  /** 0=чаты, 1=друзья, 2=поля — режим левого списка. */
+  /** Left list mode: 0=chats, 1=friends, 2=fields. */
   Q_PROPERTY(int sidebarMode READ sidebarMode WRITE setSidebarMode NOTIFY sidebarModeChanged)
   Q_PROPERTY(QString profileBio READ profileBio WRITE setProfileBio NOTIFY profileMetaChanged)
   Q_PROPERTY(QString profileInterests READ profileInterests WRITE setProfileInterests
@@ -360,9 +360,9 @@ class NodeController : public QObject {
   Q_INVOKABLE void showChatView();
   Q_INVOKABLE void leaveChat();
   Q_INVOKABLE QString pickFolder();
-  /** Диалог «Сохранить как»; suggestedFileName — исходное имя файла. */
+  /** "Save as" dialog; suggestedFileName is the original file name. */
   Q_INVOKABLE QString pickSaveFile(const QString& suggestedFileName);
-  /** Выбор папки для сохранения нескольких файлов. */
+  /** Folder picker for saving multiple files. */
   Q_INVOKABLE QString pickSaveFolder();
   Q_INVOKABLE void refreshFileLists();
   Q_INVOKABLE void refreshFieldRoster();
@@ -413,7 +413,7 @@ class NodeController : public QObject {
   Q_INVOKABLE void disconnectChat(const QString& key);
   Q_INVOKABLE QString sessionStateForKey(const QString& key) const;
   Q_INVOKABLE void sendMessage(const QString& text);
-  /** Старт звонка в активном чате (video=false — только аудио). Сигналинг фаза 0. */
+  /** Starts a call in the active chat (video=false = audio only). */
   Q_INVOKABLE void startCall(bool video = false);
   Q_INVOKABLE void acceptCall();
   Q_INVOKABLE void rejectCall();
@@ -457,7 +457,7 @@ class NodeController : public QObject {
   void setSelectedCameraId(const QString& id);
   void setSelectedAudioInputId(const QString& id);
   void setSelectedAudioOutputId(const QString& id);
-  /** Выбрать фото/видео → библиотека + markdown `![…](nyx-media:hash)`. */
+  /** Pick photo/video -> library + markdown `![...](nyx-media:hash)`. */
   Q_INVOKABLE QString pickChatMediaMarkdown();
   /** Import captured/recorded media into library+chat_media and send to active chat. */
   Q_INVOKABLE bool sendCapturedMedia(const QString& localPath,
@@ -523,10 +523,10 @@ class NodeController : public QObject {
                                    const QString& direction, const QString& tags,
                                    bool publicListed);
   Q_INVOKABLE QVariantMap contactInfo(const QString& userIdHex) const;
-  /** Удаляет чат или поле из локального списка (ключ dm:/group:/chat:). */
+  /** Removes a chat or field from the local list (dm:/group:/chat: key). */
   Q_INVOKABLE void removeConversation(const QString& key);
   Q_INVOKABLE void removeFieldMember(const QString& groupIdHex, const QString& userIdHex);
-  /** role: "host" | "member" — назначить ведущего звонков в поле. */
+  /** role: "host" | "member" — assigns the field call host. */
   Q_INVOKABLE void setFieldMemberRole(const QString& groupIdHex, const QString& userIdHex,
                                       const QString& role);
   Q_INVOKABLE void startFieldHub(const QString& groupIdHex);
@@ -534,7 +534,7 @@ class NodeController : public QObject {
   Q_INVOKABLE void connectActiveField();
   Q_INVOKABLE void copyToClipboard(const QString& text);
   Q_INVOKABLE void clearToast();
-  /** Синхронизировать системный title bar (Windows) с темой UI. */
+  /** Syncs the system title bar (Windows) with the UI theme. */
   Q_INVOKABLE void setNativeChromeDark(bool dark);
 
  signals:
@@ -614,10 +614,10 @@ class NodeController : public QObject {
   void updateFileAccessTargetLabel();
   void refreshFileShareRoots();
   void refreshLocalFileModel();
-  /** Без аргумента — из кэша NodeService; с вектором — как есть (в т.ч. пустой список). */
+  /** Without an argument: from the NodeService cache; with a vector: as given (even empty). */
   void refreshRemoteFileModel();
   void refreshRemoteFileModel(const std::vector<nyx::FileEntry>& entries);
-  /** Сбрасывает browse, если текущий remote-корень пропал из каталога. */
+  /** Resets browsing when the current remote root vanished from the catalog. */
   void reconcileRemoteBrowsePath(const std::vector<nyx::FileEntry>& catalog);
   void runIndexJob(const QString& path, const QString& scopeGroupId, bool rescan);
   void refreshFileAccessLists();

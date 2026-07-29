@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file node_service.hpp
- *  AppCore без Qt: multi-session listen/connect/chat/files/groups.
+ *  Qt-free app core: multi-session listen/connect/chat/files/groups.
  */
 
 #include "connection_label.hpp"
@@ -50,17 +50,17 @@ struct UiMessage {
   uint64_t message_id = 0;
   uint64_t timestamp_ms = 0;
   std::string author;
-  /** Hex user id автора (для /me и @). */
+  /** Author hex user id (for /me and @). */
   std::string author_user_id;
   std::string text;
   bool outgoing = false;
-  /** pending | delivered | failed | пусто */
+  /** pending | delivered | failed | empty */
   std::string delivery;
   std::string session_id;
   std::string chat_key;
 };
 
-/** Legacy aggregate mode (для listening / status). */
+/** Legacy aggregate mode (listening / status). */
 enum class NodeMode {
   Idle,
   Listening,
@@ -69,7 +69,7 @@ enum class NodeMode {
   GroupMember,
 };
 
-/** Оркестратор сетевых сценариев: несколько параллельных сессий. */
+/** Network scenario orchestrator: several parallel sessions. */
 class NodeService {
  public:
   using StatusCallback = std::function<void(const std::string&)>;
@@ -110,7 +110,7 @@ class NodeService {
   void set_on_invite_token(TokenCallback cb);
   void set_on_lan_peers(LanPeersCallback cb);
   void set_on_group_created(GroupInfoCallback cb);
-  /** Мете поля обновилась у участника (push от hub). */
+  /** Field meta updated on a member (hub push). */
   void set_on_group_meta_changed(SessionsChangedCallback cb);
   void set_on_chat_ready(ChatReadyCallback cb);
 
@@ -148,12 +148,12 @@ class NodeService {
 
   NodeMode mode() const;
   bool busy() const;
-  /** Число live-сессий (без inbox). */
+  /** Number of live sessions (excluding the inbox). */
   std::size_t live_session_count() const;
   std::vector<SessionInfo> list_sessions() const;
   SessionState session_state(const std::string& session_id) const;
   bool is_session_live(const std::string& session_id) const;
-  /** Live или Connecting — reconnect не должен перезапускать такую сессию. */
+  /** Live or Connecting: reconnect must not restart such a session. */
   bool is_session_up(const std::string& session_id) const;
   std::string active_session_id() const;
   void set_active_session(const std::string& session_id);
@@ -162,7 +162,7 @@ class NodeService {
 
   bool start_listen(bool lan_advertise = true);
   bool start_dm_inbox();
-  /** @param quiet_ui — фоновый reconnect без «переподключение» в UI. */
+  /** @param quiet_ui background reconnect without a "reconnecting" UI state. */
   bool start_connect_token(const std::string& token_hex, bool quiet_ui = false);
   bool start_connect_peer(const std::string& host, uint16_t port);
   bool scan_lan_peers(int timeout_ms = 2000);
@@ -172,31 +172,31 @@ class NodeService {
                          const std::string& direction, const std::string& tags,
                          bool public_listed);
   bool delete_group(const std::string& group_id_hex);
-  /** Удаляет чат/поле из локальных списков: dm:<peer> | group:<gid> | chat:<stem>. */
+  /** Removes a chat/field from local lists: dm:<peer> | group:<gid> | chat:<stem>. */
   bool remove_conversation(const std::string& chat_key);
   bool remove_group_member(const std::string& group_id_hex, const std::string& user_id_hex);
   bool auto_start_owned_hub() const { return network_config_.auto_start_owned_hub; }
   void set_auto_start_owned_hub(bool enabled);
   bool start_group_hub(const std::string& group_id_hex);
-  /** @param quiet_ui — не показывать «переподключение» в списке (фоновый probe). */
+  /** @param quiet_ui hide "reconnecting" in the list (background probe). */
   bool start_group_join(const std::string& invite_hex, bool quiet_ui = false);
-  /** Сброс счётчика фоновых ретраев (ручной join / «подключить»). */
+  /** Resets the background retry counter (manual join / connect). */
   void reset_join_reconnect_budget(const std::string& chat_key);
 
-  /** Останавливает одну сессию (или active, если id пуст). */
+  /** Stops one session (or the active one when id is empty). */
   bool stop_session(const std::string& session_id = {});
-  /** Останавливает все сессии (signOut / выход). */
+  /** Stops all sessions (sign-out / exit). */
   void stop();
 
-  /** Поднимает owned hubs, inbox, enabled intents. */
+  /** Brings up owned hubs, the inbox and enabled intents. */
   void auto_reconnect_all();
-  /** ensureSession: hub/join/DM по ключу чата. */
+  /** ensureSession: hub/join/DM by chat key. */
   bool ensure_session(const std::string& chat_key);
-  /** При входе: включить intent и поднять hub всех своих полей. */
+  /** On login: enable the intent and start hubs of all own fields. */
   void ensure_owned_hubs_running();
-  /** Включает auto-reconnect для чата (после попытки join / до появления hub). */
+  /** Enables auto-reconnect for a chat (after a join attempt / until the hub appears). */
   void enable_session_intent(nyx::SessionIntent intent);
-  /** Выключает intent («Отключиться») — фоновый reconnect не поднимает чат. */
+  /** Disables the intent: background reconnect will not raise the chat. */
   void mark_session_disconnected(const std::string& chat_key);
   bool is_session_intent_enabled(const std::string& chat_key) const;
 
@@ -208,18 +208,18 @@ class NodeService {
   std::string load_files_selected_root() const;
   void save_files_selected_root(const std::string& root_path) const;
 
-  /** Отправка в указанную сессию (или в active, если session_id пуст). */
+  /** Sends into the given session (or active when session_id is empty). */
   bool send_message(const std::string& text, const std::string& session_id = {});
   bool send_bye(const std::string& reason);
 
-  /** Звонки: сигналинг по active/указанной сессии. */
+  /** Calls: signaling over the active/given session. */
   bool start_call(bool video, const std::string& session_id = {});
   bool accept_call();
   bool reject_call();
   bool hangup_call();
-  /** Можно ли открыть комнату в текущем/указанном поле (Owner/Host). */
+  /** Whether a room may be opened in the current/given field (Owner/Host). */
   bool can_start_call(const std::string& session_id = {}) const;
-  /** Назначить роль Host/Member участнику поля (только с хаба-владельца). */
+  /** Assigns Host/Member role to a field member (owner hub only). */
   bool set_field_member_role(const std::string& group_id_hex, const std::string& user_id_hex,
                              const std::string& role);
   nyx::CallState call_state() const;
@@ -233,7 +233,7 @@ class NodeService {
   bool call_camera_on() const;
   void set_call_camera_on(bool on);
   void set_call_relay_score(uint16_t score) { call_relay_score_.store(score); }
-  /** Отправка медиа-пакета в активный звонок (kRealtimeStream). */
+  /** Sends a media packet into the active call (kRealtimeStream). */
   bool send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload,
                        uint8_t audio_level = 0);
 
@@ -242,7 +242,7 @@ class NodeService {
   bool rescan_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   int file_count_in_root(const std::string& root_path,
                          const std::string& scope_group_id_hex = {}) const;
-  /** Запрос каталога: scope — group hex; root/parent пустые = только share-корни. */
+  /** Catalog request: scope = group hex; empty root/parent = share roots only. */
   bool request_remote_files_at(const std::string& root_path, const std::string& parent_rel);
   bool request_remote_files_at(const std::string& scope_group_id_hex, const std::string& root_path,
                                const std::string& parent_rel);
@@ -268,7 +268,7 @@ class NodeService {
   std::optional<nyx::FileEntry> find_file_object(
       const std::string& hash_hex) const;
   bool can_request_remote_files() const;
-  /** Сессия для обмена файлами в области (group:<hex> или active). */
+  /** Session used for file exchange in a scope (group:<hex> or active). */
   std::string file_exchange_session_id(const std::string& scope_group_id_hex) const;
   std::string file_exchange_hint() const;
   std::vector<nyx::FileEntry> local_files_for_scope(const std::string& scope_group_id_hex) const;
@@ -326,9 +326,9 @@ class NodeService {
     SessionKind kind = SessionKind::Idle;
     std::atomic<SessionState> state{SessionState::Idle};
     std::atomic<bool> running{false};
-    /** Connecting, но UI показывает offline (тихий фоновый probe). */
+    /** Connecting while the UI shows offline (quiet background probe). */
     std::atomic<bool> quiet_ui{false};
-    /** Уже был Live в этой сессии — обрыв эфира не считается failed join. */
+    /** Was already Live in this session: a dropped room is not a failed join. */
     std::atomic<bool> ever_live{false};
     std::thread worker;
     std::unique_ptr<nyx::Connection> connection;
@@ -358,7 +358,7 @@ class NodeService {
     NetSession() = default;
     NetSession(const NetSession&) = delete;
     NetSession& operator=(const NetSession&) = delete;
-    /** Иначе joinable std::thread в деструкторе вызывает std::terminate. */
+    /** Otherwise a joinable std::thread calls std::terminate in the destructor. */
     ~NetSession() {
       if (!worker.joinable()) return;
       running.store(false);
@@ -392,7 +392,7 @@ class NodeService {
   std::shared_ptr<NetSession> create_session(const std::string& id, SessionKind kind);
   void finish_session(const std::shared_ptr<NetSession>& session, SessionState final_state);
   void stop_session_locked(const std::shared_ptr<NetSession>& session);
-  /** Останавливает worker без блокирующего join (безопасно из UI-потока). */
+  /** Stops the worker without a blocking join (safe from the UI thread). */
   void abandon_session_worker(const std::shared_ptr<NetSession>& session);
 
   void run_listen(std::shared_ptr<NetSession> session, bool lan_advertise);
@@ -469,7 +469,7 @@ class NodeService {
   void remember_intent_for_session(const std::shared_ptr<NetSession>& session,
                                    const std::string& invite_hex = {});
 
-  /** Бюджет видимых join-ретраев чужого поля; дальше — тихие редкие probe. */
+  /** Budget of visible join retries for a foreign field; quiet probes afterwards. */
   struct JoinReconnectBudget {
     int failures = 0;
     int64_t next_attempt_ms = 0;
@@ -559,7 +559,7 @@ class NodeService {
   std::atomic<bool> dm_reconnect_busy_{false};
 
   nyx::FileIndex file_index_;
-  /** Кэш каталога «Ресурсы» для локального hub (корни + подгруженные уровни). */
+  /** Resources catalog cache for the local hub (roots + fetched levels). */
   std::vector<nyx::FileEntry> hub_remote_catalog_;
   mutable nyx::FileAccessStore file_access_;
   nyx::SessionIntentStore intent_store_;

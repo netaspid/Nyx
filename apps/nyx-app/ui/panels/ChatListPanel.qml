@@ -228,7 +228,6 @@ Rectangle {
 
         QtObject { id: listFilter; property string text: "" }
 
-        // —— Чаты ——
         ListView {
             id: chatListView
             Layout.fillWidth: true
@@ -270,7 +269,6 @@ Rectangle {
             }
         }
 
-        // —— Друзья ——
         ListView {
             id: friendsView
             Layout.fillWidth: true
@@ -402,7 +400,6 @@ Rectangle {
             }
         }
 
-        // —— Поля ——
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
