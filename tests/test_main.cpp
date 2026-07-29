@@ -22,6 +22,7 @@
 #include "nyx/group_member.hpp"
 #include "nyx/group_proto.hpp"
 #include "nyx/identity.hpp"
+#include "nyx/json_text.hpp"
 #include "nyx/log.hpp"
 #include "nyx/markdown_format.hpp"
 #include "nyx/mdns.hpp"
@@ -2584,6 +2585,22 @@ int main() {
   test_recovery_phrase_roundtrip();
   test_account_recovery_and_remember();
   test_file_transfer_1mb();
+  {
+    const std::string obj =
+        R"({"roles":[{"id":"a","name":"A"},{"id":"b","name":"B"}],"n":2})";
+    std::vector<std::string> ids;
+    nyx::json_parse_object_array(obj, "roles", [&](const std::string& item) {
+      if (auto id = nyx::json_get_string(item, "id"))
+        ids.push_back(*id);
+    });
+    assert(ids.size() == 2);
+    assert(ids[0] == "a");
+    assert(ids[1] == "b");
+    assert(nyx::json_get_uint(obj, "n") == 2u);
+    const auto objs = nyx::json_split_objects(R"([{"x":1},{"x":2}])");
+    assert(objs.size() == 2);
+    std::cout << "json text helpers ok\n";
+  }
   nyx::set_base_data_root({});
   std::filesystem::remove_all(test_data_root);
   std::cout << "all tests passed\n";
