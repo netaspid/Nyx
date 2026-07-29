@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
   QApplication app(argc, argv);
 
 #if defined(Q_OS_ANDROID)
-  // Writable app storage before any nyx:: paths / logging (no reliable HOME on Android).
+
   {
     const QString root =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/nyx");
@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) {
   nyx::log_init();
 
 #if defined(Q_OS_ANDROID)
-  // After QApplication + log_init — JNI context is ready.
+
   nyx_android::acquire_multicast_lock();
   {
     const std::string wifi = nyx_android::wifi_ipv4();
