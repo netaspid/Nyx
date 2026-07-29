@@ -1,7 +1,13 @@
 #pragma once
 
+#include "nyx/identity.hpp"
+#include "nyx/util.hpp"
+
 #include <QRegularExpression>
 #include <QString>
+
+#include <algorithm>
+#include <vector>
 
 inline QString nyxSafeMediaPathPart(QString value) {
   value = value.trimmed();
@@ -26,4 +32,20 @@ nyxMediaRelativeDir(const QString& chatKey, const QString&, const QString& media
   const QString leaf = mediaKind == QLatin1String("circle") ? QStringLiteral("Видеокружки")
                                                             : QStringLiteral("Голосовые сообщения");
   return QStringLiteral("Медиа/") + conversation + QLatin1Char('/') + leaf;
+}
+
+inline QString nyxNormalizeSessionKey(const QString& key) {
+  if (key.startsWith(QLatin1String("group:")) || key.startsWith(QLatin1String("dm:"))) {
+    return key.section(QLatin1Char(':'), 0, 0) + QLatin1Char(':') +
+           key.section(QLatin1Char(':'), 1).toLower();
+  }
+  return key;
+}
+
+inline bool nyxParseUserIdHex(const QString& hex, nyx::UserId& out) {
+  std::vector<uint8_t> bytes;
+  if (!nyx::from_hex(hex.toStdString(), bytes) || bytes.size() != out.size())
+    return false;
+  std::copy(bytes.begin(), bytes.end(), out.begin());
+  return true;
 }
