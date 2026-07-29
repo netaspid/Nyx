@@ -219,6 +219,7 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/qt/node_controller.cpp
       apps/nyx-app/qt/node_controller_files.cpp
       apps/nyx-app/qt/node_controller_call.cpp
+      apps/nyx-app/qt/node_controller_wire.cpp
       apps/nyx-app/qt/document_viewer.cpp
       apps/nyx-app/qt/win_chrome.cpp
       apps/nyx-app/qt/android_platform.cpp
