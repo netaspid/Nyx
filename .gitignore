@@ -77,3 +77,7 @@ desktop.ini
 *.swo
 *.tmp
 *.bak
+
+# hosted web SPA
+apps/nyx-web/node_modules/
+apps/nyx-web/dist/

@@ -199,6 +199,33 @@ target_include_directories(nyx-appcore PUBLIC
 target_link_libraries(nyx-appcore PUBLIC nyx nyx-app-common)
 
 if(NOT ANDROID)
+  option(NYX_BUILD_WEB "Build nyx-webd hosted web client" ON)
+  if(NYX_BUILD_WEB)
+    find_package(Boost REQUIRED COMPONENTS system thread)
+    find_package(Threads REQUIRED)
+    add_executable(nyx-webd
+      apps/nyx-webd/main.cpp
+      apps/nyx-webd/gateway.cpp
+      apps/nyx-webd/worker_engine.cpp
+    )
+    target_include_directories(nyx-webd PRIVATE
+      apps/nyx-webd
+      apps/nyx-app/appcore
+      apps/common
+    )
+    target_link_libraries(nyx-webd PRIVATE
+      nyx-appcore
+      Boost::system
+      Boost::thread
+      Threads::Threads
+    )
+    if(UNIX AND NOT APPLE)
+      target_link_libraries(nyx-webd PRIVATE pthread)
+    endif()
+  endif()
+endif()
+
+if(NOT ANDROID)
   add_executable(nyx-rendezvous apps/nyx-rendezvous/main.cpp)
   target_link_libraries(nyx-rendezvous PRIVATE nyx)
 endif()
