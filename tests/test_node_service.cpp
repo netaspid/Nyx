@@ -142,6 +142,26 @@ static void test_is_listening_idle() {
   std::cout << "is_listening idle ok\n";
 }
 
+static void test_stop_session_returns_quickly() {
+  nyx_app::NodeService svc;
+  svc.set_nickname("StopFast");
+  assert(svc.create_group("StopField"));
+  const auto groups = svc.list_groups();
+  assert(!groups.empty());
+  const std::string gid = nyx::GroupStore::group_id_hex(groups.back().id);
+  assert(svc.start_group_hub(gid));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  const std::string sid = nyx_app::make_group_session_id(gid);
+  const auto t0 = std::chrono::steady_clock::now();
+  assert(svc.stop_session(sid));
+  const auto ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0)
+          .count();
+  assert(ms < 500);
+  svc.stop();
+  std::cout << "stop_session returns quickly ok\n";
+}
+
 int main() {
   const std::string test_data_root = "test_nyx_appcore_data";
   std::filesystem::remove_all(test_data_root);
@@ -154,6 +174,7 @@ int main() {
   test_session_intent_store();
   test_is_listening_idle();
   test_multi_session_hubs_parallel();
+  test_stop_session_returns_quickly();
   nyx::set_base_data_root({});
   std::filesystem::remove_all(test_data_root);
   std::cout << "node service tests passed\n";
