@@ -19,4 +19,3 @@ for ($i = 0; $i -lt $FloodCount; $i++) {
 }
 $udp.Close()
 Write-Host "Sent $FloodCount datagrams. Verify server still responds (GUI probe / nyx-node connect)."
-Write-Host "See docs/SECURITY_AUDIT.md"

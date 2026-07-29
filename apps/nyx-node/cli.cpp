@@ -50,7 +50,7 @@ void print_usage() {
       << "  nyx-node group hub --group <group_id_hex> [--rendezvous ...]\n"
       << "  nyx-node group join --token <invite_hex> [--rendezvous ...]\n\n"
       << "  --no-lan  не публиковать узел в LAN (по умолчанию mDNS включён)\n"
-      << "  Rendezvous: UDP bootstrap для интернет-связи. См. docs/DEPLOY_RENDEZVOUS.md\n\n"
+      << "  Rendezvous: UDP bootstrap для интернет-связи. См. docs/ADMIN.md\n\n"
       << "В чате: текст + Enter. Команды: /help /who /status /history /quit\n";
 }
 

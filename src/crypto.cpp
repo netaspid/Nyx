@@ -17,6 +17,11 @@ std::uint64_t g_rekey_byte_limit = 0;
 using NoiseHS = ::NoiseHandshakeState;
 using NoiseCS = ::NoiseCipherState;
 
+// Noise cipherstate limits; larger buffers corrupt the heap in noise-c.
+constexpr std::size_t kNoiseTagSize = 16;
+constexpr std::size_t kNoiseMaxCipher = 65535;
+constexpr std::size_t kNoiseMaxPlain = kNoiseMaxCipher - kNoiseTagSize;
+
 void destroy_hs(NoiseHS* p) {
   if (p) noise_handshakestate_free(p);
 }
@@ -218,13 +223,11 @@ std::optional<ByteBuffer> Session::encrypt(const ByteBuffer& plain, std::string*
     if (err) *err = "no send cipher";
     return std::nullopt;
   }
-  // Noise cipherstate caps plaintext at 65535 - 16 (MAC); larger buffers corrupt the heap in noise-c.
-  constexpr std::size_t kNoiseMaxPlain = 65535 - 16;
   if (plain.size() > kNoiseMaxPlain) {
     if (err) *err = "plaintext too large for Noise";
     return std::nullopt;
   }
-  ByteBuffer out(plain.size() + 16);
+  ByteBuffer out(plain.size() + kNoiseTagSize);
   NoiseBuffer buf;
   noise_buffer_set_inout(buf, out.data(), plain.size(), out.size());
   std::memcpy(buf.data, plain.data(), plain.size());
@@ -243,7 +246,6 @@ std::optional<ByteBuffer> Session::decrypt(const ByteBuffer& cipher, std::string
     if (err) *err = "no recv cipher";
     return std::nullopt;
   }
-  constexpr std::size_t kNoiseMaxCipher = 65535;
   if (cipher.size() > kNoiseMaxCipher) {
     if (err) *err = "ciphertext too large for Noise";
     return std::nullopt;
@@ -264,7 +266,7 @@ std::optional<ByteBuffer> Session::decrypt(const ByteBuffer& cipher, std::string
 std::optional<ByteBuffer> Session::encrypt_realtime(std::uint64_t nonce,
                                                     const ByteBuffer& plain,
                                                     std::string* err) {
-  if (plain.size() > 65535 - 16) {
+  if (plain.size() > kNoiseMaxPlain) {
     if (err) *err = "realtime plaintext too large";
     return std::nullopt;
   }
@@ -280,7 +282,7 @@ std::optional<ByteBuffer> Session::encrypt_realtime(std::uint64_t nonce,
     if (err) *err = "realtime nonce failed";
     return std::nullopt;
   }
-  ByteBuffer out(plain.size() + 16);
+  ByteBuffer out(plain.size() + kNoiseTagSize);
   NoiseBuffer buf;
   noise_buffer_set_inout(buf, out.data(), plain.size(), out.size());
   std::memcpy(buf.data, plain.data(), plain.size());
@@ -298,7 +300,7 @@ std::optional<ByteBuffer> Session::encrypt_realtime(std::uint64_t nonce,
 std::optional<ByteBuffer> Session::decrypt_realtime(std::uint64_t nonce,
                                                     const ByteBuffer& cipher,
                                                     std::string* err) {
-  if (cipher.size() > 65535) {
+  if (cipher.size() > kNoiseMaxCipher) {
     if (err) *err = "realtime ciphertext too large";
     return std::nullopt;
   }

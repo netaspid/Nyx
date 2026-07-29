@@ -50,7 +50,7 @@ void print_usage() {
             << "Usage:\n"
             << "  nyx-rendezvous [--bind=0.0.0.0:3478] [--rate-limit=120]\n\n"
             << "Откройте UDP порт на VDS (firewall + security group).\n"
-            << "См. docs/DEPLOY_RENDEZVOUS.md\n";
+            << "См. docs/ADMIN.md\n";
 }
 
 std::string client_ip(const sockaddr_in& from) {
