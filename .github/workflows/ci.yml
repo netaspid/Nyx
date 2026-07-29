@@ -26,6 +26,13 @@ jobs:
         run: ./build/nyx-tests
       - name: Test appcore
         run: ./build/nyx-appcore-tests
+      - name: clang-tidy gate (store loaders)
+        run: |
+          # Narrow warnings-as-errors set; expand as debt is cleared.
+          clang-tidy -p build \
+            src/session_intent.cpp src/group.cpp src/identity.cpp src/file_access.cpp \
+            --checks='-*,misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty' \
+            --warnings-as-errors='misc-unused-using-decls,misc-redundant-expression,readability-duplicate-include,readability-container-size-empty'
       - name: clang-tidy (advisory)
         continue-on-error: true
         run: |
