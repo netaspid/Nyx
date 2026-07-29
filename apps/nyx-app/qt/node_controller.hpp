@@ -742,6 +742,7 @@ private:
   QString file_index_progress_label_;
   int file_index_files_scanned_ = 0;
   std::atomic<bool> file_index_busy_ {false};
+  std::thread file_index_thread_;
   QVariantList file_role_list_;
   QVariantList file_permission_preset_list_;
   QVariantList file_member_access_;
