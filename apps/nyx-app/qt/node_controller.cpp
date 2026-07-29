@@ -424,12 +424,6 @@ QString NodeController::sessionStateForKey(const QString& key) const {
   return QString::fromUtf8(nyx_app::session_state_name(state));
 }
 
-bool NodeController::isChatSelectable(const QString& key) const {
-  Q_UNUSED(key);
-  // Историю можно открыть всегда; у офлайн-клиента сеть не поднимаем (см. openConversation).
-  return true;
-}
-
 bool NodeController::applyRendezvousList(const QString& v) {
   const QString trimmed = v.trimmed();
   if (trimmed.isEmpty()) return false;
@@ -491,14 +485,6 @@ bool NodeController::testRendezvousServer(const QString& hostPort) {
   network_status_ = ok ? QStringLiteral("Rendezvous доступен") : QStringLiteral("Нет ответа");
   emit networkSettingsChanged();
   return ok;
-}
-
-void NodeController::setProfilePath(const QString& v) {
-  if (profile_path_ == v) return;
-  profile_path_ = v;
-  service_.set_profile_path(v.toStdString());
-  emit profilePathChanged();
-  refreshProfile();
 }
 
 void NodeController::setNickname(const QString& v) {
@@ -981,13 +967,6 @@ void NodeController::updateFileAccessTargetLabel() {
   file_access_target_label_ = label;
 }
 
-void NodeController::syncFileAccessTargetFromBrowse() {
-  file_access_target_root_ = file_selected_share_root_;
-  file_access_target_rel_ = file_browse_path_;
-  updateFileAccessTargetLabel();
-  refreshFilePathMemberAccess();
-}
-
 void NodeController::setFileAccessTarget(const QString& rootPath, const QString& relativePath) {
   file_access_target_root_ = resolveAccessRootPath(rootPath);
   file_access_target_rel_ = relativePath.trimmed();
@@ -1007,13 +986,6 @@ QString NodeController::resolveAccessRootPath(const QString& rootPath) const {
     }
   }
   return normalizeShareRootPath(p);
-}
-
-void NodeController::openAccessForPath(const QString& rootPath, const QString& relativePath,
-                                       const QString& label) {
-  setFileAccessTarget(rootPath, relativePath);
-  if (!label.trimmed().isEmpty()) file_access_target_label_ = label.trimmed();
-  emit fileAccessChanged();
 }
 
 bool NodeController::canEditFileRolePermissions(const QString& roleId) const {
@@ -1173,8 +1145,6 @@ void NodeController::togglePathDirectPermission(const QString& userIdHex, int pe
   refreshFileAccessLists();
 }
 
-void NodeController::refreshFileAccess() { refreshFileAccessLists(); }
-
 void NodeController::refreshFieldRoster() {
   refreshGroupList();
   if (field_info_open_) {
@@ -1312,8 +1282,6 @@ void NodeController::openChatMediaFolder(const QString& mediaKind) {
 
 void NodeController::showChatView() { setMainViewMode(0); }
 
-void NodeController::openFilesDialog() { openFilesView(); }
-
 void NodeController::setFileScopeGroupId(const QString& groupIdHex) {
   const QString gid = groupIdHex.trimmed().toLower();
   if (file_scope_group_id_ == gid) return;
@@ -1332,11 +1300,6 @@ void NodeController::setFileScopeGroupId(const QString& groupIdHex) {
   if (fileExchangeReady()) refreshRemoteFileList();
   emit filesChanged();
   emit fileAccessChanged();
-}
-
-void NodeController::openGroupsDialog() {
-  refreshGroupList();
-  setGroupsDialogOpen(true);
 }
 
 bool NodeController::fileExchangeReady() const {
@@ -2927,10 +2890,6 @@ void NodeController::signOut() {
   emit chatChanged();
 }
 
-void NodeController::updateOnboardingFlag() {
-  needs_onboarding_ = false;
-}
-
 void NodeController::refreshProfile() {
   const auto profile = service_.profile();
   profile_nickname_ = QString::fromStdString(profile.nickname);
@@ -2938,13 +2897,9 @@ void NodeController::refreshProfile() {
   profile_user_id_hex_ =
       QString::fromStdString(nyx::to_hex(profile.user_id().data(), profile.user_id().size()));
   loadProfileMeta();
-  updateOnboardingFlag();
   emit profileChanged();
 }
 
-void NodeController::completeOnboarding(const QString& nickname) {
-  setNickname(nickname);
-}
 
 void NodeController::refreshChatList() {
   chat_list_.refreshFromDisk(profile_id_short_);
@@ -3478,20 +3433,9 @@ void NodeController::searchMessages(const QString& query) {
 
 void NodeController::showWindow() { emit showMainWindow(); }
 
-void NodeController::hideToTray() {
-#if defined(Q_OS_ANDROID)
-  // No system tray — keep window; optional minimize is OS-managed.
-  return;
-#else
-  if (tray_icon_) tray_icon_->show();
-  emit requestCloseToTray();
-#endif
-}
-
 void NodeController::setStatus(const QString& text) {
   status_text_ = text;
   emit statusTextChanged();
-  emit logLine(QDateTime::currentDateTime().toString("hh:mm:ss") + "  " + text);
 }
 
 void NodeController::showToast(const QString& text, bool isError) {
@@ -3595,17 +3539,6 @@ void NodeController::showGroupInView(const QString& groupIdHex) {
   peer_status_text_ = QStringLiteral("эфир");
   loadStoredHistory(active_chat_kind_, groupIdHex, active_chat_key_);
   emit chatChanged();
-}
-
-void NodeController::startListen() {
-  if (!service_.start_listen(true)) {
-    setStatus(QStringLiteral("Не удалось начать прослушивание"));
-    return;
-  }
-  showToast(QStringLiteral("Ожидание подключения — token появится ниже"));
-  emit listeningChanged();
-  emit busyChanged();
-  emit sessionsChanged();
 }
 
 void NodeController::refreshLanPeers() {
@@ -5010,15 +4943,6 @@ void NodeController::updateGroupMeta(const QString& groupIdHex, const QString& d
   showToast(QStringLiteral("Мете поля обновлена"));
 }
 
-void NodeController::deleteGroup(const QString& groupIdHex) {
-  const QString gid = groupIdHex.trimmed().toLower();
-  if (gid.isEmpty()) {
-    showToast(QStringLiteral("Поле не выбрано"));
-    return;
-  }
-  removeConversation(QStringLiteral("group:") + gid);
-}
-
 void NodeController::removeConversation(const QString& key) {
   const QString sid = key.trimmed();
   if (sid.isEmpty()) {
@@ -5218,14 +5142,6 @@ void NodeController::copyToClipboard(const QString& text) {
   toast_ = QStringLiteral("Скопировано");
   emit toastChanged();
 }
-
-void NodeController::copyInviteToken() { copyToClipboard(invite_token_); }
-
-void NodeController::copyDmInboxToken() {
-  copyToClipboard(QString::fromStdString(service_.dm_inbox_token_hex()));
-}
-
-void NodeController::copyLastGroupInvite() { copyToClipboard(last_group_invite_); }
 
 void NodeController::clearToast() {
   if (toast_.isEmpty()) return;

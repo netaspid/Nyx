@@ -96,7 +96,6 @@ class NodeService {
 
   void set_profile_path(std::string path);
   void set_nickname(std::string nickname);
-  void set_rendezvous(std::string addr);
   bool set_rendezvous_list(const std::string& csv);
   void set_discovery_mode(int mode);
   bool save_network_config();
@@ -166,7 +165,6 @@ class NodeService {
   /** @param quiet_ui — фоновый reconnect без «переподключение» в UI. */
   bool start_connect_token(const std::string& token_hex, bool quiet_ui = false);
   bool start_connect_peer(const std::string& host, uint16_t port);
-  bool start_browse(int timeout_ms = 3000);
   bool scan_lan_peers(int timeout_ms = 2000);
 
   bool create_group(const std::string& name);
@@ -226,11 +224,9 @@ class NodeService {
                              const std::string& role);
   nyx::CallState call_state() const;
   nyx::CallMode call_mode() const;
-  std::string call_session_id() const;
   std::string call_title() const;
   std::string call_id_hex() const;
   bool call_is_field_room() const;
-  bool call_is_host() const;
   std::vector<nyx::UserId> call_participants() const;
   bool call_mic_muted() const;
   void set_call_mic_muted(bool muted);
@@ -246,7 +242,6 @@ class NodeService {
   bool rescan_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   int file_count_in_root(const std::string& root_path,
                          const std::string& scope_group_id_hex = {}) const;
-  bool request_remote_files();
   /** Запрос каталога: scope — group hex; root/parent пустые = только share-корни. */
   bool request_remote_files_at(const std::string& root_path, const std::string& parent_rel);
   bool request_remote_files_at(const std::string& scope_group_id_hex, const std::string& root_path,
@@ -288,10 +283,6 @@ class NodeService {
                             const std::string& user_id_hex, const std::string& role_id);
   bool upsert_file_role(const std::string& scope_group_id_hex, const nyx::FileRole& role);
   bool remove_file_role(const std::string& scope_group_id_hex, const std::string& role_id);
-  bool set_root_member_file_role(const std::string& scope_group_id_hex,
-                                 const std::string& root_path,
-                                 const std::string& user_id_hex,
-                                 const std::string& role_id);
   bool set_path_member_file_role(const std::string& scope_group_id_hex,
                                  const std::string& root_path,
                                  const std::string& relative_path,
@@ -316,9 +307,7 @@ class NodeService {
 
   void publish_field_index();
 
-  std::vector<nyx::StoredMessage> chat_history(std::size_t count = 50) const;
   std::vector<nyx::GroupRecord> list_groups() const;
-  std::string running_group_hub_id_hex() const;
   bool is_group_hub_running(const std::string& group_id_hex) const;
   std::string dm_inbox_token_hex() const;
 

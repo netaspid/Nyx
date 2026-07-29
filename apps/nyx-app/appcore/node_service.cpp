@@ -31,14 +31,6 @@ void NodeService::set_nickname(std::string nickname) {
   nyx::update_session_nickname(nickname_, &err);
 }
 
-void NodeService::set_rendezvous(std::string addr) {
-  rendezvous_ = std::move(addr);
-  nyx::NetworkConfig tmp;
-  if (nyx::NetworkConfig::parse_rendezvous_list(rendezvous_, tmp)) {
-    network_config_.rendezvous_servers = tmp.rendezvous_servers;
-  }
-}
-
 bool NodeService::set_rendezvous_list(const std::string& csv) {
   nyx::NetworkConfig tmp;
   if (!nyx::NetworkConfig::parse_rendezvous_list(csv, tmp)) return false;
@@ -711,16 +703,6 @@ void NodeService::set_auto_start_owned_hub(bool enabled) {
   save_network_config();
 }
 
-std::string NodeService::running_group_hub_id_hex() const {
-  std::lock_guard lock(sessions_mutex_);
-  for (const auto& [id, s] : sessions_) {
-    if (!s || s->kind != SessionKind::GroupHub) continue;
-    if (s->state.load() != SessionState::Live) continue;
-    return s->ref_id_hex;
-  }
-  return {};
-}
-
 bool NodeService::is_group_hub_running(const std::string& group_id_hex) const {
   const std::string sid = make_group_session_id(group_id_hex);
   auto s = find_session(sid);
@@ -807,17 +789,6 @@ bool NodeService::start_connect_peer(const std::string& host, uint16_t port) {
   session->worker =
       std::thread([this, session, host, port]() { run_connect_peer(session, host, port); });
   emit_sessions_changed();
-  return true;
-}
-
-bool NodeService::start_browse(int timeout_ms) {
-  if (discovery_busy_.exchange(true)) return false;
-  // Never join() on the caller (often UI) — previous scan can still be exiting.
-  if (discovery_thread_.joinable()) discovery_thread_.detach();
-  discovery_thread_ = std::thread([this, timeout_ms]() {
-    run_browse(timeout_ms);
-    discovery_busy_.store(false);
-  });
   return true;
 }
 

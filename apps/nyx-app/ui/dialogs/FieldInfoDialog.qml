@@ -353,7 +353,6 @@ Dialog {
                             readonly property string nickname: String(modelData.nickname || "?")
                             readonly property bool memberIsOwner: !!(modelData.isOwner)
                             readonly property bool memberIsHost: !!(modelData.isHost)
-                            readonly property string memberRole: String(modelData.role || "member")
                             readonly property string idShort: String(modelData.idShort || "")
 
                             Layout.fillWidth: true

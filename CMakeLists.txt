@@ -228,7 +228,6 @@ if(NYX_BUILD_GUI)
       apps/nyx-app/qt/message_model.cpp
       apps/nyx-app/qt/lan_peer_model.cpp
       apps/nyx-app/qt/chat_list_model.cpp
-      apps/nyx-app/qt/file_list_model.cpp
       apps/nyx-app/resources.qrc
     )
     if(WIN32)

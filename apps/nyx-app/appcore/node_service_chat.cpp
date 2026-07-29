@@ -336,10 +336,6 @@ std::vector<nyx::FileEntry> NodeService::remote_files() const {
   return {};
 }
 
-bool NodeService::request_remote_files() {
-  return request_remote_files_at({}, {});
-}
-
 bool NodeService::request_remote_files_at(const std::string& root_path,
                                           const std::string& parent_rel) {
   return request_remote_files_at({}, root_path, parent_rel);
@@ -918,14 +914,6 @@ std::optional<nyx::FileEntry> NodeService::find_file_object(
     return std::nullopt;
   }
   return entry;
-}
-
-std::vector<nyx::StoredMessage> NodeService::chat_history(std::size_t count) const {
-  auto session = active_session();
-  if (!session) return {};
-  if (session->chat) return session->chat->history(count);
-  if (session->group_hub) return session->group_hub->store().recent(count);
-  return {};
 }
 
 }  // namespace nyx_app

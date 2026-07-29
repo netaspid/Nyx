@@ -528,11 +528,6 @@ nyx::CallMode NodeService::call_mode() const {
   return call_.mode;
 }
 
-std::string NodeService::call_session_id() const {
-  std::lock_guard lock(call_mutex_);
-  return call_session_id_;
-}
-
 std::string NodeService::call_title() const {
   std::lock_guard lock(call_mutex_);
   return call_title_;
@@ -566,11 +561,6 @@ bool NodeService::call_camera_on() const {
 void NodeService::set_call_camera_on(bool on) {
   std::lock_guard lock(call_mutex_);
   call_.local_camera_on = on;
-}
-
-bool NodeService::call_is_host() const {
-  std::lock_guard lock(call_mutex_);
-  return call_is_host_;
 }
 
 std::vector<nyx::UserId> NodeService::call_participants() const {

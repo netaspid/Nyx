@@ -131,21 +131,6 @@ bool NodeService::remove_file_role(const std::string& scope_group_id_hex,
   return true;
 }
 
-bool NodeService::set_root_member_file_role(const std::string& scope_group_id_hex,
-                                            const std::string& root_path,
-                                            const std::string& user_id_hex,
-                                            const std::string& role_id) {
-  const nyx::GroupId scope = group_from_hex(scope_group_id_hex);
-  if (group_id_is_zero(scope)) return false;
-  file_access_policy(scope_group_id_hex);
-  const std::string root = resolve_share_root_path(root_path);
-  if (!file_access_.set_root_member_role(scope, root, user_from_hex(user_id_hex), role_id)) {
-    return false;
-  }
-  after_file_access_changed(scope_group_id_hex);
-  return true;
-}
-
 bool NodeService::set_path_member_file_role(const std::string& scope_group_id_hex,
                                             const std::string& root_path,
                                             const std::string& relative_path,

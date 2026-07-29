@@ -57,7 +57,6 @@ class NodeController : public QObject {
   Q_PROPERTY(QString pendingRecoveryPhrase READ pendingRecoveryPhrase NOTIFY accountGateChanged)
   Q_PROPERTY(QString lastAccountId READ lastAccountId NOTIFY accountGateChanged)
   Q_PROPERTY(bool needsRecoveryConfirm READ needsRecoveryConfirm NOTIFY accountGateChanged)
-  Q_PROPERTY(bool needsOnboarding READ needsOnboarding NOTIFY profileChanged)
   Q_PROPERTY(MessageModel* messages READ messages CONSTANT)
   Q_PROPERTY(ChatListModel* chatList READ chatList CONSTANT)
   Q_PROPERTY(LanPeerModel* lanPeers READ lanPeers CONSTANT)
@@ -212,7 +211,6 @@ class NodeController : public QObject {
   QString pendingRecoveryPhrase() const { return pending_recovery_phrase_; }
   QString lastAccountId() const { return last_account_id_; }
   bool needsRecoveryConfirm() const { return !pending_recovery_phrase_.isEmpty(); }
-  bool needsOnboarding() const { return needs_onboarding_; }
   MessageModel* messages() { return &messages_; }
   ChatListModel* chatList() { return &chat_list_; }
   LanPeerModel* lanPeers() { return &lan_peers_; }
@@ -233,7 +231,6 @@ class NodeController : public QObject {
   QString rendezvousList() const { return rendezvous_list_; }
   int discoveryMode() const { return discovery_mode_; }
   QString networkStatus() const { return network_status_; }
-  QString profilePath() const { return profile_path_; }
   QString toast() const { return toast_; }
   bool windowActive() const { return window_active_; }
   QString fileProgressLabel() const { return file_progress_label_; }
@@ -326,7 +323,6 @@ class NodeController : public QObject {
 
   Q_INVOKABLE void saveNetworkSettings();
   Q_INVOKABLE bool testRendezvousServer(const QString& hostPort);
-  void setProfilePath(const QString& v);
   void setNickname(const QString& v);
 
   Q_INVOKABLE void refreshAccountList();
@@ -344,7 +340,6 @@ class NodeController : public QObject {
   Q_INVOKABLE bool importLegacyProfile(const QString& password);
   Q_INVOKABLE void signOut();
   Q_INVOKABLE void refreshProfile();
-  Q_INVOKABLE void completeOnboarding(const QString& nickname);
   Q_INVOKABLE void refreshChatList();
   /** Update live/offline badges without re-reading chat history from disk. */
   void refreshChatSessionStates();
@@ -358,21 +353,18 @@ class NodeController : public QObject {
   Q_INVOKABLE QVariantList peerAvatarHistory(const QString& userIdHex) const;
   Q_INVOKABLE void openContact(const QString& userIdHex);
   Q_INVOKABLE QString shortInviteCode(const QString& hex) const;
-  Q_INVOKABLE void openGroupsDialog();
   Q_INVOKABLE void openFieldInfo(const QString& groupIdHex = {});
   Q_INVOKABLE void openPeerInfo(const QString& userIdHex = {});
   Q_INVOKABLE void openFilesView();
   Q_INVOKABLE void openChatMediaFolder(const QString& mediaKind);
   Q_INVOKABLE void showChatView();
   Q_INVOKABLE void leaveChat();
-  Q_INVOKABLE void openFilesDialog();
   Q_INVOKABLE QString pickFolder();
   /** Диалог «Сохранить как»; suggestedFileName — исходное имя файла. */
   Q_INVOKABLE QString pickSaveFile(const QString& suggestedFileName);
   /** Выбор папки для сохранения нескольких файлов. */
   Q_INVOKABLE QString pickSaveFolder();
   Q_INVOKABLE void refreshFileLists();
-  Q_INVOKABLE void refreshFileAccess();
   Q_INVOKABLE void refreshFieldRoster();
   Q_INVOKABLE bool hasFilePermission(int permissionBit) const;
   Q_INVOKABLE void setMemberFileRole(const QString& userIdHex, const QString& roleId);
@@ -390,10 +382,7 @@ class NodeController : public QObject {
   Q_INVOKABLE void browseToCrumb(int index);
   Q_INVOKABLE void toggleFileRolePermission(const QString& roleId, int permissionBit);
   Q_INVOKABLE bool canEditFileRolePermissions(const QString& roleId) const;
-  Q_INVOKABLE void syncFileAccessTargetFromBrowse();
   Q_INVOKABLE void setFileAccessTarget(const QString& rootPath, const QString& relativePath);
-  Q_INVOKABLE void openAccessForPath(const QString& rootPath, const QString& relativePath,
-                                     const QString& label);
   Q_INVOKABLE void setPathRole(const QString& roleId);
   Q_INVOKABLE void clearPathRole();
   Q_INVOKABLE void createPermissionPreset(const QString& name, int permissions);
@@ -412,26 +401,17 @@ class NodeController : public QObject {
                                 const QString& rootPath = {},
                                 const QString& relativePath = {});
   Q_INVOKABLE void downloadRemoteFolder(const QString& rootPath, const QString& relativePath);
-  Q_INVOKABLE bool canDownloadFileAt(const QString& rootPath, const QString& relativePath) const {
-    return canFileDownloadAt(rootPath, relativePath);
-  }
-  Q_INVOKABLE bool canOpenRemoteFileAt(const QString& rootPath, const QString& relativePath) const {
-    return canFileOpenRemoteAt(rootPath, relativePath);
-  }
   Q_INVOKABLE void sendFileByHash(const QString& hashHex);
   Q_INVOKABLE void openConversation(const QString& key, int kind, const QString& refId,
                                     const QString& title, const QString& lastSeen);
   Q_INVOKABLE void searchMessages(const QString& query);
   Q_INVOKABLE void showWindow();
-  Q_INVOKABLE void hideToTray();
-  Q_INVOKABLE void startListen();
   Q_INVOKABLE void connectToken(const QString& tokenHex);
   Q_INVOKABLE void connectPeer(const QString& host, int port);
   Q_INVOKABLE void refreshLanPeers();
   Q_INVOKABLE void disconnectSession();
   Q_INVOKABLE void disconnectChat(const QString& key);
   Q_INVOKABLE QString sessionStateForKey(const QString& key) const;
-  Q_INVOKABLE bool isChatSelectable(const QString& key) const;
   Q_INVOKABLE void sendMessage(const QString& text);
   /** Старт звонка в активном чате (video=false — только аудио). Сигналинг фаза 0. */
   Q_INVOKABLE void startCall(bool video = false);
@@ -543,7 +523,6 @@ class NodeController : public QObject {
                                    const QString& direction, const QString& tags,
                                    bool publicListed);
   Q_INVOKABLE QVariantMap contactInfo(const QString& userIdHex) const;
-  Q_INVOKABLE void deleteGroup(const QString& groupIdHex);
   /** Удаляет чат или поле из локального списка (ключ dm:/group:/chat:). */
   Q_INVOKABLE void removeConversation(const QString& key);
   Q_INVOKABLE void removeFieldMember(const QString& groupIdHex, const QString& userIdHex);
@@ -554,9 +533,6 @@ class NodeController : public QObject {
   Q_INVOKABLE void joinField(const QString& inviteHex);
   Q_INVOKABLE void connectActiveField();
   Q_INVOKABLE void copyToClipboard(const QString& text);
-  Q_INVOKABLE void copyInviteToken();
-  Q_INVOKABLE void copyDmInboxToken();
-  Q_INVOKABLE void copyLastGroupInvite();
   Q_INVOKABLE void clearToast();
   /** Синхронизировать системный title bar (Windows) с темой UI. */
   Q_INVOKABLE void setNativeChromeDark(bool dark);
@@ -577,7 +553,6 @@ class NodeController : public QObject {
   void listeningChanged();
   void rendezvousChanged();
   void networkSettingsChanged();
-  void profilePathChanged();
   void toastChanged();
   void callChanged();
   void callRemoteFrameChanged();
@@ -602,7 +577,6 @@ class NodeController : public QObject {
   void sessionsChanged();
   void incomingMessage(const QString& author, const QString& preview);
   void chatCapturePermissionResult(bool granted);
-  void logLine(const QString& line);
   void requestCloseToTray();
   void showMainWindow();
 
@@ -620,7 +594,6 @@ class NodeController : public QObject {
   void loadStoredHistory(int kind, const QString& refId, const QString& convKey);
   void tickLanDiscovery();
   void beginMainSession();
-  void updateOnboardingFlag();
   void syncNetworkSettingsFromService();
   bool applyRendezvousList(const QString& v);
   void maybeAutoReconnectSessions();
@@ -704,12 +677,10 @@ class NodeController : public QObject {
   QString rendezvous_list_;
   int discovery_mode_ = 0;
   QString network_status_;
-  QString profile_path_;
   QString toast_;
   bool toast_is_error_ = false;
   bool in_chat_ = false;
   bool pending_field_join_notify_ = false;
-  bool needs_onboarding_ = false;
   bool session_unlocked_ = false;
   bool legacy_profile_pending_ = false;
   QVariantList account_list_;

@@ -14,7 +14,6 @@ Item {
     required property bool outgoing
     required property var timestamp
     required property real listWidth
-    property var messageId: 0
     property string delivery: ""
     property string authorUserId: ""
 
