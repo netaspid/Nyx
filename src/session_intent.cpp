@@ -38,7 +38,7 @@ std::string dm_inbox_path() {
   return data_dir() + "/dm_inbox.token";
 }
 
-} // namespace
+}
 
 std::string default_session_intents_path() {
   return data_dir() + "/session_intents.json";
@@ -136,7 +136,7 @@ bool SessionIntentStore::is_enabled(const std::string& key) const {
     if (it.key == key)
       return it.enabled;
   }
-  // No record: never auto-start the session (only after an explicit join/enable).
+
   return false;
 }
 
@@ -177,4 +177,4 @@ std::string dm_inbox_token_hex() {
   return to_hex(token.data(), token.size());
 }
 
-} // namespace nyx
+}

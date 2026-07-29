@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file call_session.hpp
- *  Local call FSM (signaling only; media is attached separately).
- */
-
 #include "nyx/call_proto.hpp"
 
 #include <string>
@@ -46,4 +42,4 @@ struct CallSession {
   void reset();
 };
 
-} // namespace nyx
+}

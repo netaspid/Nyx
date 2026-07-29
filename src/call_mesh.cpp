@@ -16,7 +16,7 @@ constexpr auto kPunchInterval = std::chrono::milliseconds(200);
 constexpr auto kConnectRetry = std::chrono::milliseconds(400);
 constexpr auto kPendingTimeout = std::chrono::seconds(3);
 
-} // namespace
+}
 
 std::vector<UserId> select_call_relays(std::vector<std::pair<UserId, uint16_t>> candidates,
                                        std::size_t participant_count) {
@@ -346,4 +346,4 @@ void CallMesh::poll() {
   }
 }
 
-} // namespace nyx
+}

@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file avatar_proto.hpp
- *  Profile photo exchange on kBulkStream (dedicated kinds, not FileKind).
- */
-
 #include "nyx/file_hash.hpp"
 #include "nyx/types.hpp"
 
@@ -59,4 +55,4 @@ struct AvatarDeny {
 
 bool is_avatar_frame(const ByteBuffer& data);
 
-} // namespace nyx
+}

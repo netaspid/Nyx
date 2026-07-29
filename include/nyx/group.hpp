@@ -25,20 +25,17 @@ inline bool can_start_field_call(GroupRole role) {
   return role == GroupRole::Owner || role == GroupRole::Host || role == GroupRole::Member;
 }
 
-/** Field member in the local roster. */
 struct GroupMemberRecord {
   UserId user_id {};
   std::string nickname;
   GroupRole role = GroupRole::Member;
 };
 
-/** Field mode: currently invite+hub only; PublicListed reserved for rendezvous search. */
 enum class GroupVisibility : uint8_t {
-  Circle = 0,       /**< Private circle: invite based, the owner hosts the room. */
-  PublicListed = 1, /**< Future: public, discoverable via rendezvous (local flag for now). */
+  Circle = 0,
+  PublicListed = 1,
 };
 
-/** Field description on disk. */
 struct GroupRecord {
   GroupId id {};
   std::string name;
@@ -52,7 +49,6 @@ struct GroupRecord {
   GroupVisibility visibility = GroupVisibility::Circle;
 };
 
-/** Local field storage: data_dir()/groups.json. */
 class GroupStore {
 public:
   GroupStore();
@@ -60,11 +56,11 @@ public:
   bool load();
   bool save() const;
 
-  /** Creates a field with the owner in the roster. */
+
   GroupRecord
   create(const std::string& name, const UserId& owner_id, const std::string& owner_nickname);
 
-  /** Updates the meta of an existing field (description, tags, ...). */
+
   bool update_meta(const GroupId& id,
                    const std::string& description,
                    const std::string& direction,
@@ -87,15 +83,15 @@ public:
   static std::string invite_hex(const InviteToken& token);
   static bool invite_from_hex(const std::string& hex, InviteToken& out);
 
-  /** Adds live members into target without dropping already stored ones. */
+
   static void merge_member_roster(std::vector<GroupMemberRecord>& target,
                                   const std::vector<GroupMemberRecord>& live);
 
-  /** Ensures the creator is present in members by owner_id. */
+
   static void ensure_roster(GroupRecord& group, const std::string& owner_nickname_fallback = {});
 
 private:
   std::vector<GroupRecord> groups_;
 };
 
-} // namespace nyx
+}

@@ -12,7 +12,7 @@ bool call_id_zero(const CallId& id) {
   return true;
 }
 
-} // namespace
+}
 
 bool CallSession::start_outgoing(CallMode m, CallScope s, const UserId& target, CallId id) {
   if (!idle())
@@ -72,7 +72,7 @@ bool CallSession::accept(CallMode m) {
   return true;
 }
 
-bool CallSession::reject(CallRejectReason /*reason*/) {
+bool CallSession::reject(CallRejectReason ) {
   if (state != CallState::Incoming)
     return false;
   end_reason = "reject";
@@ -83,7 +83,7 @@ bool CallSession::reject(CallRejectReason /*reason*/) {
 bool CallSession::on_accept(const CallAcceptMessage& msg) {
   if (msg.call_id != call_id)
     return false;
-  // Field room already Active: a participant joined.
+
   if (scope == CallScope::Field && state == CallState::Active) {
     mode = msg.mode;
     return true;
@@ -99,7 +99,7 @@ bool CallSession::on_reject(const CallRejectMessage& msg) {
   if (msg.call_id != call_id)
     return false;
   if (scope == CallScope::Field && state == CallState::Active) {
-    // Hub rejected the start (no role): close the room on the initiator side.
+
     if (msg.reason == CallRejectReason::Unsupported) {
       end_reason = "unsupported";
       state = CallState::Ended;
@@ -114,7 +114,7 @@ bool CallSession::on_reject(const CallRejectMessage& msg) {
   return true;
 }
 
-bool CallSession::hangup(CallHangupReason /*reason*/) {
+bool CallSession::hangup(CallHangupReason ) {
   if (state != CallState::Active && state != CallState::Outgoing && state != CallState::Ringing &&
       state != CallState::Incoming)
     return false;
@@ -150,4 +150,4 @@ void CallSession::reset() {
   end_reason.clear();
 }
 
-} // namespace nyx
+}

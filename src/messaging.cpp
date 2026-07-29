@@ -57,7 +57,7 @@ decode_msg_body(const ByteBuffer& data, std::size_t off, bool has_chat_id) {
   return msg;
 }
 
-} // namespace
+}
 
 uint64_t next_message_id() {
   static std::atomic<uint64_t> counter {
@@ -138,7 +138,7 @@ std::optional<ByeMessage> ByeMessage::decode(const ByteBuffer& data) {
     return std::nullopt;
   }
   const uint16_t len = read_u16_le(data.data() + 1);
-  // Exact length required: otherwise a foreign frame starting with byte 4 could parse as Bye.
+
   if (data.size() != 3u + len)
     return std::nullopt;
   ByeMessage msg;
@@ -163,4 +163,4 @@ std::optional<AckMessage> AckMessage::decode(const ByteBuffer& data) {
   return msg;
 }
 
-} // namespace nyx
+}

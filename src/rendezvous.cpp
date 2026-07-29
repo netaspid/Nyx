@@ -75,4 +75,4 @@ std::optional<EndpointHint> RendezvousClient::lookup(const InviteToken& token) {
   return std::nullopt;
 }
 
-} // namespace nyx
+}

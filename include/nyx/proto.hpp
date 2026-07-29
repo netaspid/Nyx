@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file proto.hpp
- *  Encoding of Nyx frames and service messages (rendezvous, control).
- */
-
 #include "nyx/types.hpp"
 
 #include <optional>
@@ -20,23 +16,21 @@ struct FrameHeader {
   uint16_t payload_length = 0;
 };
 
-/** Protocol frame: header + payload. */
 struct Frame {
   FrameHeader header;
   ByteBuffer payload;
 
-  /** Builds a frame with payload_length filled in. */
+
   static Frame make(PacketType type, uint32_t stream_id, uint32_t seq, ByteBuffer payload);
 
-  /** Serializes to bytes for UDP. Empty buffer when the payload is too large. */
+
   ByteBuffer encode() const;
 
-  /** Parses a buffer. @param err optional error description. */
+
   static std::optional<Frame>
   decode(const uint8_t* data, std::size_t len, std::string* err = nullptr);
 };
 
-/** Address hint for rendezvous (26 bytes: ip, port, nonce). */
 struct EndpointHint {
   std::array<uint8_t, 16> ip {};
   uint16_t port = 0;
@@ -44,7 +38,7 @@ struct EndpointHint {
   ByteBuffer encode() const;
   static std::optional<EndpointHint> decode(const uint8_t* data, std::size_t len);
 
-  /** IPv4 string from the ip field. */
+
   std::string host_string() const;
 };
 
@@ -56,7 +50,6 @@ enum class RendezvousKind : uint8_t {
   Unregister = 0x05,
 };
 
-/** Bootstrap server message: register or lookup by invite token. */
 struct RendezvousMessage {
   RendezvousKind kind = RendezvousKind::NotFound;
   InviteToken token {};
@@ -74,7 +67,6 @@ enum class ControlKind : uint8_t {
   Rekey = 0x05,
 };
 
-/** Service message on stream 0 (Ping/Pong, open/close stream). */
 struct ControlMessage {
   ControlKind kind = ControlKind::Ping;
   uint64_t nonce = 0;
@@ -85,10 +77,8 @@ struct ControlMessage {
   static std::optional<ControlMessage> decode(const uint8_t* data, std::size_t len);
 };
 
-/** Datagram carries a handshake frame (Init/Resp/Finish). */
 bool is_handshake_datagram(const ByteBuffer& data);
 
-/** Datagram hole-punch probe (NYX-PUNCH). */
 bool is_punch_datagram(const ByteBuffer& data);
 
-} // namespace nyx
+}

@@ -90,7 +90,6 @@ std::string path_to_posix_copy(const std::string& path) {
   return out;
 }
 
-// Share root when a grant for a nested folder matches an indexed root.
 std::string grant_effective_share_root(const FileRootGrant& g) {
   if (g.relative_path.empty())
     return normalize_grant_root(g.root_path);
@@ -114,7 +113,6 @@ uint32_t grant_role_permissions(const GroupFileAccess& policy, const FileRootGra
   return static_cast<uint32_t>(FilePermission::List);
 }
 
-// Grant for a subfolder matching the share root of entries (overview -> remote).
 bool permissions_from_share_root_grant(const GroupFileAccess& policy,
                                        const std::string& root_norm,
                                        const UserId& user_id,
@@ -233,7 +231,7 @@ bool parse_group_policy_object(const std::string& obj, GroupFileAccess& policy) 
       policy.group_id.begin(), policy.group_id.end(), [](uint8_t b) { return b == 0; });
 }
 
-} // namespace
+}
 
 FileAccessStore::FileAccessStore() {
   load();
@@ -745,4 +743,4 @@ bool FileAccessStore::decode_group_policy_json(const std::string& json, GroupFil
   return parse_group_policy_object(json, policy);
 }
 
-} // namespace nyx
+}

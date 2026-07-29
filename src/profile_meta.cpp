@@ -19,7 +19,7 @@ uint64_t wall_ms() {
   return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
-} // namespace
+}
 
 namespace nyx {
 
@@ -39,7 +39,7 @@ void clamp_meta(ProfileMeta& m) {
     m.interests.resize(kMaxInterestsLen);
 }
 
-} // namespace
+}
 
 std::string availability_to_string(Availability a) {
   switch (a) {
@@ -159,7 +159,7 @@ bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, Profile
   ++offset;
   out.photo_hashes.clear();
   out.updated_ms = wall_ms();
-  // Extension fields: updated_ms + photo hashes (older peers do not send them).
+
   if (offset + 8 <= data.size()) {
     out.updated_ms = read_u64_le(data.data() + offset);
     offset += 8;
@@ -180,4 +180,4 @@ bool read_profile_meta_wire(const ByteBuffer& data, std::size_t& offset, Profile
   return true;
 }
 
-} // namespace nyx
+}

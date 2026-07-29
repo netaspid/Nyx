@@ -65,4 +65,4 @@ bool BlobWriter::close() {
   return true;
 }
 
-} // namespace nyx
+}

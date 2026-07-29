@@ -1,10 +1,5 @@
 #pragma once
 
-/** @file udp.hpp
- *  Blocking UDP socket (Windows Winsock / BSD sockets).
- *  Several Connections may share one socket (shared_ptr).
- */
-
 #include "nyx/types.hpp"
 
 #include <cstdint>
@@ -24,18 +19,18 @@ public:
   UdpSocket(UdpSocket&& other) noexcept = default;
   UdpSocket& operator=(UdpSocket&& other) noexcept = default;
 
-  /** Binds to host:port. Port 0 lets the OS choose. @return false on bind error. */
+
   bool bind(const std::string& host, uint16_t port, std::string* err = nullptr);
 
   bool send_to(const ByteBuffer& data, const std::string& host, uint16_t port);
 
-  /** Receives a datagram. timeout_ms < 0 = no timeout; 0 = poll. */
+
   std::optional<ByteBuffer> recv_from(std::string& host, uint16_t& port, int timeout_ms = -1);
 
-  /** Local port after bind. */
+
   uint16_t local_port() const;
 
-  /** Bind + join multicast group; optional iface IPv4 (empty = auto). */
+
   bool bind_multicast_listener(const std::string& group,
                                uint16_t port,
                                std::string* err = nullptr,
@@ -43,7 +38,7 @@ public:
 
   bool enable_broadcast(std::string* err = nullptr);
 
-  /** Set multicast TX iface; re-joins membership when group was joined. */
+
   bool set_multicast_interface(const std::string& ipv4, std::string* err = nullptr);
 
 private:
@@ -58,4 +53,4 @@ private:
   static bool platform_init();
 };
 
-} // namespace nyx
+}

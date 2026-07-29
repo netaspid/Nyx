@@ -12,13 +12,11 @@
 
 namespace nyx {
 
-/** Conversation kind in the chat list. */
 enum class ConversationKind : uint8_t {
   Direct = 0,
   Group = 1,
 };
 
-/** Chat list entry (local data only). */
 struct ConversationSummary {
   std::string key;
   std::string title;
@@ -30,10 +28,8 @@ struct ConversationSummary {
   uint64_t last_seen_ms = 0;
 };
 
-/** Collects DMs + groups with the last message from MessageStore. */
 std::vector<ConversationSummary> list_conversations(const UserId& self);
 
-/** Human-readable last-seen label. */
 std::string format_last_seen(uint64_t last_seen_ms, uint64_t now_ms);
 
-} // namespace nyx
+}

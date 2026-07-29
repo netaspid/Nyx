@@ -99,7 +99,7 @@ bool leave_mcast_group(socket_t s, const std::string& group, uint32_t iface_nbo)
   return true;
 }
 
-} // namespace
+}
 
 bool UdpSocket::platform_init() {
   if (g_net_init)
@@ -253,7 +253,7 @@ bool UdpSocket::bind_multicast_listener(const std::string& group,
   const in_addr iface = resolve_mcast_iface(iface_ipv4);
   in_addr any {};
   any.s_addr = INADDR_ANY;
-  // Join on both specific iface and ANY — Android RX often needs the ANY membership.
+
   const bool joined_iface = join_mcast_group(s, group, iface, nullptr);
   const bool joined_any =
       (iface.s_addr == INADDR_ANY) ? joined_iface : join_mcast_group(s, group, any, nullptr);
@@ -335,4 +335,4 @@ bool UdpSocket::set_multicast_interface(const std::string& ipv4, std::string* er
   return true;
 }
 
-} // namespace nyx
+}

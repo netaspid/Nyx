@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file group_member.hpp
- *  Field client: connects to the hub, GroupJoin, group chat.
- */
-
 #include "nyx/connection.hpp"
 #include "nyx/group.hpp"
 #include "nyx/group_proto.hpp"
@@ -27,12 +23,11 @@ struct GroupRecordView {
   std::string direction;
   std::string tags;
   GroupVisibility visibility = GroupVisibility::Circle;
-  /** true after GroupMeta from the hub: local meta may be overwritten. */
+
   bool meta_received = false;
   std::vector<GroupMemberRecord> members;
 };
 
-/** Field member session (not the owner hub). */
 class GroupMemberService {
 public:
   using MessageCallback = std::function<void(const ChatMessage&, bool outgoing)>;
@@ -46,14 +41,14 @@ public:
                      GroupId group_id,
                      std::string group_name);
 
-  /** After Hello: sends GroupJoin and waits for JoinAck. */
+
   bool join(int timeout_ms = 10000);
 
-  /** Sends into the field; false when the hub is dead or not joined. */
+
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
   bool send_call_frame(const ByteBuffer& frame);
   void handle_payload(const ByteBuffer& payload);
-  /** Keep-alive; the peer drops joined on timeout. */
+
   void tick();
 
   void set_on_message(MessageCallback cb) { on_message_ = std::move(cb); }
@@ -91,4 +86,4 @@ private:
   std::unordered_set<uint64_t> pending_acks_;
 };
 
-} // namespace nyx
+}

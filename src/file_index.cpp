@@ -36,7 +36,6 @@ bool owner_id_from_hex(const std::string& hex, UserId& out) {
   return true;
 }
 
-/** First path segment is owner hex when it looks like a 64-char user id. */
 bool infer_owner_from_rel(const std::string& relative_path, UserId& out) {
   std::string posix = relative_path;
   for (char& c : posix) {
@@ -44,7 +43,7 @@ bool infer_owner_from_rel(const std::string& relative_path, UserId& out) {
       c = '/';
   }
   const auto slash = posix.find('/');
-  // Owner dirs always contain at least one file under them.
+
   if (slash == std::string::npos)
     return false;
   const std::string head = posix.substr(0, slash);
@@ -70,7 +69,7 @@ std::string path_to_posix(std::string path) {
   return path;
 }
 
-} // namespace
+}
 
 void FileIndex::clear() {
   std::lock_guard lock(mutex_);
@@ -124,8 +123,8 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
     }
   };
 
-  // Direct child of parent within relative_path; empty when it does not match.
-  // Accepts a leaf name without the parent prefix (as in an already-trimmed ListResp).
+
+
   auto immediate_child = [&](const std::string& rel) -> std::string {
     std::string rest;
     if (parent.empty()) {
@@ -153,7 +152,7 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
 
     if (e.is_directory()) {
       const std::string rel = path_to_posix(e.relative_path);
-      // Share-root marker (folder name / member label), not a subfolder inside the root.
+
       if (parent.empty()) {
         if (rel == root_leaf)
           continue;
@@ -178,7 +177,7 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
                rel[parent.size()] == '/') {
       rest = rel.substr(parent.size() + 1);
     } else if (rel.find('/') == std::string::npos) {
-      // Level response already uses leaf paths: the file lives in the current parent.
+
       rest = rel;
     } else {
       continue;
@@ -189,8 +188,8 @@ std::vector<FileEntry> FileIndex::listing_level(const std::vector<FileEntry>& so
     const auto slash = rest.find('/');
     if (slash == std::string::npos) {
       FileEntry file = e;
-      // Full path from the share root (not a leaf): otherwise a repeated
-      // listing_level with parent="node_modules" drops ".modules.yaml".
+
+
       file.relative_path = parent.empty() ? rest : parent + "/" + rest;
       files.push_back(std::move(file));
     } else {
@@ -305,7 +304,7 @@ std::string FileIndex::guess_mime(const std::string& path) {
 }
 
 bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
-  // Caller already holds mutex_; the progress callback must not re-enter FileIndex.
+
   std::error_code ec;
   const std::string norm = normalize_utf8_path(root.path);
   const std::filesystem::path root_fs = path_from_utf8(norm);
@@ -349,7 +348,7 @@ bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
       entry.size = static_cast<uint64_t>(it->file_size(file_ec));
       if (file_ec)
         entry.size = 0;
-      // file_time_type::time_since_epoch() may throw on Windows; skip it.
+
       entry.mtime_ms = 0;
       entry.mime = guess_mime(abs);
       infer_owner_from_rel(entry.relative_path, entry.owner_id);
@@ -360,7 +359,7 @@ bool FileIndex::scan_directory(const ShareRoot& root, ScanProgressFn progress) {
         progress(rel_for_progress, scanned, false);
     }
   } catch (const std::exception&) {
-    // Broken path / symlink loop: return whatever was scanned so far.
+
   }
   if (progress)
     progress({}, scanned, true);
@@ -570,7 +569,7 @@ bool FileIndex::load() {
   if (json.empty())
     return true;
 
-  // schema_version is informational; missing field means legacy v0/v1 index.
+
   (void)json_get_u64(json, "schema_version");
 
   const auto roots_key = json.find("\"roots\"");
@@ -587,7 +586,7 @@ bool FileIndex::load() {
           GroupStore::group_id_from_hex(*gid, sr.group_id);
         }
         std::error_code ec;
-        // Stale roots (missing on disk) are dropped; orphan entries follow below.
+
         if (!sr.path.empty() && std::filesystem::is_directory(path_from_utf8(sr.path), ec)) {
           const bool duplicate =
               std::any_of(share_roots_.begin(), share_roots_.end(), [&](const ShareRoot& existing) {
@@ -678,7 +677,7 @@ bool FileIndex::save() const {
   std::ofstream file(path_from_utf8(index_path()), std::ios::binary | std::ios::trunc);
   if (!file)
     return false;
-  // schema_version 2: roots keyed by (path, group); managed objects under objects/.
+
   file << "{\"schema_version\":2,\"roots\":[";
   for (std::size_t i = 0; i < share_roots_.size(); ++i) {
     if (i > 0)
@@ -722,7 +721,7 @@ std::optional<FileEntry> FileIndex::find_by_hash_hex(const std::string& hex) con
 }
 
 std::string FileIndex::library_root_path(const GroupId& scope_group) {
-  // Human-readable share-root leaf for Files / Field Resources.
+
   const std::string leaf = group_id_is_zero(scope_group)
                                ? std::string("Импорт")
                                : (std::string("Импорт-") + group_id_hex(scope_group).substr(0, 8));
@@ -799,7 +798,7 @@ std::optional<FileEntry> FileIndex::adopt_file(const std::string& source_path,
     library_dir = library_root;
   }
 
-  // Prefer content-addressed object store, then mirror into library ShareRoot.
+
   const std::string object_root =
       normalize_utf8_path(data_dir() + "/objects/" + hash_hex(expected_hash));
   const std::string object_path =
@@ -823,7 +822,7 @@ std::optional<FileEntry> FileIndex::adopt_file(const std::string& source_path,
   std::string leaf_name = safe_name;
   std::string library_path = path_to_utf8(path_from_utf8(library_dir) / path_from_utf8(leaf_name));
   {
-    // Avoid clobbering a different file with the same display name.
+
     int suffix = 1;
     while (std::filesystem::exists(path_from_utf8(library_path), ec)) {
       FileHash existing_hash {};
@@ -889,4 +888,4 @@ std::optional<FileEntry> FileIndex::import_file(const std::string& source_path,
   return adopt_file(source_path, hash, display_name, mime, scope_group, owner_id, relative_dir);
 }
 
-} // namespace nyx
+}

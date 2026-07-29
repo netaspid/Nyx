@@ -40,7 +40,7 @@ std::optional<StoredMessage> last_message(const std::string& store_path) {
   return recent.back();
 }
 
-} // namespace
+}
 
 std::string format_last_seen(uint64_t last_seen_ms, uint64_t now_ms) {
   if (last_seen_ms == 0)
@@ -136,4 +136,4 @@ std::vector<ConversationSummary> list_conversations(const UserId& self) {
   return out;
 }
 
-} // namespace nyx
+}

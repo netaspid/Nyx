@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file call_mesh.hpp
- *  Call media mesh: PeerIntro/Endpoint via the hub, media peer-to-peer.
- */
-
 #include "nyx/call_proto.hpp"
 #include "nyx/connection.hpp"
 #include "nyx/types.hpp"
@@ -81,4 +77,4 @@ private:
   RealtimeCallback on_realtime_;
 };
 
-} // namespace nyx
+}

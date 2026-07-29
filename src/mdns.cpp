@@ -24,7 +24,7 @@ namespace {
 
 constexpr char kMagic[] = "NYX1";
 constexpr std::size_t kMagicLen = 4;
-// Nyx-specific multicast group; port 5353 is taken by system mDNS/Bonjour.
+
 constexpr char kDiscoveryGroup[] = "239.255.77.77";
 constexpr uint16_t kDiscoveryPort = 34779;
 
@@ -105,7 +105,7 @@ std::optional<LanPeer> decode_beacon(const ByteBuffer& data, const std::string& 
   return peer;
 }
 
-} // namespace
+}
 
 void add_discovery_unicast_target(const std::string& ipv4) {
   if (ipv4.empty() || ipv4 == "0.0.0.0" || ipv4 == "127.0.0.1")
@@ -149,7 +149,7 @@ bool MdnsLan::send_announcement(UdpSocket& socket,
       ok = socket.send_to(wire, directed, kDiscoveryPort) || ok;
     }
   }
-  // Wi‑Fi clients often miss multicast sourced from a wired host; unicast reaches them.
+
   for (const auto& h : unicast_hosts) {
     if (h.empty() || h == "0.0.0.0" || h == "127.0.0.1")
       continue;
@@ -222,4 +222,4 @@ std::vector<LanPeer> MdnsLan::browse(UdpSocket& socket, int timeout_ms) {
   return out;
 }
 
-} // namespace nyx
+}

@@ -71,7 +71,7 @@ bool GroupMemberService::join(int timeout_ms) {
         view_.members = std::move(ack->members);
         chat_id_ = group_chat_id(group_id_);
         group_name_ = view_.name;
-        // Before JoinAck group_id may be empty and history would go to the wrong file.
+
         store_.rebind(MessageStore::path_for_group(group_id_));
         if (on_event_) {
           on_event_("в поле «" + view_.name + "» (" + std::to_string(view_.members.size()) +
@@ -263,4 +263,4 @@ void GroupMemberService::apply_meta(const GroupMetaMessage& meta) {
     on_meta_();
 }
 
-} // namespace nyx
+}

@@ -27,7 +27,7 @@ bool read_string(const ByteBuffer& data,
   return true;
 }
 
-} // namespace
+}
 
 ByteBuffer FileOffer::encode() const {
   ByteBuffer out;
@@ -245,7 +245,7 @@ std::optional<std::pair<std::string, std::string>> decode_list_request(const Byt
 
 ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
   // Connection encrypts the whole bulk frame before fragmenting; Noise caps
-  // plaintext at 65519 bytes and mux adds a 4-byte stream_id, so keep headroom.
+
   constexpr std::size_t kMaxListBytes = 48000;
 
   std::vector<const FileEntry*> ordered;
@@ -262,7 +262,7 @@ ByteBuffer encode_list_response(const std::vector<FileEntry>& entries) {
   ByteBuffer out;
   out.reserve(std::min(kMaxListBytes, ordered.size() * 128 + 8));
   out.push_back(static_cast<uint8_t>(FileKind::ListResp));
-  write_u16_le(out, 0); // count is patched in below
+  write_u16_le(out, 0);
 
   uint16_t count = 0;
   for (const FileEntry* pe : ordered) {
@@ -398,7 +398,7 @@ namespace {
 
 constexpr std::size_t kMaxPolicyJson = 512 * 1024;
 
-} // namespace
+}
 
 ByteBuffer encode_policy_push(const GroupFileAccess& policy) {
   const std::string json = FileAccessStore::encode_group_policy_json(policy);
@@ -430,4 +430,4 @@ ByteBuffer encode_policy_request() {
   return out;
 }
 
-} // namespace nyx
+}

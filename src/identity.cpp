@@ -37,7 +37,7 @@ std::string default_nickname() {
   return "user";
 }
 
-} // namespace
+}
 
 std::string short_user_id(const UserId& id) {
   return to_hex(id.data(), 4);
@@ -249,4 +249,4 @@ bool ContactBook::remove(const UserId& user_id) {
   return true;
 }
 
-} // namespace nyx
+}

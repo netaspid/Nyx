@@ -18,7 +18,6 @@ namespace nyx {
 constexpr std::uint64_t kSessionRekeyBytes = 1024ULL * 1024 * 1024;
 constexpr std::chrono::hours kSessionRekeyMaxAge {24};
 
-/** For tests: 0 = default threshold (1 GB). */
 void set_session_rekey_byte_limit(std::uint64_t bytes);
 
 /** Stepwise Noise handshake driver (one step call = read and/or write). */
@@ -33,8 +32,7 @@ public:
   bool complete() const { return complete_; }
   HandshakeRole role() const { return role_; }
 
-  /** @param inbound handshake frame from the peer, or nullptr for the first/outgoing step.
-   *  @return outgoing message bytes, or nullopt while waiting for input/split. */
+
   std::optional<ByteBuffer> step(const ByteBuffer* inbound = nullptr);
 
 private:
@@ -44,7 +42,6 @@ private:
   bool complete_ = false;
 };
 
-/** Symmetric encryption after a successful handshake. */
 class Session {
 public:
   static std::optional<Session> from_handshake(HandshakeDriver& hs);
@@ -58,22 +55,22 @@ public:
 
   std::optional<ByteBuffer> encrypt(const ByteBuffer& plain, std::string* err = nullptr);
   std::optional<ByteBuffer> decrypt(const ByteBuffer& cipher, std::string* err = nullptr);
-  /** Stateless-per-packet realtime AEAD: nonce is the UDP frame sequence. */
+
   std::optional<ByteBuffer>
   encrypt_realtime(std::uint64_t nonce, const ByteBuffer& plain, std::string* err = nullptr);
   std::optional<ByteBuffer>
   decrypt_realtime(std::uint64_t nonce, const ByteBuffer& cipher, std::string* err = nullptr);
 
-  /** Current rekey epoch (0 right after the handshake). */
+
   std::uint64_t rekey_epoch() const { return rekey_epoch_; }
 
-  /** Total ciphertext volume since the last rekey. */
+
   std::uint64_t bytes_transferred() const { return bytes_transferred_; }
 
-  /** Rotation required per protocol.md (1 GB / 24 h). */
+
   bool needs_rekey() const;
 
-  /** Deterministic key rotation; the epoch must only grow. */
+
   bool perform_rekey(std::uint64_t epoch);
 
 private:
@@ -96,4 +93,4 @@ private:
   std::chrono::steady_clock::time_point started_at_ {};
 };
 
-} // namespace nyx
+}

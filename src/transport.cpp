@@ -35,7 +35,7 @@ void parse_ack(const ByteBuffer& payload, uint32_t& ack, std::vector<uint32_t>& 
   }
 }
 
-} // namespace
+}
 
 ReliableSession::ReliableSession(std::size_t window, std::size_t mtu)
     : mtu_(mtu), window_(window) {}
@@ -46,7 +46,7 @@ std::vector<ByteBuffer> ReliableSession::fragment(uint32_t msg_id, const ByteBuf
     return {};
   const std::size_t chunk = mtu_ - kFragHdr;
   const std::size_t need = std::max<std::size_t>(1, (data.size() + chunk - 1) / chunk);
-  // total is uint16_t in the header; overflow breaks reassembly (UB / heap corruption).
+
   if (need > 65535)
     return {};
   const uint16_t total = static_cast<uint16_t>(need);
@@ -83,7 +83,7 @@ ReliableSession::assemble(const ByteBuffer& chunk) {
     p.total = total;
     p.parts.assign(total, std::nullopt);
   } else if (p.total != total) {
-    // Header conflict: reset the partial message.
+
     partials_.erase(msg_id);
     return std::nullopt;
   }
@@ -248,4 +248,4 @@ std::vector<ByteBuffer> ReliableSession::make_ack_frames(uint32_t stream_id) con
   return {std::move(wire)};
 }
 
-} // namespace nyx
+}

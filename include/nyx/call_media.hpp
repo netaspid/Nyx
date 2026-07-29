@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file call_media.hpp
- *  Media frames on kRealtimeStream (no ARQ).
- */
-
 #include "nyx/identity.hpp"
 #include "nyx/types.hpp"
 
@@ -31,7 +27,6 @@ struct CallMediaFrame {
   static std::optional<CallMediaFrame> decode(const ByteBuffer& data);
 };
 
-/** Safe payload ceiling below common Internet/VPN MTUs. */
 constexpr std::size_t kMaxCallMediaPayload = 1000;
 
-} // namespace nyx
+}

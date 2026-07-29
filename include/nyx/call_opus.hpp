@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file call_opus.hpp
- *  Opus encode/decode for calls (48 kHz mono, 20 ms).
- */
-
 #include "nyx/types.hpp"
 
 #include <cstdint>
@@ -26,7 +22,7 @@ public:
   OpusEncoderWrap& operator=(const OpusEncoderWrap&) = delete;
 
   bool ok() const { return enc_ != nullptr; }
-  /** PCM int16 mono → Opus packet. */
+
   std::optional<ByteBuffer> encode(const int16_t* pcm, int samples);
 
 private:
@@ -41,11 +37,11 @@ public:
   OpusDecoderWrap& operator=(const OpusDecoderWrap&) = delete;
 
   bool ok() const { return dec_ != nullptr; }
-  /** Opus packet -> PCM int16 (samples = kCallAudioFrameSamples on success). */
+
   std::optional<std::vector<int16_t>> decode(const uint8_t* data, std::size_t len);
 
 private:
   void* dec_ = nullptr;
 };
 
-} // namespace nyx
+}

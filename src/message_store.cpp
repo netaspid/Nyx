@@ -23,7 +23,7 @@ std::string to_lower_ascii(std::string s) {
   return s;
 }
 
-} // namespace
+}
 
 std::string MessageStore::path_for_chat(const ChatId& chat_id) {
   const std::string dir = data_dir() + "/chats";
@@ -145,4 +145,4 @@ std::vector<StoredMessage> MessageStore::search(const std::string& query, std::s
   return hits;
 }
 
-} // namespace nyx
+}

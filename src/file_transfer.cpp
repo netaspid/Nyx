@@ -552,7 +552,7 @@ void FileTransferService::handle_bulk(const ByteBuffer& payload) {
                                  return false;
                                }
                                if (parent.empty()) {
-                                 // Keep root directory marker; replace all children.
+
                                  if (existing.is_directory()) {
                                    const std::string root_leaf =
                                        path_to_utf8(path_from_utf8(root_norm).filename());
@@ -886,4 +886,4 @@ bool FileTransferService::push_field_index(const std::vector<FileEntry>& entries
   return send_bulk(encode_index_push(entries, root_paths, ++index_revision_));
 }
 
-} // namespace nyx
+}

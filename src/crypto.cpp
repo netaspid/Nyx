@@ -53,7 +53,7 @@ bool init_cipher_key(void* cipher, const uint8_t* key, std::size_t key_len) {
          NOISE_ERROR_NONE;
 }
 
-} // namespace
+}
 
 void set_session_rekey_byte_limit(std::uint64_t bytes) {
   g_rekey_byte_limit = bytes;
@@ -356,4 +356,4 @@ Session::decrypt_realtime(std::uint64_t nonce, const ByteBuffer& cipher, std::st
   return out;
 }
 
-} // namespace nyx
+}

@@ -41,14 +41,14 @@ std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id,
   std::vector<ByteBuffer> out;
   if (encoded.empty() || max_payload <= CallVideoFragHeader::kSize + 4)
     return out;
-  // Reserve four bytes in every fragment so the parity packet remains MTU-safe.
+
   const std::size_t chunk = max_payload - CallVideoFragHeader::kSize - 4;
   const std::size_t n = (encoded.size() + chunk - 1) / chunk;
   if (n == 0 || n > 255)
     return out;
 
-  // One XOR parity packet recovers any single lost data fragment. Send it first:
-  // receivers can reconstruct as soon as the remaining data fragments arrive.
+
+
   CallVideoFragHeader ph;
   ph.frame_id = frame_id;
   ph.frag_index = static_cast<uint8_t>(n);
@@ -92,9 +92,9 @@ CallVideoReassembler::push(const ByteBuffer& frag_payload) {
   const bool parity = (h->keyframe & CallVideoFragHeader::kParity) != 0;
 
   if (active_ && h->frame_id != cur_id_) {
-    // Ignore late fragments from an older frame (uint16 wrap-aware),
-    // unless the current assemble stalled — then drop it and follow the new id.
-    // A stalled partial frame must not block a newer AV1 frame.
+
+
+
     const uint16_t delta = static_cast<uint16_t>(cur_id_ - h->frame_id);
     const bool stalled = (now - started_) > std::chrono::milliseconds(150);
     if (delta != 0 && delta < 0x8000 && !stalled)
@@ -186,7 +186,7 @@ Av1Encoder::Av1Encoder() {
   cfg.g_lag_in_frames = 0;
   cfg.rc_end_usage = AOM_CBR;
   cfg.kf_mode = AOM_KF_AUTO;
-  cfg.kf_max_dist = static_cast<unsigned>(kCallVideoFps); // ~1s
+  cfg.kf_max_dist = static_cast<unsigned>(kCallVideoFps);
 
   auto* ctx = new aom_codec_ctx_t {};
   if (aom_codec_enc_init(ctx, iface, &cfg, 0) != AOM_CODEC_OK) {
@@ -339,4 +339,4 @@ std::optional<Av1Decoder::Frame> Av1Decoder::decode(const uint8_t* data, std::si
   return f;
 }
 
-} // namespace nyx
+}

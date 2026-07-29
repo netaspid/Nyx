@@ -63,7 +63,7 @@ void rotate_if_needed() {
   std::filesystem::rename(log_path, backup, ec);
 }
 
-} // namespace
+}
 
 void log_init() {
   std::lock_guard lock(log_mutex);
@@ -101,4 +101,4 @@ void log_write(LogLevel level, const std::string& message) {
     out << line;
 }
 
-} // namespace nyx
+}

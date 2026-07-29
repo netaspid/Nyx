@@ -62,4 +62,4 @@ void Multiplexer::push(uint32_t stream_id, ByteBuffer data) {
   streams_[stream_id].queue.push_back(std::move(data));
 }
 
-} // namespace nyx
+}

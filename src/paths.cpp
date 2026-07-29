@@ -41,7 +41,7 @@ std::string base_data_root() {
   return default_os_data_root();
 }
 
-} // namespace
+}
 
 std::string data_root() {
   return base_data_root();
@@ -109,4 +109,4 @@ bool ensure_data_dir() {
   return !ec;
 }
 
-} // namespace nyx
+}

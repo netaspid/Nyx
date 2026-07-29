@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file file_transfer.hpp
- *  File transfer over kBulkStream.
- */
-
 #include "nyx/blob_store.hpp"
 #include "nyx/connection.hpp"
 #include "nyx/file_index.hpp"
@@ -19,7 +15,6 @@
 
 namespace nyx {
 
-/** Sends and receives files over a Connection. */
 class FileTransferService {
 public:
   using EventCallback = std::function<void(const std::string& text)>;
@@ -29,54 +24,54 @@ public:
 
   FileTransferService(Connection& connection, FileIndex& index, std::string download_dir);
 
-  /** Share scope: zero = DM, otherwise the field group_id. */
+
   void set_share_scope(const GroupId& group_id) { share_scope_ = group_id; }
   const GroupId& share_scope() const { return share_scope_; }
 
-  /** Handles a kBulkStream payload. */
+
   void handle_bulk(const ByteBuffer& payload);
 
-  /** Sends the next chunk when an outgoing transfer is active. */
+
   void pump();
 
-  /** List request: no args = share roots (snapshot); with a path = one level (snapshot subtree). */
+
   bool request_list();
   bool request_list(const std::string& root_path, const std::string& parent_rel);
 
-  /** Requests the current ACL policy from the hub. */
+
   bool request_policy();
 
-  /** Requests a file by hex hash; dest_path is an optional full save path. */
+
   bool request_file(const std::string& hash_hex, const std::string& dest_path = {});
 
-  /** Proactively sends a local file (from the index or by path). */
+
   bool send_file(const std::string& path_or_hash_hex);
   bool announce_capabilities();
   bool cancel(const std::string& hash_hex);
   bool peer_supports_resume() const;
-  /** Active + queued outgoing transfers (hash_hex, display name). */
+
   std::vector<std::pair<std::string, std::string>> outgoing_queue_snapshot() const;
 
-  /** Reply to ListReq (invoked automatically from handle_bulk). */
+
   void respond_list();
   void respond_list(const std::string& root_path, const std::string& parent_rel);
 
-  /** Publishes the local field index to the peer (IndexPush). */
+
   bool push_field_index(const std::vector<FileEntry>& entries,
                         const std::vector<std::string>& root_paths = {});
 
   void set_on_event(EventCallback cb) { on_event_ = std::move(cb); }
   void set_on_progress(ProgressCallback cb) { on_progress_ = std::move(cb); }
   void set_on_complete(CompletionCallback cb) { on_complete_ = std::move(cb); }
-  /** Invoked after a ListResp arrives from the peer. */
+
   void set_on_remote_list(std::function<void(const std::vector<FileEntry>&)> cb) {
     on_remote_list_ = std::move(cb);
   }
 
-  /** Copy of remote_list_ (thread-safe for the UI). */
+
   std::vector<FileEntry> remote_list_snapshot() const;
 
-  /** An outgoing/incoming transfer or Offer wait is in progress. */
+
   bool busy() const;
 
 private:
@@ -123,9 +118,9 @@ private:
   std::optional<OutgoingState> outgoing_;
   std::deque<FileEntry> pending_outgoing_;
   std::optional<IncomingState> incoming_;
-  /** Request sent; awaiting Offer or Deny. */
+
   std::optional<FileHash> awaiting_offer_;
-  /** hash_hex -> full path chosen before the request. */
+
   std::unordered_map<std::string, std::string> pending_dest_paths_;
   std::unordered_map<std::string, uint64_t> pending_resume_offsets_;
   std::vector<FileEntry> remote_list_;
@@ -142,4 +137,4 @@ private:
   uint64_t index_revision_ = 0;
 };
 
-} // namespace nyx
+}

@@ -21,7 +21,7 @@
 
 namespace nyx {
 
-namespace {} // namespace
+namespace {}
 
 std::string to_hex(const uint8_t* data, std::size_t len) {
   static const char* kHex = "0123456789abcdef";
@@ -192,4 +192,4 @@ std::string normalize_grant_root(const std::string& root_path) {
   return out;
 }
 
-} // namespace nyx
+}

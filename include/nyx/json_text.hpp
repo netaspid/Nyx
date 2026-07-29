@@ -159,4 +159,4 @@ inline void json_parse_object_array(const std::string& obj,
     on_object(item);
 }
 
-} // namespace nyx
+}

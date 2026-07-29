@@ -1,10 +1,5 @@
 #pragma once
 
-/** @file chat_service.hpp
- *  Messenger core API: sending, history, delivery, events.
- *  Used by the CLI and nyx-app (QML through a thin wrapper).
- */
-
 #include "nyx/app.hpp"
 #include "nyx/chat_id.hpp"
 #include "nyx/connection.hpp"
@@ -19,7 +14,6 @@
 
 namespace nyx {
 
-/** 1:1 chat session over an established Connection. */
 class ChatService {
 public:
   struct PeerInfo {
@@ -34,19 +28,19 @@ public:
 
   ChatService(Connection& connection, Profile profile, PeerInfo peer);
 
-  /** Sends a ChatMessage, queues it in the outbox and stores it in history. */
+
   bool send_message(const std::string& text, uint64_t* out_id = nullptr);
 
-  /** Call signaling on kChatStream. */
+
   bool send_call_frame(const ByteBuffer& frame);
 
-  /** Handles a kChatStream payload. */
+
   void handle_payload(const ByteBuffer& payload);
 
-  /** Keep-alive plus resend of un-Acked outgoing messages. */
+
   void tick();
 
-  /** Graceful disconnect. */
+
   bool send_bye(const std::string& reason);
 
   std::vector<StoredMessage> history(std::size_t count) const;
@@ -86,4 +80,4 @@ private:
   CallFrameCallback on_call_frame_;
 };
 
-} // namespace nyx
+}

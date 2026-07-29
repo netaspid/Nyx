@@ -14,7 +14,7 @@ PacketType handshake_reply_type(HandshakeRole role) {
   return role == HandshakeRole::Initiator ? PacketType::HandshakeFinish : PacketType::HandshakeResp;
 }
 
-} // namespace
+}
 
 Connection::Connection(UdpSocket socket, std::string peer_host, uint16_t peer_port)
     : socket_(std::move(socket)), peer_host_(std::move(peer_host)), peer_port_(peer_port) {}
@@ -172,7 +172,7 @@ bool Connection::send_realtime(const ByteBuffer& data) {
       Frame::make(PacketType::Realtime, kRealtimeStream, seq, std::move(*encrypted)).encode();
   if (wire.empty())
     return false;
-  // Realtime goes straight to the socket, bypassing the reliable queue for low latency.
+
   if (!socket_.send_to(wire, peer_host_, peer_port_))
     return false;
   maybe_rekey();
@@ -201,8 +201,8 @@ bool Connection::handle_realtime_wire(const Frame& frame) {
   if (stream_id != kRealtimeStream)
     return false;
   ByteBuffer payload(plain->begin() + 4, plain->end());
-  // Prefer dropping oldest video when congested — never starve Opus.
-  // Do NOT refuse new video entirely: that freezes the peer after a few seconds.
+
+
   constexpr std::size_t kMaxInbox = 384;
   auto is_video = [](const ByteBuffer& p) {
     return !p.empty() && p[0] == static_cast<uint8_t>(CallMediaType::Video);
@@ -270,8 +270,8 @@ bool Connection::drive_without_recv() {
     return false;
 
   const auto now = std::chrono::steady_clock::now();
-  // Video/audio UDP bursts can delay control ACKs on congested Wi‑Fi; 45s was too
-  // aggressive and killed the session mid-call (no re-dial until reconnect).
+
+
   if (now - last_peer_activity_ > std::chrono::seconds(120)) {
     peer_alive_ = false;
     state_ = ConnectionState::Closed;
@@ -413,7 +413,7 @@ PacketType pending_hs_reply(HandshakeRole role) {
   return role == HandshakeRole::Initiator ? PacketType::HandshakeFinish : PacketType::HandshakeResp;
 }
 
-} // namespace
+}
 
 PendingConnection::PendingConnection(UdpSocket socket,
                                      std::string peer_host,
@@ -492,8 +492,8 @@ std::optional<Connection> PendingConnection::take() {
     failed_ = true;
     return std::nullopt;
   }
-  complete_ = false; // prevent double-take
+  complete_ = false;
   return Connection(socket_, peer_host_, peer_port_, std::move(*sess));
 }
 
-} // namespace nyx
+}

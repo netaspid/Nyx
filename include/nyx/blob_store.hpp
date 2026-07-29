@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file blob_store.hpp
- *  Chunked file reads from disk.
- */
-
 #include "nyx/types.hpp"
 
 #include <cstdint>
@@ -12,7 +8,6 @@
 
 namespace nyx {
 
-/** Sequential file reader for network transfer. */
 class BlobReader {
 public:
   explicit BlobReader(std::string path);
@@ -20,7 +15,7 @@ public:
   bool open();
   uint64_t size() const { return size_; }
 
-  /** Reads up to max_len bytes at offset. @return 0 on EOF or error. */
+
   std::size_t read_at(uint64_t offset, ByteBuffer& out, std::size_t max_len);
 
 private:
@@ -29,7 +24,6 @@ private:
   uint64_t size_ = 0;
 };
 
-/** Writes a received file to disk. */
 class BlobWriter {
 public:
   explicit BlobWriter(std::string path);
@@ -43,4 +37,4 @@ private:
   std::fstream file_;
 };
 
-} // namespace nyx
+}

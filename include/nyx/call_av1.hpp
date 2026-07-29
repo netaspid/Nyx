@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file call_av1.hpp
- *  AV1 encode/decode for video calls (libaom).
- */
-
 #include "nyx/types.hpp"
 
 #include <chrono>
@@ -18,7 +14,6 @@ constexpr int kCallVideoHeight = 360;
 constexpr int kCallVideoFps = 12;
 constexpr int kCallVideoTargetKbps = 900;
 
-/** Video frame fragment inside a CallMediaType::Video payload. */
 struct CallVideoFragHeader {
   uint16_t frame_id = 0;
   uint8_t frag_index = 0;
@@ -32,13 +27,11 @@ struct CallVideoFragHeader {
   static std::optional<CallVideoFragHeader> read(const uint8_t* data, std::size_t len);
 };
 
-/** Splits an AV1 OBU buffer into fragments <= max_payload (with header). */
 std::vector<ByteBuffer> fragment_av1_frame(uint16_t frame_id,
                                            bool keyframe,
                                            const ByteBuffer& encoded,
                                            std::size_t max_payload);
 
-/** Reassembles fragments of one frame_id. */
 class CallVideoReassembler {
 public:
   struct Assembled {
@@ -46,7 +39,7 @@ public:
     bool keyframe = false;
   };
 
-  /** @return the full frame once all fragments arrived. */
+
   std::optional<Assembled> push(const ByteBuffer& frag_payload);
 
 private:
@@ -69,12 +62,12 @@ public:
   Av1Encoder& operator=(const Av1Encoder&) = delete;
 
   bool ok() const { return ok_; }
-  /** I420 (width*height*3/2) → AV1 OBU bytes. */
+
   std::optional<ByteBuffer>
   encode_i420(const uint8_t* i420, int width, int height, bool force_keyframe = false);
 
 private:
-  void* codec_ = nullptr; // aom_codec_ctx_t*
+  void* codec_ = nullptr;
   bool ok_ = false;
   int width_ = 0;
   int height_ = 0;
@@ -102,4 +95,4 @@ private:
   bool ok_ = false;
 };
 
-} // namespace nyx
+}

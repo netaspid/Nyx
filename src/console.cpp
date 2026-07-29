@@ -28,4 +28,4 @@ void setup_console_utf8() {
 #endif
 }
 
-} // namespace nyx
+}
