@@ -139,7 +139,7 @@ void NodeService::run_dm_inbox(std::shared_ptr<NetSession> session) {
       continue;
     }
 
-    // Separate DM session; the inbox restarts listen on the next iteration.
+
     std::shared_ptr<NetSession> dm;
     {
       std::lock_guard lock(sessions_mutex_);
@@ -268,7 +268,7 @@ void NodeService::run_listen(std::shared_ptr<NetSession> session, bool lan_adver
     return;
   }
 
-  // Turn the listen session into Direct on the same id; renamed after Hello.
+
   session->kind = SessionKind::Direct;
   run_direct_chat(session,
                   std::make_unique<nyx::Connection>(std::move(*conn)),
@@ -344,9 +344,9 @@ void NodeService::run_connect_peer(std::shared_ptr<NetSession> session,
   const auto profile = load_profile();
   emit_status("подключение к " + host + ':' + std::to_string(port) + "...");
 
-  // Do not persist dm:pending + lan://host:port here — inbox ports are ephemeral and
-  // auto-reconnect would keep dialing a dead port. remember_intent_for_session() after
-  // Hello stores dm:<peer> with token (or a fresh lan:// only as last resort).
+
+
+
 
   nyx::UdpSocket socket;
   if (!socket.bind("0.0.0.0", 0)) {
@@ -404,7 +404,7 @@ void NodeService::run_browse(int timeout_ms) {
 void NodeService::run_lan_scan(int timeout_ms) {
   const auto peers = browse_lan_peers(timeout_ms);
   if (peers.empty()) {
-    // browse_lan_peers already emitted join errors when setup fails.
+
   }
 
   LanPeersCallback cb;
@@ -440,7 +440,7 @@ bool NodeService::try_connect_via_lan(const std::string& user_id_hex) {
   for (const auto& p : peers) {
     if (p.user_id_short != short_id)
       continue;
-    // Skip field-hub beacons for DM dial.
+
     if (p.instance.size() >= 6 && p.instance.compare(p.instance.size() - 6, 6, "-field") == 0) {
       continue;
     }
@@ -511,4 +511,4 @@ bool NodeService::start_listen(bool lan_advertise) {
   return true;
 }
 
-} // namespace nyx_app
+}

@@ -16,7 +16,7 @@ constexpr auto kCallAnnounceInterval = std::chrono::milliseconds(400);
 constexpr int kCallAnnounceBursts = 20;
 constexpr auto kCallSignalRetryInterval = std::chrono::milliseconds(350);
 
-} // namespace
+}
 
 void NodeService::set_on_call_changed(CallChangedCallback cb) {
   std::lock_guard lock(cb_mutex_);
@@ -511,7 +511,7 @@ void NodeService::pump_call_realtime(const std::shared_ptr<NetSession>& session)
   if (scope == nyx::CallScope::Direct && session->connection) {
     for (const auto& packet : outbound)
       session->connection->send_realtime(packet);
-    // Drain all, deliver Opus before Video so mic audio is not starved by JPEG frags.
+
     std::vector<nyx::ByteBuffer> opus_q;
     std::vector<nyx::ByteBuffer> video_q;
     nyx::ByteBuffer raw;
@@ -759,7 +759,7 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
         busy_rej.reason = nyx::CallRejectReason::Busy;
         send_busy = true;
       } else {
-        // Replace stale Incoming/Outgoing/Ringing/Ended so callback after hangup works.
+
         if (!call_.idle()) {
           stop_call_mesh();
           call_is_host_ = false;
@@ -860,8 +860,8 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
     bool ok = false;
     {
       std::lock_guard lock(call_mutex_);
-      // Only end the call that this Hangup names. Retried hangups from a previous
-      // call must not wipe a fresh Incoming/Outgoing with a new call_id.
+
+
       const bool field_guest_leave = call_.scope == nyx::CallScope::Field &&
                                      hang->reason != nyx::CallHangupReason::HubClosed &&
                                      from != nyx::UserId {};
@@ -973,7 +973,7 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
     {
       std::lock_guard lock(call_mutex_);
       if (call_.call_id != gone->call_id && !call_.idle()) {
-        // Ignore peer-gone for a different call.
+
       } else if (!call_.idle()) {
         if (call_mesh_ && call_.call_id == gone->call_id) {
           call_mesh_->remove_peer(gone->user_id);
@@ -982,8 +982,8 @@ void NodeService::handle_incoming_call_frame(const std::shared_ptr<NetSession>& 
         call_relay_candidates_.erase(gone->user_id);
         call_speaker_levels_.erase(gone->user_id);
         call_.on_peer_leave(gone->call_id);
-        // Direct calls are 1:1 — peer leave means the call is over.
-        // Field: end when mesh is empty (last peer left).
+
+
         const bool direct = call_.scope == nyx::CallScope::Direct;
         if (direct || call_participants_.size() <= 1) {
           stop_call_mesh();
@@ -1086,7 +1086,7 @@ bool NodeService::start_call(bool video, const std::string& session_id) {
   nyx::CallInviteMessage inv;
   {
     std::lock_guard lock(call_mutex_);
-    // Ghost Incoming/Ended after lost hangup must not block callback.
+
     if (!call_.idle() && call_.state != nyx::CallState::Active) {
       stop_call_mesh();
       call_is_host_ = false;
@@ -1241,7 +1241,7 @@ bool NodeService::hangup_call() {
   self = load_profile().public_key;
   gone.user_id = self;
 
-  // Keep leave signaling alive briefly after local media has stopped.
+
   if (auto session = find_session(sid)) {
     const nyx::ByteBuffer wire = (field && !is_host) ? gone.encode() : hang.encode();
     send_call_frame_on_session(session, wire);
@@ -1271,4 +1271,4 @@ bool NodeService::hangup_call() {
   return true;
 }
 
-} // namespace nyx_app
+}

@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file node_service.hpp
- *  Qt-free app core: multi-session listen/connect/chat/files/groups.
- */
-
 #include "connection_label.hpp"
 #include "nyx/app.hpp"
 #include "nyx/avatar_store.hpp"
@@ -50,17 +46,16 @@ struct UiMessage {
   uint64_t message_id = 0;
   uint64_t timestamp_ms = 0;
   std::string author;
-  /** Author hex user id (for /me and @). */
+
   std::string author_user_id;
   std::string text;
   bool outgoing = false;
-  /** pending | delivered | failed | empty */
+
   std::string delivery;
   std::string session_id;
   std::string chat_key;
 };
 
-/** Legacy aggregate mode (listening / status). */
 enum class NodeMode {
   Idle,
   Listening,
@@ -69,7 +64,6 @@ enum class NodeMode {
   GroupMember,
 };
 
-/** Network scenario orchestrator: several parallel sessions. */
 class NodeService {
 public:
   using StatusCallback = std::function<void(const std::string&)>;
@@ -110,7 +104,7 @@ public:
   void set_on_invite_token(TokenCallback cb);
   void set_on_lan_peers(LanPeersCallback cb);
   void set_on_group_created(GroupInfoCallback cb);
-  /** Field meta updated on a member (hub push). */
+
   void set_on_group_meta_changed(SessionsChangedCallback cb);
   void set_on_chat_ready(ChatReadyCallback cb);
 
@@ -146,12 +140,12 @@ public:
 
   NodeMode mode() const;
   bool busy() const;
-  /** Number of live sessions (excluding the inbox). */
+
   std::size_t live_session_count() const;
   std::vector<SessionInfo> list_sessions() const;
   SessionState session_state(const std::string& session_id) const;
   bool is_session_live(const std::string& session_id) const;
-  /** Live or Connecting: reconnect must not restart such a session. */
+
   bool is_session_up(const std::string& session_id) const;
   std::string active_session_id() const;
   void set_active_session(const std::string& session_id);
@@ -160,7 +154,7 @@ public:
 
   bool start_listen(bool lan_advertise = true);
   bool start_dm_inbox();
-  /** @param quiet_ui background reconnect without a "reconnecting" UI state. */
+
   bool start_connect_token(const std::string& token_hex, bool quiet_ui = false);
   bool start_connect_peer(const std::string& host, uint16_t port);
   bool scan_lan_peers(int timeout_ms = 2000);
@@ -172,31 +166,31 @@ public:
                          const std::string& tags,
                          bool public_listed);
   bool delete_group(const std::string& group_id_hex);
-  /** Removes a chat/field from local lists: dm:<peer> | group:<gid> | chat:<stem>. */
+
   bool remove_conversation(const std::string& chat_key);
   bool remove_group_member(const std::string& group_id_hex, const std::string& user_id_hex);
   bool auto_start_owned_hub() const { return network_config_.auto_start_owned_hub; }
   void set_auto_start_owned_hub(bool enabled);
   bool start_group_hub(const std::string& group_id_hex);
-  /** @param quiet_ui hide "reconnecting" in the list (background probe). */
+
   bool start_group_join(const std::string& invite_hex, bool quiet_ui = false);
-  /** Resets the background retry counter (manual join / connect). */
+
   void reset_join_reconnect_budget(const std::string& chat_key);
 
-  /** Stops one session (or the active one when id is empty). */
+
   bool stop_session(const std::string& session_id = {});
-  /** Stops all sessions (sign-out / exit). */
+
   void stop();
 
-  /** Brings up owned hubs, the inbox and enabled intents. */
+
   void auto_reconnect_all();
-  /** ensureSession: hub/join/DM by chat key. */
+
   bool ensure_session(const std::string& chat_key);
-  /** On login: enable the intent and start hubs of all own fields. */
+
   void ensure_owned_hubs_running();
-  /** Enables auto-reconnect for a chat (after a join attempt / until the hub appears). */
+
   void enable_session_intent(nyx::SessionIntent intent);
-  /** Disables the intent: background reconnect will not raise the chat. */
+
   void mark_session_disconnected(const std::string& chat_key);
   bool is_session_intent_enabled(const std::string& chat_key) const;
 
@@ -208,18 +202,18 @@ public:
   std::string load_files_selected_root() const;
   void save_files_selected_root(const std::string& root_path) const;
 
-  /** Sends into the given session (or active when session_id is empty). */
+
   bool send_message(const std::string& text, const std::string& session_id = {});
   bool send_bye(const std::string& reason);
 
-  /** Calls: signaling over the active/given session. */
+
   bool start_call(bool video, const std::string& session_id = {});
   bool accept_call();
   bool reject_call();
   bool hangup_call();
-  /** Whether a room may be opened in the current/given field (Owner/Host). */
+
   bool can_start_call(const std::string& session_id = {}) const;
-  /** Assigns Host/Member role to a field member (owner hub only). */
+
   bool set_field_member_role(const std::string& group_id_hex,
                              const std::string& user_id_hex,
                              const std::string& role);
@@ -234,7 +228,7 @@ public:
   bool call_camera_on() const;
   void set_call_camera_on(bool on);
   void set_call_relay_score(uint16_t score) { call_relay_score_.store(score); }
-  /** Sends a media packet into the active call (kRealtimeStream). */
+
   bool
   send_call_media(nyx::CallMediaType type, const nyx::ByteBuffer& payload, uint8_t audio_level = 0);
 
@@ -243,7 +237,7 @@ public:
   bool rescan_share_root(const std::string& path, const std::string& scope_group_id_hex = {});
   int file_count_in_root(const std::string& root_path,
                          const std::string& scope_group_id_hex = {}) const;
-  /** Catalog request: scope = group hex; empty root/parent = share roots only. */
+
   bool request_remote_files_at(const std::string& root_path, const std::string& parent_rel);
   bool request_remote_files_at(const std::string& scope_group_id_hex,
                                const std::string& root_path,
@@ -267,10 +261,10 @@ public:
                                                    const std::string& scope_group_id_hex = {},
                                                    const std::string& owner_user_id_hex = {},
                                                    const std::string& relative_dir = {});
-  /** Verified local object (share root or objects/ cache) by hash hex. */
+
   std::optional<nyx::FileEntry> find_file_object(const std::string& hash_hex) const;
   bool can_request_remote_files() const;
-  /** Session used for file exchange in a scope (group:<hex> or active). */
+
   std::string file_exchange_session_id(const std::string& scope_group_id_hex) const;
   std::string file_exchange_hint() const;
   std::vector<nyx::FileEntry> local_files_for_scope(const std::string& scope_group_id_hex) const;
@@ -331,9 +325,9 @@ private:
     SessionKind kind = SessionKind::Idle;
     std::atomic<SessionState> state {SessionState::Idle};
     std::atomic<bool> running {false};
-    /** Connecting while the UI shows offline (quiet background probe). */
+
     std::atomic<bool> quiet_ui {false};
-    /** Was already Live in this session: a dropped room is not a failed join. */
+
     std::atomic<bool> ever_live {false};
     std::thread worker;
     std::unique_ptr<nyx::Connection> connection;
@@ -347,7 +341,7 @@ private:
     std::string ref_id_hex;
     std::deque<FileDownloadRequest> download_queue;
     std::mutex download_mutex;
-    // Media producers run on audio/video threads; Connection belongs to worker.
+
     std::deque<nyx::ByteBuffer> call_media_outbound;
     std::mutex call_media_outbound_mutex;
 
@@ -363,7 +357,7 @@ private:
     NetSession() = default;
     NetSession(const NetSession&) = delete;
     NetSession& operator=(const NetSession&) = delete;
-    /** Otherwise a joinable std::thread calls std::terminate in the destructor. */
+
     ~NetSession() {
       if (!worker.joinable())
         return;
@@ -403,7 +397,7 @@ private:
   std::shared_ptr<NetSession> create_session(const std::string& id, SessionKind kind);
   void finish_session(const std::shared_ptr<NetSession>& session, SessionState final_state);
   void stop_session_locked(const std::shared_ptr<NetSession>& session);
-  /** Stops the worker without a blocking join (safe from the UI thread). */
+
   void abandon_session_worker(const std::shared_ptr<NetSession>& session);
 
   void run_listen(std::shared_ptr<NetSession> session, bool lan_advertise);
@@ -414,15 +408,15 @@ private:
   void run_lan_scan(int timeout_ms);
   void run_group_hub(std::shared_ptr<NetSession> session, std::string group_id_hex);
   void run_group_join(std::shared_ptr<NetSession> session, std::string invite_hex);
-  /** Browse LAN and dial peer by user-id hex (skips *-field hub beacons). */
+
   bool try_connect_via_lan(const std::string& user_id_hex);
-  /** LAN browse + token/endpoint fallback on a detached thread (never blocks caller). */
+
   void dial_dm_async(std::string peer_hex,
                      std::string token_hex,
                      std::string lan_host,
                      uint16_t lan_port,
                      bool quiet);
-  /** Browse LAN for field hub beacons / any peer; returns host:port candidates. */
+
   std::vector<nyx::LanPeer> browse_lan_peers(int timeout_ms);
   void run_direct_chat(std::shared_ptr<NetSession> session,
                        std::unique_ptr<nyx::Connection> connection,
@@ -486,7 +480,7 @@ private:
   void remember_intent_for_session(const std::shared_ptr<NetSession>& session,
                                    const std::string& invite_hex = {});
 
-  /** Budget of visible join retries for a foreign field; quiet probes afterwards. */
+
   struct JoinReconnectBudget {
     int failures = 0;
     int64_t next_attempt_ms = 0;

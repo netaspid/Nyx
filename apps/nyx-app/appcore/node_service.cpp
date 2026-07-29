@@ -191,7 +191,7 @@ std::string files_ui_state_path() {
   return nyx::data_dir() + "/files_ui.json";
 }
 
-} // namespace
+}
 
 std::string NodeService::load_files_scope_group_id() const {
   std::ifstream in(files_ui_state_path());
@@ -491,8 +491,8 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
   session->running.store(false);
   session->quiet_ui.store(false);
   session->state.store(final_state);
-  // No detach here: a concurrent join() from the UI causes a data race / crash.
-  // The thread stays joinable until an external join() or ~NetSession.
+
+
   {
     std::lock_guard lock(sessions_mutex_);
     if (active_session_id_ == session->id) {
@@ -511,7 +511,7 @@ void NodeService::finish_session(const std::shared_ptr<NetSession>& session,
   }
   set_mode(mode());
   emit_session_ended(session->id);
-  // Session transport died — do not leave a zombie Active call ("Аудио не уходит").
+
   if (end_call)
     hangup_call();
 }
@@ -526,7 +526,7 @@ void NodeService::abandon_session_worker(const std::shared_ptr<NetSession>& sess
   if (!session)
     return;
   session->running.store(false);
-  // Never join() from the UI: lookup/reconnect can hold the thread for seconds, freezing the UI.
+
   if (session->worker.joinable() && session->worker.get_id() != std::this_thread::get_id()) {
     session->worker.detach();
   }
@@ -621,7 +621,7 @@ bool NodeService::is_session_live(const std::string& session_id) const {
 }
 
 bool NodeService::is_session_up(const std::string& session_id) const {
-  // Raw state: a quiet Connecting also counts as busy, or the timer starts a second join.
+
   auto s = find_session(session_id);
   if (!s)
     return false;
@@ -682,7 +682,7 @@ bool NodeService::stop_session(const std::string& session_id) {
       return false;
     id = session->id;
   }
-  // Disable the intent first, or session_ended / the timer bring the session back up.
+
   mark_session_disconnected(id);
   if (!session->ref_id_hex.empty() && id.rfind("group:", 0) == 0) {
     mark_session_disconnected(make_group_session_id(session->ref_id_hex));
@@ -881,7 +881,7 @@ bool NodeService::update_group_meta(const std::string& group_id_hex,
   if (!store.update_meta(gid, description, direction, tags, visibility))
     return false;
 
-  // Live hub: push meta to connected members.
+
   {
     std::lock_guard lock(sessions_mutex_);
     for (auto& [id, session] : sessions_) {
@@ -1018,7 +1018,7 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
     auto existing = find_session(sid);
     if (existing && existing->kind == SessionKind::GroupHub) {
       const auto st = existing->state.load();
-      // Do not kill Connecting: register/rendezvous can take seconds.
+
       if (st == SessionState::Live || st == SessionState::Connecting)
         return true;
     }
@@ -1035,7 +1035,7 @@ bool NodeService::start_group_hub(const std::string& group_id_hex) {
     sessions_.erase(sid);
     session = create_session(sid, SessionKind::GroupHub);
     session->ref_id_hex = group_id_hex;
-    // Do not steal active from an open chat (background reconnect).
+
     if (active_session_id_.empty() || active_session_id_ == sid)
       active_session_id_ = sid;
   }
@@ -1075,7 +1075,7 @@ bool NodeService::start_group_join(const std::string& invite_hex, bool quiet_ui)
     }
   }
 
-  // Stale pending key left over from previous versions.
+
   if (!ref_hex.empty()) {
     const std::string legacy = "group:join:" + invite_hex.substr(0, 12);
     if (legacy != sid) {
@@ -1162,7 +1162,7 @@ bool NodeService::ensure_session(const std::string& chat_key) {
         }
       }
     }
-    // LAN browse blocks for ~1 s — must never run on the UI thread.
+
     dial_dm_async(peer_hex, token_hex, lan_host, lan_port, false);
     return true;
   }
@@ -1207,7 +1207,7 @@ void NodeService::auto_reconnect_all() {
   store.load();
   intent_store_.load();
 
-  // Own fields: always bring the hub up until the intent is disabled manually.
+
   for (const auto& g : store.all()) {
     if (g.owner_id != profile.user_id())
       continue;
@@ -1223,8 +1223,8 @@ void NodeService::auto_reconnect_all() {
   if (!network_config_.auto_start_owned_hub)
     return;
 
-  // Foreign fields / joins: retried until the intent is disabled manually.
-  // After 3 visible failures: offline in the UI, quiet probe every ~60 s.
+
+
   const int64_t now_ms = steady_now_ms();
   for (const auto& g : store.all()) {
     if (g.owner_id == profile.user_id())
@@ -1233,7 +1233,7 @@ void NodeService::auto_reconnect_all() {
     const std::string key = make_group_session_id(gid);
     const auto* intent = intent_store_.find(key);
     if (intent && !intent->enabled)
-      continue; // user disconnected
+      continue;
     if (!intent) {
       nyx::SessionIntent join_intent;
       join_intent.key = key;
@@ -1266,7 +1266,7 @@ void NodeService::auto_reconnect_all() {
   }
 
   intent_store_.load();
-  // Drop pre-hello LAN stubs: their ports die when the peer rebinds DM inbox.
+
   {
     bool pruned = false;
     for (const auto& intent : intent_store_.all()) {
@@ -1279,8 +1279,8 @@ void NodeService::auto_reconnect_all() {
       intent_store_.save();
   }
 
-  // DM redial does a blocking LAN browse per intent — run the whole batch on a
-  // detached worker so the UI thread never stalls.
+
+
   struct DmDialPlan {
     std::string peer_hex;
     std::string token_hex;
@@ -1302,7 +1302,7 @@ void NodeService::auto_reconnect_all() {
     DmDialPlan plan;
     plan.peer_hex = intent.ref_id_hex;
 
-    // Weak fallback only when we still lack a DM inbox token.
+
     if (intent.invite_hex.rfind("lan://", 0) == 0) {
       const std::string ep = intent.invite_hex.substr(6);
       const auto colon = ep.rfind(':');
@@ -1466,7 +1466,7 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
       nyx::UserId zero {};
       if (live.owner_id != zero)
         merged.owner_id = live.owner_id;
-      // The hub is always the meta source; a member only after GroupMeta.
+
       if (session->group_hub ||
           (session->group_member && session->group_member->view().meta_received)) {
         merged.description = live.description;
@@ -1486,4 +1486,4 @@ void NodeService::sync_live_group_from_session(const std::shared_ptr<NetSession>
   set_live_group_snapshot(live.id, std::move(live));
 }
 
-} // namespace nyx_app
+}

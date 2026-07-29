@@ -30,7 +30,7 @@ nyx::UserId user_from_hex(const std::string& hex) {
   return uid;
 }
 
-} // namespace
+}
 
 std::string NodeService::resolve_share_root_path(const std::string& root_path) const {
   if (root_path.empty())
@@ -272,10 +272,10 @@ void NodeService::publish_field_index() {
   for (const auto& r : file_index_.roots_for_session(session->share_scope)) {
     root_paths.push_back(r.path);
   }
-  // Push even an empty index, or the hub keeps the member stale catalog.
+
   if (!session->files->push_field_index(entries, root_paths)) {
     emit_status("не удалось опубликовать индекс поля");
   }
 }
 
-} // namespace nyx_app
+}

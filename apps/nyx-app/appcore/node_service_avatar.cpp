@@ -35,7 +35,7 @@ void send_avatar_file(nyx::Connection& conn,
   conn.send_payload(nyx::kBulkStream, done.encode());
 }
 
-} // namespace
+}
 
 void NodeService::request_missing_avatars(nyx::Connection& conn,
                                           const nyx::UserId& peer,
@@ -138,4 +138,4 @@ bool NodeService::handle_avatar_bulk(const std::shared_ptr<NetSession>& session,
   return false;
 }
 
-} // namespace nyx_app
+}

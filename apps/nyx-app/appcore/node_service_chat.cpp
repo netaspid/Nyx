@@ -131,7 +131,7 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
       session->id = final_id;
       sessions_[final_id] = session;
     }
-    // Do not steal active from another open chat.
+
     if (active_session_id_.empty() || active_session_id_ == final_id ||
         active_session_id_.rfind("dm:pending:", 0) == 0 ||
         active_session_id_.rfind("dm:incoming:", 0) == 0) {
@@ -152,8 +152,8 @@ void NodeService::run_direct_chat(std::shared_ptr<NetSession> session,
     invite_for_intent =
         nyx::to_hex(peer_hello.dm_inbox_token.data(), peer_hello.dm_inbox_token.size());
   } else if (via == ConnectionVia::LanDirect && !peer_host.empty()) {
-    // Only as last resort when Hello had no inbox token. Prefer beacon re-browse on
-    // reconnect — the port here is the peer's current socket, which may rebind.
+
+
     invite_for_intent =
         "lan://" + peer_host + ":" + std::to_string(session->connection->peer_port());
   }
@@ -294,10 +294,10 @@ bool NodeService::remove_share_root(const std::string& path,
     return false;
   }
   emit_status("папка убрана из индекса");
-  // Always publish on a scoped removal (even an empty index resets the hub).
+
   if (scope_ptr)
     publish_field_index();
-  // Reset the owner local Resources cache so the UI drops ghost entries.
+
   hub_remote_catalog_.clear();
   return true;
 }
@@ -395,7 +395,7 @@ bool NodeService::request_remote_files_at(const std::string& scope_group_id_hex,
       const std::string normalized_parent = parent_rel;
       const std::string prefix =
           normalized_parent.empty() ? std::string {} : normalized_parent + "/";
-      // Snapshot of this level: drop previous children, keep root marker.
+
       hub_remote_catalog_.erase(
           std::remove_if(hub_remote_catalog_.begin(),
                          hub_remote_catalog_.end(),
@@ -960,4 +960,4 @@ std::optional<nyx::FileEntry> NodeService::find_file_object(const std::string& h
   return entry;
 }
 
-} // namespace nyx_app
+}

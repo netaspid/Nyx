@@ -1,9 +1,5 @@
 #pragma once
 
-/** @file session_types.hpp
- *  App core network session types (multi-session).
- */
-
 #include <cstdint>
 #include <string>
 
@@ -25,7 +21,6 @@ enum class SessionState : uint8_t {
   Disconnected = 4,
 };
 
-/** Session snapshot for the UI / status bar. */
 struct SessionInfo {
   std::string id;
   SessionKind kind = SessionKind::Idle;
@@ -59,4 +54,4 @@ inline std::string make_group_session_id(const std::string& group_hex) {
 
 inline constexpr const char* kDmInboxSessionId = "inbox";
 
-} // namespace nyx_app
+}
